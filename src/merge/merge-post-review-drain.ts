@@ -139,7 +139,7 @@ async function settlePostReviewOutcome(
   if (aborted) return; // a shutdown: the entry stays for the next generation
   if (outcome.kind === "approve") settlePostReview(root, entry.commit, null);
   else if (outcome.kind === "reject") settlePostReview(root, entry.commit, { ...entry, rejected: outcome.reasons, resume: undefined });
-  else if (outcome.kind === "fixed") await mergeReviewerFix(ctx, entry, outcome.fix, author.state);
+  else if (outcome.kind === "fixed") await mergeReviewerFix(ctx, entry, outcome.fix, outcome.reasons, author.state);
   else if (outcome.kind === "exhausted") {
     // A self-fix chain at the backstop: reviewMergedCommit has already recorded the surviving
     // findings; the entry is cleared so nothing re-reviews it (Forward never back 2/6).
@@ -252,7 +252,7 @@ const DROPPED_REVIEW_CLOSE =
  * entry in a best-effort `tumwater(operator):` commit. A skipped filing (off-base checkout or a
  * BUGS.md with uncommitted changes) or a throw logs one warning and returns, so a filing problem
  * never prevents the entry from being dropped and never throws out of the drain. */
-async function fileDroppedReview(ctx: MergePipelineContext, entry: PostReview, failure: string): Promise<void> {
+async function fileDroppedReview(ctx: MergePipelineContext, entry: PostReview, failure: string, finding?: string[]): Promise<void> {
   const root = ctx.root;
   // The machine-readable record of the drop: the warning names the commit by short SHA only, so a
   // reader cannot select or match it. Logged before the filing, so a filing failure keeps it too.
@@ -267,7 +267,15 @@ async function fileDroppedReview(ctx: MergePipelineContext, entry: PostReview, f
           // `## `/code-fence line that would make appendBugEntryLocked call fail() and exit the
           // whole drain; folding it to one line keeps the body structurally sound, so a hostile
           // failure skips the filing via the ordinary throw path instead of killing the process.
-          body: collapseWhitespace(`The post-merge review of commit \`${entry.commit}\` (${entry.summary}) never reached a verdict: ${failure}. It stays on main as ordinary unreviewed backlog work. ${DROPPED_REVIEW_CLOSE}`),
+          // A review that got as far as a finding names it too: the reviewer's objection is what a
+          // role acting on this entry needs, and a withheld fix used to be all the entry carried.
+          body: collapseWhitespace(
+            `The post-merge review of commit \`${entry.commit}\` (${entry.summary}) never reached a verdict: ${failure}.` +
+              (finding && finding.length > 0
+                ? ` The reviewer's finding on the reviewed change: ${finding.join("; ")}.`
+                : "") +
+              ` It stays on main as ordinary unreviewed backlog work. ${DROPPED_REVIEW_CLOSE}`,
+          ),
         },
       ],
       () => "File an unreviewed post-merge commit in BUGS.md",
@@ -286,9 +294,9 @@ async function fileDroppedReview(ctx: MergePipelineContext, entry: PostReview, f
  * Each phase reads from one helper below; this body only orders them, with no behavior change.
  * Throws when git could not start; a failed merge itself returns a non-terminal RunResult and
  * is never a throw. */
-async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fix: string, state: RunnerState): Promise<void> {
+async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fix: string, finding: string[], state: RunnerState): Promise<void> {
   const author = resolveAuthor(ctx, entry.role);
-  if (!(await precheckReviewerFix(ctx, entry, fix, state))) return;
+  if (!(await precheckReviewerFix(ctx, entry, fix, finding, state))) return;
   const outcome = await mergeReviewerFixCommit(ctx, entry, fix, author);
   if (outcome.result === "changed") {
     await settleMergedReviewerFix(ctx, entry, outcome.merged);
@@ -309,7 +317,7 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
  * consumed. A withholding never throws.
  * Returns false when the pre-check resolved `rejected` or `failed` — the fix must not land — and
  * true otherwise. */
-async function precheckReviewerFix(ctx: MergePipelineContext, entry: PostReview, fix: string, state: RunnerState): Promise<boolean> {
+async function precheckReviewerFix(ctx: MergePipelineContext, entry: PostReview, fix: string, finding: string[], state: RunnerState): Promise<boolean> {
   const wt = postReviewWorktreePath(ctx.root);
   const pre = await gateBuildPrecheck(
     {
@@ -329,16 +337,24 @@ async function precheckReviewerFix(ctx: MergePipelineContext, entry: PostReview,
     fix,
     async (reasons) => {
       // The gate's shared reject path (review.ts's reject), shaped to the fix's bookkeeping:
-      // record the rejection for the role's next runs, name the fix commit in a
-      // review_rejected event, and settle the reviewed commit rejected with those reasons. Its
-      // `fixed` stays unset — no repair landed on main — so the entry reads as rejected, not as
-      // a landed fix (PostReview.fixed names the fix commit that merged). The broken fix commit
-      // stays pinned at the review-fix ref so the withheld commit remains reachable.
-      recordReview(state, "reject", reasons, fix);
+      // record the rejection for the role's next runs, name the fix commit in a review_rejected
+      // event, and keep the reviewed entry OPEN with the pre-check as the review's
+      // failure. Settling
+      // it `rejected` here was the bug (BUGS.md 2026-11-21): a settled entry is terminal, so a fix
+      // one mechanical rewrap would repair became the review's last word, and the reviewer's
+      // finding — the only thing worth acting on — was overwritten by the lint failure's text. The
+      // finding rides the entry (`finding`) so the next attempt, `tumwater reviews`, and the filing
+      // at the limit all name it. The author's rejection record carries the finding alongside the
+      // pre-check reason, so a role is never handed a rejection naming only a lint line on a commit
+      // it can no longer revise. Its `fixed` stays unset — no repair landed on main — so the entry
+      // reads as a failing review, not as a landed fix (PostReview.fixed names the fix commit that
+      // merged). The broken fix commit stays pinned at the review-fix ref so the withheld commit
+      // remains reachable for a reader.
+      recordReview(state, "reject", [...finding, ...reasons], fix);
       saveRunnerStateBestEffort(ctx.root, state);
       logEventBestEffort(ctx.root, { source: entry.role, type: "review_rejected", head: fix, reasons, afterMerge: true });
       warnEventBestEffort(ctx.root, entry.role, `the post-merge fix of ${shortSha(entry.commit)} failed its pre-check and was withheld: ${firstReason(reasons)}`);
-      settlePostReview(ctx.root, entry.commit, { ...entry, rejected: reasons });
+      await settleWithheldReviewerFix(ctx, entry, finding, reasons);
       return { decision: "rejected" as const, detail: firstReason(reasons) };
     },
   );
@@ -479,6 +495,38 @@ async function settleMergedReviewerFix(ctx: MergePipelineContext, entry: PostRev
   await deleteRef(ctx.root, reviewFixRef(entry.commit)); // the fix is on main; the ref has done its job
   settlePostReview(ctx.root, entry.commit, { ...entry, fixed: merged }); // the entry names the landed fix
   addPostReview(ctx.root, { commit: merged, role: entry.role, summary: entry.summary });
+}
+
+/** Settle a review whose reviewer's fix was withheld by its own pre-check: the entry stays open,
+ * counted as one failed review run, with the pre-check's reason as `lastFailure` and the reviewer's
+ * finding kept in `finding` (BUGS.md 2026-11-21 — the old `rejected` settle ended the review and
+ * buried the finding). The count is the brake: at POST_REVIEW_FAILURE_LIMIT the entry is
+ * dropped and
+ * filed like any other abandoned review, the ref deleted so it pins nothing forever. */
+async function settleWithheldReviewerFix(
+  ctx: MergePipelineContext,
+  entry: PostReview,
+  finding: string[],
+  reasons: string[],
+): Promise<void> {
+  const failures = (entry.failures ?? 0) + 1;
+  const detail = `fix pre-check withheld the repair: ${firstReason(reasons)}`;
+  if (failures >= POST_REVIEW_FAILURE_LIMIT) {
+    warnEventBestEffort(ctx.root, entry.role, `dropping the post-merge review of ${shortSha(entry.commit)} after ${failures} withheld fix runs; it stays on main unreviewed`);
+    await deleteRef(ctx.root, reviewFixRef(entry.commit));
+    await fileDroppedReview(ctx, entry, detail, finding);
+    settlePostReview(ctx.root, entry.commit, null);
+    return;
+  }
+  warnEventBestEffort(ctx.root, entry.role, `the post-merge review of ${shortSha(entry.commit)} keeps its finding after a withheld fix; the next poll reviews it again`);
+  settlePostReview(ctx.root, entry.commit, {
+    ...entry,
+    failures,
+    lastFailure: detail,
+    ...(finding.length > 0 ? { finding } : {}),
+    consecutiveTransientFailures: 0,
+    resume: undefined,
+  });
 }
 
 /** Settle a fix whose merge failed: main is unmoved and the fix ref survives. Count the failure

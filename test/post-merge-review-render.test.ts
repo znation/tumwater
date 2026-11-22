@@ -79,11 +79,13 @@ test("postReviewMatchesGrep finds the text in every searched field, case-insensi
     summary: "split the module",
     body: "the parser hangs on CRLF",
     rejected: ["no tests", "a very long rejection reason " + "x".repeat(70)],
+    finding: ["the stale comment still says not yet"],
     lastFailure: "the runner timed out before a verdict",
   });
   // A match in the role id, the role label (ci renders as CI), the commit, the summary, the
-  // body, a rejection reason or the last failure each selects the entry; the case never matters.
-  for (const needle of ["ci", "CI", "aaaa", "SPLIT", "crlf", "no tests", "very long", "x".repeat(70), "timed out"]) {
+  // body, a rejection reason, a kept finding or the last failure each selects the entry; the case
+  // never matters.
+  for (const needle of ["ci", "CI", "aaaa", "SPLIT", "crlf", "no tests", "very long", "x".repeat(70), "timed out", "stale comment"]) {
     assert.equal(postReviewMatchesGrep(entry, needle), true, `text ${JSON.stringify(needle)} matches`);
   }
   // Text in no field matches nothing.
@@ -227,6 +229,12 @@ test("renderPostReviewDetail adds each optional block only when its field is pre
     "post-merge review 1: feature cccccccc — seed\nRejection reasons:\n- no tests\n- missing docs",
   );
   assert.equal(renderPostReviewDetail(e({ rejected: [] }), 1, 0), "post-merge review 1: feature cccccccc — seed");
+  // A finding a withheld fix left behind, one line per reason, before any rejection block.
+  assert.equal(
+    renderPostReviewDetail(e({ failures: 1, finding: ["breaks the contract"] }), 1, 0),
+    "post-merge review 1: feature cccccccc — seed\nReviewer's finding:\n- breaks the contract\nFailed review runs: 1",
+  );
+  assert.equal(renderPostReviewDetail(e({ finding: [] }), 1, 0), "post-merge review 1: feature cccccccc — seed");
   // Failed runs without lastFailure name only the count.
   assert.equal(
     renderPostReviewDetail(e({ failures: 2 }), 1, 0),

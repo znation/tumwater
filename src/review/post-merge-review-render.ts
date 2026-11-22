@@ -36,8 +36,10 @@ export type PostReviewState = (typeof POST_REVIEW_STATES)[number];
 
 /** The one matching rule behind `tumwater reviews --grep <text>`: true when the text appears,
  * case-insensitively, in any searched field — the role id or its label, the commit sha, the
- * summary, the body, a rejection reason or the last failure. The one-line list never prints the
- * body and squashes the summary to 80 and each reason to 60, so a match in those fields is
+ * summary, the body, a rejection reason, a kept finding or the last failure. The
+ * one-line list never
+ * prints the body and squashes the summary to 80 and each reason to 60, so a match in those
+ * fields is
  * invisible to a reader of the list; this reads every field whole, before any squash. An empty
  * text never reaches it: the flag parser refuses an empty value. */
 export function postReviewMatchesGrep(entry: PostReview, text: string): boolean {
@@ -49,6 +51,7 @@ export function postReviewMatchesGrep(entry: PostReview, text: string): boolean 
     entry.summary,
     entry.body ?? "",
     ...(entry.rejected ?? []),
+    ...(entry.finding ?? []),
     entry.lastFailure ?? "",
   ];
   return fields.some((field) => field.toLowerCase().includes(needle));
@@ -160,6 +163,9 @@ export function renderPostReviews(
  * when the entry carries `enqueuedAt` (the list's age wording, `humanAgo`'s `<n> ago`);
  * then, in a fixed order
  * and only when the field is present, a `Body:` block with the body verbatim, a
+ * `Reviewer's finding:` block with one `- <reason>` line per kept finding (each whole — the
+ * finding a
+ * withheld fix left behind is the part a reader acts on), a
  * `Rejection reasons:` block with one `- <reason>` line per recorded reason (each whole), a
  * `Failed review runs: <n>` line whose `Last failure:` follow-up carries the full text when
  * it is a non-empty string, and `Fixed in: <short sha>` when the repair merged. It never
@@ -168,6 +174,9 @@ export function renderPostReviewDetail(entry: PostReview, position: number, now:
   const lines: string[] = [`post-merge review ${position}: ${roleLabel(entry.role)} ${shortSha(entry.commit)} — ${entry.summary}`];
   if (typeof entry.enqueuedAt === "number") lines.push(` · queued ${humanAgo(entry.enqueuedAt, now)}`);
   if (entry.body !== undefined) lines.push("Body:", entry.body);
+  if (entry.finding !== undefined && entry.finding.length > 0) {
+    lines.push("Reviewer's finding:", ...entry.finding.map((reason) => `- ${reason}`));
+  }
   if (entry.rejected !== undefined && entry.rejected.length > 0) {
     lines.push("Rejection reasons:", ...entry.rejected.map((reason) => `- ${reason}`));
   }

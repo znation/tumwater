@@ -4896,6 +4896,33 @@ folds the final run returned by `reviewMergedCommit`'s single `runGatePi` call.
 **Pinned by.** `test/post-merge-review.test.ts` — "a post-merge review's final run is folded into
 the author's usage and failure stamps (regression, BUGS.md 2026-11-16)".
 
+### INV-BT8: a reviewer's fix withheld by its own pre-check keeps the review open and keeps the finding
+
+**Guarantee.** When the reviewer's repair of a rejected post-merge commit fails its pre-check
+(`precheckReviewerFix`), the harness withholds the fix from main and the reviewed entry stays
+**open**: `settleWithheldReviewerFix` records one failed review run (`failures`, `lastFailure` =
+the pre-check's reason) and carries the reviewer's finding in `PostReview.finding`, never the
+terminal `rejected` settle. A settled entry is terminal, so the old settle made a lint line the
+review's last word — the finding, the only thing worth acting on, was overwritten, and a repair one
+mechanical rewrap would fix was abandoned after one attempt. `finding` survives the JSON round trip
+(a non-empty string array is parsed and copied on read) and is searchable in
+`postReviewMatchesGrep` and printed by `renderPostReviewDetail`, so an operator can read what the
+reviewer found. The failed-run count is the brake: at `POST_REVIEW_FAILURE_LIMIT` the entry is
+dropped and filed to BUGS.md naming both the finding and the withholding reason, and its fix ref is
+deleted so a withheld commit pins nothing forever. The author's rejection record carries the finding
+alongside the pre-check reason, so a role is never handed a rejection naming only a lint line on a
+commit it cannot revise.
+
+**Binds.** `src/merge/merge-post-review-drain.ts` (`precheckReviewerFix`'s reject callback and
+`settleWithheldReviewerFix`), `src/review/post-merge-review.ts` (`PostReview.finding`,
+`parsePostReview`), `src/review/post-merge-review-render.ts`.
+
+**Pinned by.** `test/post-merge-review.test.ts` — "a reviewer's fix that fails its pre-check is
+withheld from main (BUGS.md 2026-11-04)", "a withheld fix at the failure limit files both the
+reviewer's finding and the pre-check's reason"; `test/post-merge-review-render.test.ts` —
+"postReviewMatchesGrep finds the text in every searched field, case-insensitively",
+"renderPostReviewDetail adds each optional block only when its field is present".
+
 ## Observer run ledgers: a failed ledger write never fails a run
 
 ### INV-BW1: a failed qa-coverage.json write warns and the run keeps its outcome

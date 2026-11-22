@@ -1067,7 +1067,8 @@ test("a reviewer's fix that fails its pre-check is withheld from main (BUGS.md 2
   // failure reproduces on its flake re-run and is attributed to the fix, not to main.
   const config = (ctx as { liveConfig: unknown }).liveConfig as Record<string, unknown>;
   config.check = { command: "[ \"$(cat x.txt 2>/dev/null)\" != \"fixed\" ]" };
-  (ctx as { runners: RoleRunner[] }).runners = [fixingRunner("improve")];
+  const fixer = fixingRunner("improve");
+  (ctx as { runners: RoleRunner[] }).runners = [fixer];
   const p = newMergePipeline();
   drainPostReviews(ctx, p);
   await p.postReview!.promise;
@@ -1081,7 +1082,61 @@ test("a reviewer's fix that fails its pre-check is withheld from main (BUGS.md 2
   const settled = readPostReviews(root);
   const reviewed = settled.find((e) => e.commit === commit)!;
   assert.equal(reviewed.fixed, undefined, "no fix is recorded as landed on main");
-  assert.ok(reviewed.rejected !== undefined && reviewed.rejected.length > 0, "the reviewed entry records the pre-check's rejection reasons");
+  // The pre-check's reasons are the FIX's problem, not the reviewed change's verdict: they are
+  // recorded as this entry's failure, and the reviewed entry keeps its finding instead of being
+  // settled `rejected` — a settlement is terminal, so the withheld fix would be the review's last
+  // word and the finding itself would be overwritten and lost.
+  assert.equal(reviewed.rejected, undefined, "the reviewed change is not settled rejected by its fix's pre-check");
+  assert.equal(reviewed.failures, 1, "the withheld fix counts as one failure of the review");
+  assert.match(reviewed.lastFailure ?? "", /fix pre-check/, "the failure names the fix pre-check as the cause");
+  assert.deepEqual(reviewed.finding, ["breaks the contract"], "the reviewer's finding survives the withheld fix");
+  const rejected = eventsOfType(root, "review_rejected");
+  assert.deepEqual(
+    rejected.map((e) => e.head),
+    [commit, sh(root, "git", "rev-parse", reviewFixRef(commit)).trim()],
+    "the reviewer's own verdict on the reviewed commit stays logged, and the fix commit is the second rejection",
+  );
+  assert.deepEqual(rejected[0]!.reasons, ["breaks the contract"], "the reviewer's finding is recorded against the reviewed commit");
+  // The author's own rejection record (the one its next run's prompt reads) must name the finding,
+  // not only the lint line the fix tripped on — a role cannot revise the withheld fix commit.
+  const lastReview = (fixer as unknown as { state: { lastReview?: { verdict: string; reasons: string[] } } }).state.lastReview;
+  assert.equal(lastReview?.verdict, "reject");
+  assert.ok(lastReview?.reasons.includes("breaks the contract"), "the author's rejection names the finding too");
+  assert.ok((lastReview?.reasons.length ?? 0) > 1, "and it still names the pre-check failure that withheld the fix");
+});
+
+test("a withheld fix at the failure limit files both the reviewer's finding and the pre-check's reason", async () => {
+  // The entry is dropped at POST_REVIEW_FAILURE_LIMIT and filed to BUGS.md; the filed body must
+  // carry what the reviewer found and why its repair never landed — losing either makes the filed
+  // entry a duplicate of the reviewed commit's subject, which is what the 6c05d278 filing was.
+  const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+  const config = (ctx as { liveConfig: unknown }).liveConfig as Record<string, unknown>;
+  config.check = { command: "[ \"$(cat x.txt 2>/dev/null)\" != \"fixed\" ]" };
+  const fixer = fixingRunner("improve");
+  (ctx as { runners: RoleRunner[] }).runners = [fixer];
+  fs.writeFileSync(
+    postReviewPath(root),
+    JSON.stringify({
+      pending: [{ commit, role: "improve", summary: "seed", failures: POST_REVIEW_FAILURE_LIMIT - 1 }],
+    }),
+  );
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(readPostReviews(root).length, 0, "the entry is dropped at the limit");
+  const bugs = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
+  assert.match(bugs, /breaks the contract/, "the filed entry names the reviewer's finding");
+  assert.match(bugs, /fix pre-check/, "the filed entry names the withheld fix's pre-check reason");
+  // main carries only the BUGS.md filing commit on top of the reviewed commit: the withheld repair
+  // never landed on it.
+  const tip = headSha(root);
+  assert.equal(sh(root, "git", "rev-parse", `${tip}^`).trim(), commit, "the reviewed commit stays main's tip's parent");
+  assert.match(sh(root, "git", "log", "-1", "--format=%s", tip).trim(), /^tumwater\(operator\): File an unreviewed post-merge commit/);
+  assert.equal(
+    sh(root, "git", "for-each-ref", reviewFixRef(commit)).trim(),
+    "",
+    "the fix ref is deleted once the entry is dropped, so it pins nothing forever",
+  );
 });
 
 test("a fix commit's subject and recorded reasons name the finding, never the FIX line", async () => {

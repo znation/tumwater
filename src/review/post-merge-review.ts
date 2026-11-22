@@ -45,6 +45,13 @@ export interface PostReview {
    * entry is settled or removed. */
   lastFailure?: string;
   rejected?: string[];
+  /** What the reviewer objected to in the reviewed commit, kept from its verdict while a repair
+   * of its own is still trying to land. A settled `rejected` entry carries those reasons in
+   * `rejected`; an entry whose fix was withheld by the fix's own pre-check is NOT settled, so
+   * without this field the finding would exist nowhere a reader can see it — the entry would show
+   * only the pre-check failure and the filed BUGS.md entry would repeat the commit's subject
+   * (BUGS.md 2026-11-21). */
+  finding?: string[];
   /** The sha of the reviewer's landed fix commit, when the review repaired what it found instead
    * of rejecting (Forward never back 1a/6). The entry then names both shas: `commit` is the
    * reviewed commit C and `fixed` the one fix commit that merged on top of it. */
@@ -152,18 +159,21 @@ const postReviewCache = new Map<string, StatKeyedValue<PostReview[]>>();
 /** One saved entry's re-read: null (drop as torn) when the entry is not an object with string
  * `commit`, `role` and `summary`, or its `rejected` is present but not an array; otherwise the
  * `PostReview`, with every optional field (`body`, `failures`, `lastFailure`, `rejected`,
+ * `finding`,
  * `fixed`, `enqueuedAt`) copied only when its type and range are valid, in the order the
  * `PostReview` fields list them. */
 function parsePostReview(raw: unknown): PostReview | null {
   if (!isJsonObject(raw)) return null;
-  const { commit, role, summary, body, failures, lastFailure, rejected, enqueuedAt, fixed, notBeforeMs, consecutiveTransientFailures, resume } = raw;
+  const { commit, role, summary, body, failures, lastFailure, rejected, enqueuedAt, fixed, notBeforeMs, consecutiveTransientFailures, resume, finding } = raw;
   if (typeof commit !== "string" || typeof role !== "string" || typeof summary !== "string") return null;
   if (rejected !== undefined && !Array.isArray(rejected)) return null;
+  if (finding !== undefined && !Array.isArray(finding)) return null;
   const entry: PostReview = { commit, role, summary };
   if (typeof body === "string") entry.body = body;
   if (typeof failures === "number" && Number.isFinite(failures)) entry.failures = failures;
   if (typeof lastFailure === "string") entry.lastFailure = lastFailure;
   if (Array.isArray(rejected)) entry.rejected = rejected.filter((r): r is string => typeof r === "string");
+  if (Array.isArray(finding)) entry.finding = finding.filter((r): r is string => typeof r === "string");
   if (typeof fixed === "string") entry.fixed = fixed;
   if (typeof enqueuedAt === "number" && Number.isFinite(enqueuedAt) && enqueuedAt >= 0) entry.enqueuedAt = enqueuedAt;
   if (typeof notBeforeMs === "number" && Number.isFinite(notBeforeMs) && notBeforeMs >= 0) entry.notBeforeMs = notBeforeMs;
@@ -183,7 +193,12 @@ export function readPostReviews(root: string): PostReview[] {
         if (!Array.isArray(saved?.pending)) return [];
         return (saved.pending as unknown[]).map(parsePostReview).filter((e): e is PostReview => e !== null);
       },
-      (entries) => entries.map((e) => ({ ...e, ...(e.rejected !== undefined ? { rejected: [...e.rejected] } : {}) })),
+      (entries) =>
+        entries.map((e) => ({
+          ...e,
+          ...(e.rejected !== undefined ? { rejected: [...e.rejected] } : {}),
+          ...(e.finding !== undefined ? { finding: [...e.finding] } : {}),
+        })),
     ) ?? []
   );
 }

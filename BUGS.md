@@ -45,16 +45,6 @@ The same 360 s wait-then-abort followed the restarts at 11-18 02:17, 11-19 21:00
 
 **Fix direction.** An aborted post-merge review should keep its session for the next generation: set `resume` on the abort path as the progressing-timeout path does. A review that cannot finish soon should also not hold the hand-off. Abort a post-merge review at once at a restart, keeping its session, since it lands nothing until its verdict; keep the 360 s window for tasks that are actually merging.
 
-### A reviewer's post-merge fix withheld on a lint failure settles the reviewed commit as rejected for good, and the reviewer's finding is lost (found by an operator session 2026-11-21)
-
-**Symptom.** On 2026-11-21 the post-merge fix was withheld four times, at 11:54 (`0acfd4ee`), 12:36 (`e21b30a3`), 16:46 (`e63b9c49`) and 21:06 (`03f27a3a`). Every one failed only `every comment line in src/ and test/ fits in 100 columns`: the reviewer's fix commit carried an overlong comment line. In each case the `post-review.json` entry for the reviewed commit was settled with `rejected` set to the comment-width assertion's stack trace, and nothing else. The reviewer's actual objection appears nowhere. On `03f27a3a` the verdict found an inline comment saying `review_dropped` is "not yet" written. The entry was settled rejected, and that stale comment is still on main (src/review/post-merge-review-requeue.ts:40).
-
-**Reproduce.** In `.tumwater/log/events.jsonl`, each `the post-merge fix of <sha> failed its pre-check and was withheld` warning follows a `review_verdict` (`afterMerge: true`) for the same head. Then read `.tumwater/state/post-review.json` for `03f27a3a…` or `e63b9c49…`: `rejected` holds only the comment-width lines. The withheld fix commit stays pinned at the review-fix ref.
-
-**Cause.** The fix pre-check's reject callback in `mergeReviewerFix` (src/merge/merge-post-review-drain.ts) calls `settlePostReview(…, { ...entry, rejected: reasons })` with the pre-check's reasons. A `rejected` entry is terminal: the drain's eligibility filter skips any entry with `rejected` or `fixed`. So a fix that a mechanical rewrap would repair is never retried or repaired. The commit it reviewed keeps the defect the reviewer found. `recordReview(state, "reject", reasons, fix)` also hands the author role a rejection that names only the lint failure, on a commit the author can no longer revise.
-
-**Fix direction.** A withheld fix should not end the review. Either hand the failing fix back to the reviewer for a repair turn naming the pre-check failure, or re-queue the entry with the reviewer's finding. In both cases the reviewer's verdict reason must reach whoever acts next. Record a mechanical pre-check failure separately from the review's finding, so `tumwater reviews` and the author's prompt show what the reviewer actually objected to.
-
 ## Fixed
 
 ## Verified

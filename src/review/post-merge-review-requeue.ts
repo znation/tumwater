@@ -37,8 +37,8 @@ async function droppedCommits(root: string, since: string): Promise<{ drops: Dro
   const drops: DroppedCommit[] = [];
   let unresolved = 0;
   for (const event of readWindowEvents(root, since).events) {
-    // A string-typed read: `review_dropped` is written by the drop path, not yet a
-    // HarnessEvent type.
+    // A string-typed read of `type`: the drop path writes `review_dropped`, and the reader
+    // narrows every payload field it uses, so an older or torn line is counted unresolved.
     const type: string = event.type;
     if (type === "review_dropped") {
       if (typeof event.commit === "string" && FULL_SHA.test(event.commit) && typeof event.source === "string") {
