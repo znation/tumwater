@@ -1,7 +1,7 @@
 import { answeredQuestionSummaries } from "../backlog/backlog-question-answer.js";
 import { completionDate, donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugEntries, openBugs, openQuestions, plannedPlans, type BacklogEntry } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress, backlogMarks, refusedEntries } from "../backlog/backlog-eligibility.js";
-import { finishedTitle } from "../backlog/backlog-structure.js";
+import { finishedTitle } from "../backlog/backlog-md.js";
 import { groupBlockedSeries, partsLabel } from "../backlog/backlog-index-data.js";
 import { readEvents } from "../events/event-read.js";
 import { eventFeedItem, formatEvent } from "../events/event-format.js";

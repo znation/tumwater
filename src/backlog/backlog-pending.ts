@@ -13,9 +13,8 @@ import { commonGitDir, gitLines, refShaFromFiles } from "../git/git.js";
 import { statOrNull } from "../files/files.js";
 import { plural } from "../text/phrases.js";
 import type { BacklogEntry } from "./backlog-md.js";
-import { parseEntryDetails } from "./backlog-md.js";
+import { parseEntryDetails, stripEntryStamp } from "./backlog-md.js";
 import { entryKey } from "./backlog-parts.js";
-import { stripEntryStamp } from "./backlog-structure.js";
 import { plannedPlanEntries } from "./backlog.js";
 
 /** One unmerged change's effect on `## Planned`, judged against the merge-base of `sha` with

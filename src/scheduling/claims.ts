@@ -15,7 +15,7 @@ import { type EligibleEntry, claimedElsewhereKeys, eligibleAmong, eligibleEntrie
 import { entryKey, plannedPartKeys } from "../backlog/backlog-parts.js";
 import { projectedPlannedEntries } from "../backlog/backlog-pending.js";
 import { actionableEntryRanges, actionableEntryRangesFor } from "../backlog/backlog-index-data.js";
-import { stripEntryStamp } from "../backlog/backlog-structure.js";
+import { stripEntryStamp } from "../backlog/backlog-md.js";
 import { readTextOrNull } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";

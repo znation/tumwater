@@ -4,7 +4,7 @@
  * tail}.ts) share, so the wording they reuse cannot drift between
  * modules. Split from team-alerts.ts when its three builders moved to their own files. */
 
-import { stripEntryStamp } from "../backlog/backlog-structure.js";
+import { stripEntryStamp } from "../backlog/backlog-md.js";
 import { STALL_RE, duration } from "./run-progress-model.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";

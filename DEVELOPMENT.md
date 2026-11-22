@@ -388,7 +388,10 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/operator/`: the layer for your commands, shared by the
   `pause`/`resume`/`wake`/`abort`/`stop`/`retire` CLI commands and the dashboard's POST routes.
 - `src/backlog/`: the BUGS/PLANS/QUESTIONS markdown — the stat-cached readers, the text
-  reader/writer, its structure, its renderer, and its eligibility marks; the QUESTIONS.md
+  reader/writer, its structure, its renderer, and its eligibility marks; the heading stamp-suffix
+  rule (`ENTRY_STAMP_META_SOURCE`, `stripEntryStamp`, `finishedTitle`) sits in the pure markdown
+  layer (`backlog-md.ts`) with the fence tracker, so the identity keys, writers, alerts and
+  dashboards take it without reaching the structure gate; the QUESTIONS.md
   reader/writer core (`backlog-question-answer.ts`) sits here, shared by the CLI's `questions` command
   body and the dashboard's POST route.
 - `src/brief/`: the project brief — the managed prompt/status sections, reading the

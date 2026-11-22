@@ -6,7 +6,7 @@ import { queuedMerges, type MergeEntry } from "../merge/merge-queue.js";
 import { removeMergeChange } from "../merge/merge-slot.js";
 import { mergeRefName, withdrawnRefName } from "../paths.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
-import { stripEntryStamp } from "../backlog/backlog-structure.js";
+import { stripEntryStamp } from "../backlog/backlog-md.js";
 import { shortSha } from "../text/format.js";
 import { conflictAttempts, type RunnerState } from "./runner-state.js";
 

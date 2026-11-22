@@ -8,7 +8,13 @@ import { daysBetween } from "../text/datetime.js";
  * QUESTIONS.md walks, backlog-write.ts's section appends, backlog-structure.ts's stranding checks)
  * import from here without reaching the file/cache layer, and a caller who parses a string never
  * pays for a stat. Both layers share one fenceTracker state machine, so independent readers can
- * never disagree about what is body content. */
+ * never disagree about what is body content.
+ *
+ * It also owns the heading stamp-suffix rule (ENTRY_STAMP_META_SOURCE / stripEntryStamp /
+ * finishedTitle): pure over one heading's text, so every reader that wants a heading stamp-free —
+ * the identity keys in backlog-parts.ts, the index, the writers, the alerts and dashboards — takes
+ * it from this layer rather than from the structural gate in backlog-structure.ts, which imports
+ * git, runner state and the file cache. */
 
 /** Where each live backlog file's finished entries go (plans/backlog-archive.md): PLANS.md's
  * `## Done` empties into PLANS-DONE.md and BUGS.md's `## Fixed` into BUGS-FIXED.md, each under
@@ -491,6 +497,44 @@ export function openParenthetical(line: string): string {
     } else if (ch === ")" && depth > 0) depth--;
   }
   return depth > 0 ? line.slice(open + 1) : "";
+}
+
+/** The stamp verbs a backlog heading's trailing `(planned 2026-09-29)`-style parenthetical
+ * opens with — the same list the backlog writers stamp and the dashboards parse. One home
+ * for the verb list: the team alerts strip the suffix (stripEntryStamp) and the
+ * dashboard's browser view model splits it off as metadata (splitTitle), and a new stamp
+ * verb must reach both renders.
+ * Kept as pattern SOURCE rather than a RegExp so the browser twin (a String.raw template
+ * that cannot import runtime code) can interpolate it into its own compiled regex. */
+export const ENTRY_STAMP_META_SOURCE = String.raw`\s*\(((?:planned|reported|found|refined|asked|posted|filed|opened|done|retired)\b[^)]*)\)\s*$`;
+
+/** ENTRY_STAMP_META_SOURCE compiled: the one server-side home of the stamp-suffix match
+ * (case-insensitive, note captured), read through stripEntryStamp below. */
+const ENTRY_STAMP_META_RE = new RegExp(ENTRY_STAMP_META_SOURCE, "i");
+
+/** A heading or title with its trailing `(planned 2026-09-29)`-style stamp suffix removed,
+ * whitespace otherwise untouched — the shared span of backlog-index's indexTitle, eligibility's
+ * entryKey and seriesPart, and the team alerts, which all read a heading stamp-free. */
+export function stripEntryStamp(title: string): string {
+  return title.replace(ENTRY_STAMP_META_RE, "");
+}
+
+/** The heading of a `## Done`/`## Fixed` entry with its completion stamp removed. Cuts at the
+ * first `dateRe` match, drops a parenthetical the cut left open (`(found by … 2026-10-01; `,
+ * `(planned …; `), ignores a stray `)` (`… now under ## Fixed); fixed 2026-10-04 …)`), trims
+ * trailing separators, then strips a closed `(planned …)`/`(found …)` stamp suffix. `dateRe`
+ * matches nothing in the result. */
+export function finishedTitle(title: string, dateRe: RegExp): string {
+  const match = dateRe.exec(title);
+  let t = match ? title.slice(0, match.index) : title;
+  const open: number[] = [];
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === "(") open.push(i);
+    else if (t[i] === ")" && open.length) open.pop();
+  }
+  if (open.length) t = t.slice(0, open[0]);
+  t = t.replace(/[\s,;:—–-]+$/, "");
+  return stripEntryStamp(t).trimEnd();
 }
 
 /** A text's LAST `<dateRe>` capture — the completion rule both branches of entryDates share:

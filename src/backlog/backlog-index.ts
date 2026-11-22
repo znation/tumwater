@@ -9,7 +9,7 @@
  * checks. */
 import path from "node:path";
 import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { FINISHED_ARCHIVES } from "./backlog-md.js";
+import { FINISHED_ARCHIVES, stripEntryStamp } from "./backlog-md.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 import {
@@ -19,7 +19,6 @@ import {
   type ActionableEntryRange,
   type SeriesRow,
 } from "./backlog-index-data.js";
-import { stripEntryStamp } from "./backlog-structure.js";
 import { entryHoldAgainst, holdMark } from "./backlog-eligibility.js";
 import { entryKey, plannedPartKeys } from "./backlog-parts.js";
 import { plannedPlanEntries } from "./backlog.js";

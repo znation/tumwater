@@ -17,7 +17,7 @@
 import { actionableEntryRanges } from "../backlog/backlog-index-data.js";
 import { entryKey } from "../backlog/backlog-parts.js";
 import { roleSection } from "../backlog/backlog-eligibility.js";
-import { stripEntryStamp } from "../backlog/backlog-structure.js";
+import { stripEntryStamp } from "../backlog/backlog-md.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { changeBaseRev, deleteRef, fileContentAt } from "../git/git.js";
 import { gitTryStarted } from "../git/git-run.js";

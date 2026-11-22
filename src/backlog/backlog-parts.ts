@@ -3,9 +3,8 @@
  * text and entry lists; the hold rules built on them live in backlog-eligibility.ts. */
 
 import { collapseWhitespace } from "../text/text.js";
-import type { BacklogEntry } from "./backlog-md.js";
+import { stripEntryStamp, type BacklogEntry } from "./backlog-md.js";
 import { isRetiredTitle } from "./backlog.js";
-import { stripEntryStamp } from "./backlog-structure.js";
 
 /** A `series, part i/n` pair: the series name, the part token (`5`, or `2a` for the historical
  * lettered sub-plans) and the total. One shape for both an entry's own series (seriesPart) and

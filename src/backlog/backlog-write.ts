@@ -10,9 +10,8 @@
  * printed confirmations live in the CLI's bug/plan shells (src/cli/cli-backlog.ts); the wake of
  * the role that should act stays in cli.ts beside the other command bodies. */
 import path from "node:path";
-import { fenceTracker, headingMetadata, sectionSpan } from "./backlog-md.js";
+import { fenceTracker, headingMetadata, sectionSpan, stripEntryStamp } from "./backlog-md.js";
 import { actionableEntryRanges, type ActionableEntryRange } from "./backlog-index-data.js";
-import { stripEntryStamp } from "./backlog-structure.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { validPositionRange } from "../text/phrases.js";

@@ -62,44 +62,6 @@ export interface StrandedPlanEntry {
   file?: string;
 }
 
-/** The stamp verbs a backlog heading's trailing `(planned 2026-09-29)`-style parenthetical
- * opens with — the same list the backlog writers stamp and the dashboards parse. One home
- * for the verb list: the team alerts strip the suffix (stripEntryStamp) and the
- * dashboard's browser view model splits it off as metadata (splitTitle), and a new stamp
- * verb must reach both renders.
- * Kept as pattern SOURCE rather than a RegExp so the browser twin (a String.raw template
- * that cannot import runtime code) can interpolate it into its own compiled regex. */
-export const ENTRY_STAMP_META_SOURCE = String.raw`\s*\(((?:planned|reported|found|refined|asked|posted|filed|opened|done|retired)\b[^)]*)\)\s*$`;
-
-/** ENTRY_STAMP_META_SOURCE compiled: the one server-side home of the stamp-suffix match
- * (case-insensitive, note captured), read through stripEntryStamp below. */
-const ENTRY_STAMP_META_RE = new RegExp(ENTRY_STAMP_META_SOURCE, "i");
-
-/** A heading or title with its trailing `(planned 2026-09-29)`-style stamp suffix removed,
- * whitespace otherwise untouched — the shared span of backlog-index's indexTitle, eligibility's
- * entryKey and seriesPart, and the team alerts, which all read a heading stamp-free. */
-export function stripEntryStamp(title: string): string {
-  return title.replace(ENTRY_STAMP_META_RE, "");
-}
-
-/** The heading of a `## Done`/`## Fixed` entry with its completion stamp removed. Cuts at the
- * first `dateRe` match, drops a parenthetical the cut left open (`(found by … 2026-10-01; `,
- * `(planned …; `), ignores a stray `)` (`… now under ## Fixed); fixed 2026-10-04 …)`), trims
- * trailing separators, then strips a closed `(planned …)`/`(found …)` stamp suffix. `dateRe`
- * matches nothing in the result. */
-export function finishedTitle(title: string, dateRe: RegExp): string {
-  const match = dateRe.exec(title);
-  let t = match ? title.slice(0, match.index) : title;
-  const open: number[] = [];
-  for (let i = 0; i < t.length; i++) {
-    if (t[i] === "(") open.push(i);
-    else if (t[i] === ")" && open.length) open.pop();
-  }
-  if (open.length) t = t.slice(0, open[0]);
-  t = t.replace(/[\s,;:—–-]+$/, "");
-  return stripEntryStamp(t).trimEnd();
-}
-
 /** A heading's parenthetical dates: `(planned YYYY-MM-DD` opens a plan entry; `done
  * YYYY-MM-DD` records its completion. Matched against the JOINED heading metadata
  * (headingMetadata), never the bare first line — many headings wrap their dates onto a

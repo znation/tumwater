@@ -5,17 +5,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   backlogStructureReason,
-  finishedTitle,
   doubleBlockFixedEntries,
   duplicateHeadings,
   strandedPlanEntries,
   renderBacklogStructureBlock,
   readdedHeadings,
-  stripEntryStamp,
   duplicatePlannedEntries,
   renderDuplicatePlansBlock,
   type StrandedPlanEntry,
 } from "../src/backlog/backlog-structure.js";
+import {
+  finishedTitle,
+  stripEntryStamp,
+} from "../src/backlog/backlog-md.js";
 import {
   actionableEntryRanges,
   actionableEntryRangesBySections,
@@ -33,7 +35,9 @@ import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
  * 3/4):
  * a `### ` heading with plan dates filed under the wrong `## ` section of PLANS.md is invisible
  * to every section-scoped reader, so the detector re-reads the whole document fence-aware and
- * reports the misplaced headings with the section each sits in. */
+ * reports the misplaced headings with the section each sits in. The stripEntryStamp and
+ * finishedTitle cases here pin the heading stamp-suffix helpers, which live in the pure markdown
+ * layer src/backlog/backlog-md.ts and feed this gate through entryKey/seriesPart. */
 
 function plansDoc(body: string): string {
   return `# Plans\n\nPlanned features, written by the plan loop.\n\n${body}`;

@@ -4,9 +4,10 @@
  * problem this change adds is reported. All are staging-only: the review gate does not run
  * them (see stage-check.ts for why each is left out of the gate). */
 
-import { finishedTitle, readdedHeadings } from "../backlog/backlog-structure.js";
+import { readdedHeadings } from "../backlog/backlog-structure.js";
 import {
   fenceAwareHeadingLines,
+  finishedTitle,
   headingTitle,
   parseEntryDetails,
   sectionBodyLines,

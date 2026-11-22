@@ -6,10 +6,10 @@
  * queued prompts in execution order. It is the browser twin of the rules status-model.ts
  * computes server-side; test/gui-client.test.ts pins the copies against each other. Spliced
  * into gui-client.ts's script, reaching its helpers (esc, isActivePhase) through that
- * concatenation. The stamp-metadata pattern is interpolated from backlog-structure.ts's
+ * concatenation. The stamp-metadata pattern is interpolated from backlog-md.ts's
  * ENTRY_STAMP_META_SOURCE — String.raw interpolates substitutions normally — so the
  * browser regex cannot drift from the server twin the tests pin it against. */
-import { ENTRY_STAMP_META_SOURCE } from "../../backlog/backlog-structure.js";
+import { ENTRY_STAMP_META_SOURCE } from "../../backlog/backlog-md.js";
 import { STALL_SOURCE } from "../run-progress-model.js";
 import { PROBLEM_EVENTS, PROBLEM_RESULTS, ROUTINE_BUILD_RESULTS, ROUTINE_EVENTS } from "../tone.js";
 import { ROLE_RANK_RULES } from "../status-model.js";
@@ -150,7 +150,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     return "info";
   }
   // A backlog title's trailing "(planned 2026-09-29)"-style note, split off as metadata —
-  // the pattern is backlog-structure.ts's ENTRY_STAMP_META_SOURCE (interpolated at module
+  // the pattern is backlog-md.ts's ENTRY_STAMP_META_SOURCE (interpolated at module
   // load, compiled once here), the same regex team-alert-shared.ts strips through via
   // stripEntryStamp, so a new stamp verb reaches both dashboards from one edit.
   const ENTRY_STAMP_RE = new RegExp(${JSON.stringify(ENTRY_STAMP_META_SOURCE)}, "i");
