@@ -5,10 +5,12 @@
  * through, so what counts as one day and how a timestamp prints cannot drift per consumer.
  * Split out of text.ts — which keeps the one-line text shaping — because calendar
  * arithmetic (dayAt's midnight truncation, month/year edges) is a different concern from
- * string cutting, with its own tests. Presentation only: depends on node built-ins alone. */
+ * string cutting, with its own tests. Presentation only: it owns no filesystem or log facts of
+ * its own, so every path- or log-derived word it prints arrives as an argument — that is why
+ * reportWindow takes its source filename instead of importing it from paths.ts, which would send
+ * a formatting module back up into the layer that formats it. */
 
 import { plural } from "./phrases.js";
-import { EVENTS_LOG_BASENAME } from "../paths.js";
 
 /** Milliseconds in an hour — the shared unit for this repo's window and timeout
  * constants (reclaim's idle threshold, the doctor's merge/stale-pin/wait checks, the
@@ -251,10 +253,11 @@ export function dayLabel(days: number): string {
  * count. The rotation phrase is a required argument — eventsRotationLabel() supplies it from
  * events.ts's EVENTS_MAX_BYTES, so this header cannot keep claiming "16 MB" after the actual
  * threshold moves (this module stays presentation-only, owning no log facts of its own). The
- * source filename is paths.ts's EVENTS_LOG_BASENAME, the same name the log's path is built
- * from — not a second copy that a rename would leave behind. */
-export function reportWindow(from: string, to: string, days: number, rotation: string): string {
-  return `Window: ${from} → ${to} (${dayLabel(days)}) · source: ${EVENTS_LOG_BASENAME} (${rotation})`;
+ * source filename is a required argument for the same reason: the callers pass paths.ts's
+ * EVENTS_LOG_BASENAME, the same name the log's path is built from — not a second copy that a
+ * rename would leave behind, and not an import that would tie this module to the path layer. */
+export function reportWindow(from: string, to: string, days: number, source: string, rotation: string): string {
+  return `Window: ${from} → ${to} (${dayLabel(days)}) · source: ${source} (${rotation})`;
 }
 
 /** The trailing-window sibling of reportWindow above: the `window: last <duration>` header the

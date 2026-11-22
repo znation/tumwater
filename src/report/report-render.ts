@@ -21,6 +21,7 @@ import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { shortSpanPhrase } from "../text/phrases.js";
 import { markdownTable } from "../text/markdown.js";
 import { backendDisplayName } from "../agent/backend-traits.js";
+import { EVENTS_LOG_BASENAME } from "../paths.js";
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */
@@ -300,7 +301,7 @@ export function costPerCommitLine(label: string, pairs: ReturnType<typeof costPe
 function pushReportHeader(lines: string[], data: ReportData): void {
   lines.push("# tumwater usage report");
   lines.push("");
-  lines.push(reportWindow(data.from, data.to, data.days, eventsRotationLabel()));
+  lines.push(reportWindow(data.from, data.to, data.days, EVENTS_LOG_BASENAME, eventsRotationLabel()));
   if (data.role !== undefined) lines.push(`role: ${data.role}`);
   lines.push("");
   const t = data.totals;

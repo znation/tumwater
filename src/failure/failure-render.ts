@@ -14,6 +14,7 @@ import { eventsRotationLabel } from "../events/events.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { markdownTable, type ColumnAlign } from "../text/markdown.js";
 import { rankCountEntries } from "../collections.js";
+import { EVENTS_LOG_BASENAME } from "../paths.js";
 
 /** A cluster's role list shows at most this many names before a "+N more" remainder. */
 const ROLES_SHOWN = 4;
@@ -175,7 +176,7 @@ function digestWindowLine(data: FailureReportData, bounded: boolean): string {
     ? trailingWindowLine(data.sinceMs!, data.fromIso!, data.untilMs, data.toIso)
     : data.sinceMs !== undefined
       ? trailingWindowLine(data.sinceMs, data.fromIso!)
-      : reportWindow(data.from, data.to, data.days, eventsRotationLabel());
+      : reportWindow(data.from, data.to, data.days, EVENTS_LOG_BASENAME, eventsRotationLabel());
   return `${window} · ${data.runs} runs`;
 }
 
