@@ -246,6 +246,10 @@ function logRunEnd(
     ...(usage.promptTokens > 0 ? { promptTokens: usage.promptTokens } : {}),
     ...(usage.cacheReadTokens > 0 ? { cacheReadTokens: usage.cacheReadTokens } : {}),
     ...(usage.preEditPromptTokens > 0 ? { preEditPromptTokens: usage.preEditPromptTokens } : {}),
+    // How many completed compactions the run wrote across all its agent runs (authoring, retry,
+    // review, merge). Omitted when zero like the prompt-token fields beside it, so a run that
+    // rewrote nothing — and every run_end written by an older build — renders byte-identically.
+    ...(usage.compactions > 0 ? { compactions: usage.compactions } : {}),
     // The run's peak single-request context: how hot the run's largest model call ran
     // against the model's declared window (runner-state.ts's peakContextTokens, reset at
     // run start). Omitted when zero like the prompt-token fields, so a run that reported

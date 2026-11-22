@@ -197,6 +197,7 @@ function sinceRoleMaps(
   | "refusalsByRole"
   | "failedRunsByRole"
   | "imageReroutesByRole"
+  | "compactionsByRole"
   | "tokensByRole"
   | "commitsByRole"
   | "mergedByRole"
@@ -237,6 +238,7 @@ function sinceRoleMaps(
     refusalsByRole: scopedByRole(acc.refusalsByRole, bases),
     failedRunsByRole: scopedByRole(acc.failedRunsByRole, bases),
     imageReroutesByRole: scopedByRole(acc.imageReroutesByRole, bases),
+    compactionsByRole: scopedByRole(acc.compactionsByRole, bases),
     tokensByRole: scopedByRole(acc.tokensByRole, bases),
     ...nonemptyObj<SinceReport>("promptTokensByRole", scopedByRole(acc.promptTokensByRole, bases)),
     ...nonemptyObj<SinceReport>("cacheReadTokensByRole", scopedByRole(acc.cacheReadTokensByRole, bases)),

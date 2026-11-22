@@ -64,6 +64,11 @@ export class RunUsage {
   promptTokens = 0;
   /** The cache-read share of promptTokens folded so far. */
   cacheReadTokens = 0;
+  /** Completed compactions folded into THIS run so far (non-persisted, reset at run start).
+   * Every pi run of the run contributes, like promptTokens: merge and review sessions get
+   * re-compacted too, and each compaction is a rewrite of the context the operator paid for.
+   * Its only consumer is the run_end event, which fires before the next run resets it. */
+  compactions = 0;
   /** Prompt tokens folded before the run's first edit: authoring runs only, frozen once an
    * authoring run reports an edit (plans/per-run-prompt-telemetry). Merge, review and
    * conflict-resolution runs are excluded — their context is the gate's, not the authoring
@@ -112,6 +117,7 @@ export class RunUsage {
     this.agent = undefined;
     this.promptTokens = 0;
     this.cacheReadTokens = 0;
+    this.compactions = 0;
     this.preEditPromptTokens = 0;
     this.editSeen = false;
     this.endedUnanswered = false;
@@ -128,6 +134,9 @@ export class RunUsage {
     this.foldAccount(run);
     this.foldPromptTokens(run, authoring);
     this.turns += run.turns;
+    // Compactions count every pi run of the run — authoring, retry, review and merge alike —
+    // since every one of them can have its session rewritten.
+    this.compactions += run.compactions;
     this.foldEpisodes(run, provider, pair);
     if (authoring) this.endedUnanswered = endedBeforeAnyReply(run);
   }

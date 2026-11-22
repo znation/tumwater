@@ -148,6 +148,11 @@ function pushSinceFrictionLines(lines: string[], data: SinceReport): void {
   pushRankedRoleLine(lines, "Post-merge rejections by role", rankedRoleMap(data.postMergeRejectionsByRole));
   pushRankedRoleLine(lines, "Revisions by role", rankedRoleMap(data.revisionsByRole));
   pushRankedRoleLine(lines, "Refusals by role", rankedRoleMap(data.refusalsByRole));
+  // The window's compaction count per role, from each run_end's `compactions` field — the
+  // --since twin of the day render's line, so a role whose sessions keep being rewritten over
+  // several days is visible there too. Zero-means-absent like the day line: a window with no
+  // compaction prints no line, so an older log's --since output is unchanged.
+  pushPresentRankedLine(lines, "Compactions by role", rankedRoleMap(data.compactionsByRole));
   // The same breakdown for outright failures: error-class run_ends per role under the
   // digest's OUTCOME_CLASS — the runs that burned agent time and merged nothing without
   // going through review, which rejections/revisions would miss entirely. A window with

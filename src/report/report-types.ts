@@ -81,6 +81,9 @@ export interface ReportDay {
   failedRunsByRole?: Record<string, number>;
   /** image_reroute events per role id; absent when the day has none (zero means absent). */
   imageReroutesByRole?: Record<string, number>;
+  /** run_end `compactions` summed per role id — how many times that day each role's session was
+   * rewritten mid-run; absent when the day has none (zero means absent). */
+  compactionsByRole?: Record<string, number>;
   commits: number;
   commitsByRole?: Record<string, number>; // merged commits by base role (Work ratio 4/4)
   workCommits?: number; // of those, feature/bugfix/director
@@ -240,6 +243,10 @@ export interface SinceReport {
   failedRunsByRole: Record<string, number>;
   /** image_reroute events per role id; empty when the window has none. */
   imageReroutesByRole: Record<string, number>;
+  /** run_end `compactions` summed per role id — how many times each role's session was rewritten
+   * over the window; empty when the window has none, so the render prints `-` like the refusals
+   * line above it. */
+  compactionsByRole: Record<string, number>;
   /** Output tokens per role id, so the --since render can break the window's token spend
    * down by role the way the day report does. */
   tokensByRole: Record<string, number>;

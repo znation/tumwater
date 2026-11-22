@@ -414,6 +414,11 @@ function pushReportFrictionLines(lines: string[], data: ReportData): void {
   pushRankedRoleLine(lines, "Post-merge rejections by role", rankedBy(data.series, "postMergeRejectionsByRole"));
   pushRankedRoleLine(lines, "Revisions by role", rankedBy(data.series, "revisionsByRole"));
   pushRankedRoleLine(lines, "Refusals by role", rankedBy(data.series, "refusalsByRole"));
+  // How many times each role's session was rewritten mid-run (a completed pi compaction or a
+  // checkpoint's boundary-draft compaction entry), from the run_end `compactions` field.
+  // Zero-means-absent — no line at all when nothing compacted, not a "-" — so a window whose
+  // events were all written before this field existed prints exactly what it printed before.
+  pushPresentRankedLine(lines, "Compactions by role", rankedBy(data.series, "compactionsByRole"));
   // The same breakdown for outright failures: error-class run_ends per role under the
   // digest's OUTCOME_CLASS — runs that burned agent time and merged nothing without going
   // through review, which rejections/revisions would miss entirely. Zero-means-absent, so a

@@ -280,6 +280,7 @@ export function piRunResult(over: Partial<PiRunResult> = {}): PiRunResult {
     finalMessageContentless: false,
     producedAssistantContent: false,
     compacted: false,
+    compactions: 0,
     ...over,
   };
 }

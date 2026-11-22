@@ -243,6 +243,61 @@ test("report --since folds refused runs by role and narrows to the scoped base r
   assert.deepEqual(scopedJson.refusalsByRole, { feature: 1 }, "the scoped since JSON narrows refusalsByRole");
 });
 
+test("report folds run_end compactions into Compactions by role, after Refusals by role", async () => {
+  const root = makeRepo();
+  // Two compactions on a feature run, one on a clean run, and a run that reported none at all
+  // (an older event shape): the count is a parallel tally, never subtracted from Runs by role,
+  // and the compaction-free run contributes no key and no cell.
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "refused", tokens: 10, compactions: 2 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", run: 2, result: "changed", tokens: 5, compactions: 1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 3, result: "changed", tokens: 20 }), // retired-name-ok: legacy event field in a fixture
+  ]);
+
+  const md = await runCli(root, "report", "--days", "2");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*Refusals by role:\*\* feature — 1/, "the refusals line the new line sits under");
+  assert.match(md.out, /\*\*Compactions by role:\*\* feature — 2 · clean — 1/, "count desc, name asc on a tie");
+  assert.ok(
+    md.out.indexOf("**Compactions by role:**") > md.out.indexOf("**Refusals by role:**"),
+    "the compactions line prints directly after the refusals line",
+  );
+  assert.match(md.out, /\*\*Runs by role:\*\* bugfix — 1 · clean — 1 · feature — 1/, "compactions never subtract from runs");
+
+  const json = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
+  const today = json.series[1];
+  assert.deepEqual(today.compactionsByRole, { feature: 2, clean: 1 }, "--json carries compactionsByRole on the day that has them");
+
+  const quiet = makeRepo();
+  writeEvents(quiet, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10 }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  const quietMd = await runCli(quiet, "report", "--days", "2");
+  assert.equal(quietMd.code, 0);
+  assert.ok(!quietMd.out.includes("**Compactions by role:**"), "a compaction-free day prints no line");
+  const quietJson = JSON.parse((await runCli(quiet, "report", "--json", "--days", "2")).out);
+  assert.ok(!("compactionsByRole" in quietJson.series[1]), "a compaction-free day carries no key");
+});
+
+test("report --since folds compactions by role and narrows to the scoped base role", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, compactions: 2 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(90 * 60_000), loop: "feature-2", type: "run_end", run: 2, result: "changed", tokens: 5, compactions: 1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(20 * 60_000), loop: "clean", type: "run_end", run: 3, result: "changed", tokens: 5, compactions: 3 }), // retired-name-ok: legacy event field in a fixture
+  ]);
+
+  const team = await runCli(root, "report", "--since", "6h");
+  assert.equal(team.code, 0);
+  assert.match(team.out, /\*\*Compactions by role:\*\* clean — 3 · feature — 2 · feature-2 — 1/, "the team window sums every day's compactions, ranked count desc then name asc");
+
+  const scoped = await runCli(root, "report", "--role", "feature", "--since", "6h");
+  assert.equal(scoped.code, 0);
+  assert.match(scoped.out, /\*\*Compactions by role:\*\* feature — 3/, "scoping --since narrows compactions to the base role");
+  const scopedJson = JSON.parse((await runCli(root, "report", "--role", "feature", "--json", "--since", "6h")).out);
+  assert.deepEqual(scopedJson.compactionsByRole, { feature: 3 }, "the scoped since JSON narrows compactionsByRole");
+});
+
 test("renderReportMarkdown prints the fixed bugs' Validation gaps as a team-only line", () => {
   const base = collectReport(tmpdir(), 2);
   const data: ReportData = {
@@ -607,6 +662,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     refusalsByRole: {},
     failedRunsByRole: {},
     imageReroutesByRole: {},
+    compactionsByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     mergedByRole: {},
@@ -643,6 +699,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     refusalsByRole: {},
     failedRunsByRole: {},
     imageReroutesByRole: {},
+    compactionsByRole: {},
     // clean carries the most tokens but $0 spend — it must appear on the tokens line (its
     // own ranked data) while the cost line omits it, proving the lines differ.
     tokensByRole: { clean: 12000, feature: 5000, bugfix: 800 },
@@ -683,6 +740,7 @@ test("renderSinceReportMarkdown prints the Prompt tokens by role line with the c
     refusalsByRole: {},
     failedRunsByRole: {},
     imageReroutesByRole: {},
+    compactionsByRole: {},
     tokensByRole: {},
     promptTokensByRole: { feature: 12000, bugfix: 5000 },
     cacheReadTokensByRole: { feature: 9600 },
@@ -720,6 +778,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     refusalsByRole: {},
     failedRunsByRole: {},
     imageReroutesByRole: {},
+    compactionsByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     mergedByRole: {},
@@ -748,6 +807,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     refusalsByRole: {},
     failedRunsByRole: {},
     imageReroutesByRole: {},
+    compactionsByRole: {},
     tokensByRole: { feature: 900 },
     commitsByRole: {},
     mergedByRole: {},
@@ -778,6 +838,7 @@ test("renderSinceReportMarkdown shows (N failed) on the merge line when a merge 
     refusalsByRole: {},
     failedRunsByRole: {},
     imageReroutesByRole: {},
+    compactionsByRole: {},
     tokensByRole: { feature: 900 },
     commitsByRole: {},
     mergedByRole: {},
@@ -808,6 +869,7 @@ test("renderSinceReportMarkdown prints Commits by role and Estimated by role mat
     refusalsByRole: {},
     failedRunsByRole: {},
     imageReroutesByRole: {},
+    compactionsByRole: {},
     tokensByRole: { feature: 1500 },
     // The same ranking (count desc / spend desc, then name asc) and `usd` formatting the
     // day render applies to its Commits/Estimated by role lines — window and day speak one shape.
@@ -842,6 +904,7 @@ test("renderSinceReportMarkdown prints Cost per commit and Estimated per commit 
     refusalsByRole: {},
     failedRunsByRole: {},
     imageReroutesByRole: {},
+    compactionsByRole: {},
     tokensByRole: {},
     // costByRole is keyed by role id, so feature-2 joins feature; commitsByRole already base-keyed.
     commitsByRole: { feature: 2, clean: 3 },
@@ -880,6 +943,7 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     refusalsByRole: {},
     failedRunsByRole: {},
     imageReroutesByRole: {},
+    compactionsByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     mergedByRole: {},
@@ -914,6 +978,7 @@ test("renderSinceReportMarkdown prints Main red wall-clock for a positive window
     refusalsByRole: {},
     failedRunsByRole: {},
     imageReroutesByRole: {},
+    compactionsByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     mergedByRole: {},

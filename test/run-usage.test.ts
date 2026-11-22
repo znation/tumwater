@@ -59,16 +59,31 @@ test("fold's authoring=false (a merge/review run) never advances the pre-edit pr
   assert.equal(u.preEditPromptTokens, 0, "a review run's context is not the authoring pre-edit prefix");
 });
 
+test("fold counts compactions from every run and reset clears the window", () => {
+  // Compactions are not authoring-only: a merge or review session gets rewritten too, so both
+  // the authoring fold and the authoring=false fold contribute to one window.
+  const s: RunnerState = freshRunnerState("coverage");
+  const u = new RunUsage();
+
+  u.fold(s, run({ compactions: 1 }));
+  u.fold(s, run({ compactions: 3 }), false);
+
+  assert.equal(u.compactions, 4, "1 authoring + 3 merge/review compactions in one run window");
+  u.reset();
+  assert.equal(u.compactions, 0, "the window is per-run, cleared at run start like promptTokens");
+});
+
 test("reset clears the prompt-token windows too", () => {
   const s: RunnerState = freshRunnerState("coverage");
   const u = new RunUsage();
-  u.fold(s, run({ promptTokens: 100, cacheReadTokens: 80, preEditPromptTokens: 100, firstEditTurn: 1 }));
+  u.fold(s, run({ promptTokens: 100, cacheReadTokens: 80, preEditPromptTokens: 100, firstEditTurn: 1, compactions: 2 }));
 
   u.reset();
 
   assert.equal(u.promptTokens, 0);
   assert.equal(u.cacheReadTokens, 0);
   assert.equal(u.preEditPromptTokens, 0);
+  assert.equal(u.compactions, 0, "the compaction window resets with them");
   // A later run in the next run is pre-edit again — the freeze does not survive a reset.
   u.fold(s, run({ promptTokens: 10, preEditPromptTokens: 10 }));
   assert.equal(u.preEditPromptTokens, 10);

@@ -70,6 +70,7 @@ export function setupFailureResult(agent: string, message: string): PiRunResult 
     finalMessageContentless: false,
     producedAssistantContent: false,
     compacted: false,
+    compactions: 0,
   };
 }
 
@@ -117,6 +118,7 @@ function resultFromParser(
     finalMessageContentless: parser.finalMessageContentless,
     producedAssistantContent: parser.producedAssistantContent,
     compacted: parser.compacted,
+    compactions: parser.compactions,
     budgetCapped: parser.budgetCapped,
     resumeMissing: parser.resumeMissing,
     billing: parser.billing,

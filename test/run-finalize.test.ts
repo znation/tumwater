@@ -133,6 +133,24 @@ test("finalizeRun rides per-run prompt-token telemetry on run_end", async () => 
   assert.equal(end.preEditPromptTokens, 250);
 });
 
+test("finalizeRun rides a run's compaction count on run_end and omits it when zero", async () => {
+  // The count travels on the same event as the prompt-token telemetry, omitted when zero so a
+  // compaction-free run — and every run_end written before this field existed — renders
+  // byte-identically.
+  const withCompactions = await initializedRepo();
+  const s1 = freshRunnerState("organize");
+  const usage1 = new RunUsage();
+  usage1.compactions = 2;
+  await run(withCompactions, "organize", s1, { result: "no_change" }, { usage: usage1 });
+  assert.equal(eventsOfType(withCompactions, "run_end")[0]!.compactions, 2);
+
+  const none = await initializedRepo();
+  const s2 = freshRunnerState("organize");
+  await run(none, "organize", s2, { result: "no_change" });
+  const end = eventsOfType(none, "run_end")[0]!;
+  assert.equal(end.compactions, undefined, "a compaction-free run carries no key at all");
+});
+
 test("finalizeRun rides a nonzero peak context on run_end", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");

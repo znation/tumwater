@@ -64,6 +64,9 @@ interface DayFold {
   reviewDurationsMs: number[];
   failedRunsByRole: Record<string, number>;
   imageReroutesByRole: Record<string, number>;
+  /** run_end `compactions` summed per role id — how many times each role's session was
+   * rewritten out from under it that day. */
+  compactionsByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   promptTokensByRole: Record<string, number>;
   cacheReadTokensByRole: Record<string, number>;

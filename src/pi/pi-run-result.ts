@@ -119,6 +119,10 @@ export interface PiRunResult {
   producedAssistantContent: boolean;
   /** pi auto-compacted the session during (or at the end of) the run. */
   compacted: boolean;
+  /** How many completed compactions the run wrote — the count of the same evidence `compacted`
+   * records, so a run the session was rewritten five times is distinguishable from one rewritten
+   * once. 0 when the run wrote none (INV-DD1). */
+  compactions: number;
   /** True when a backend translator classified the run as hitting a per-run budget cap
    * (claude's `error_max_budget_usd`, plans/agent-backends.md part 7). Undefined on backends
    * that report no such signal. */

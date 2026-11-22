@@ -281,14 +281,36 @@ test("parser tracks whether any assistant message carried content of its own", (
 test("parser records that pi auto-compacted the session", () => {
   const parser = new PiStreamParser();
   assert.equal(parser.compacted, false);
+  assert.equal(parser.compactions, 0, "no event has arrived, so nothing was written");
   parser.feed(JSON.stringify({ type: "compaction_start", reason: "threshold" }) + "\n");
   // pi emits the start before it has summarized anything, so a start alone is not evidence a
   // compaction exists (BUGS.md 2026-11-18) — only the completed end is.
   assert.equal(parser.compacted, false, "a compaction that never completed wrote nothing");
+  assert.equal(parser.compactions, 0, "a start alone counts as no compaction");
   parser.feed(
     JSON.stringify({ type: "compaction_end", reason: "threshold", result: { summary: "s" }, aborted: false }) + "\n",
   );
   assert.ok(parser.compacted, "a completed compaction marks the session compacted");
+  assert.equal(parser.compactions, 1, "a completed compaction counts as one");
+});
+
+test("parser counts a completed compaction from either arm, never more than one per event", () => {
+  // The count is the flag's evidence rule read as a number: pi's automatic compaction arrives
+  // as a completed `compaction_end` and a checkpoint's as the boundary draft's
+  // `entry_appended`, so a run rewritten once by each path counts 2 — the case the collapsed
+  // boolean hid, where five rewrites and one looked identical.
+  const parser = new PiStreamParser();
+  parser.feed(
+    JSON.stringify({ type: "compaction_end", reason: "threshold", result: { summary: "s" }, aborted: false }) + "\n",
+  );
+  parser.feed(
+    JSON.stringify({
+      type: "entry_appended",
+      entry: { type: "compaction", id: "c1", summary: "s", firstKeptEntryId: "e4", details: { kind: "checkpoint" } },
+    }) + "\n",
+  );
+  assert.equal(parser.compactions, 2, "one completed end and one appended compaction entry");
+  assert.equal(parser.compacted, true, "the flag keeps its exact meaning beside the count");
 });
 
 test("parser ignores a compaction_end that aborted or failed", () => {
@@ -305,6 +327,7 @@ test("parser ignores a compaction_end that aborted or failed", () => {
     parser.feed(JSON.stringify({ type: "compaction_start", reason: end.reason }) + "\n");
     parser.feed(JSON.stringify(end) + "\n");
     assert.equal(parser.compacted, false, JSON.stringify(end));
+    assert.equal(parser.compactions, 0, `${JSON.stringify(end)} counts as no compaction`);
   }
 });
 
@@ -320,6 +343,7 @@ test("a boundary-draft compaction entry_appended marks the session compacted", (
     }) + "\n",
   );
   assert.ok(parser.compacted, "an appended compaction entry is a written compaction");
+  assert.equal(parser.compactions, 1, "and it counts as one compaction");
 });
 
 test("an entry_appended of any other entry type is not compaction evidence", () => {
@@ -334,6 +358,7 @@ test("an entry_appended of any other entry type is not compaction evidence", () 
     const parser = new PiStreamParser();
     parser.feed(JSON.stringify({ type: "entry_appended", entry }) + "\n");
     assert.equal(parser.compacted, false, JSON.stringify(entry));
+    assert.equal(parser.compactions, 0, `${JSON.stringify(entry)} counts as no compaction`);
   }
 });
 

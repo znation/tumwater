@@ -81,6 +81,11 @@ export interface UsageFold {
   /** image_reroute events per role id, so a role whose model keeps being handed images it
    * can't read is visible beside its runs and cost. */
   imageReroutesByRole: Record<string, number>;
+  /** run_end `compactions` summed per role id — how many times each role's session was
+   * rewritten mid-run (a completed pi compaction or a checkpoint's boundary-draft compaction
+   * entry). A parallel tally, never subtracted from runsByRole: a role that compacted twice
+   * in one run still counts as one run. */
+  compactionsByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   /** Prompt tokens per role id — the input side of the bill `tokensByRole` (output tokens)
    * hides, so the same report that says who burned output tokens also says whose prompts a
@@ -230,6 +235,7 @@ export function zeroUsageFold(): Omit<
     reviewDurationsMs: [],
     failedRunsByRole: {},
     imageReroutesByRole: {},
+    compactionsByRole: {},
     tokensByRole: {},
     promptTokensByRole: {},
     cacheReadTokensByRole: {},
@@ -312,6 +318,12 @@ function foldRunUsage(target: UsageFold, ev: HarnessEvent): void {
   const cacheRead = Math.min(nonNegativeNumber(ev.cacheReadTokens, 0), prompt);
   if (prompt > 0) addTo(target.promptTokensByRole, role, prompt);
   if (cacheRead > 0) addTo(target.cacheReadTokensByRole, role, cacheRead);
+  // The compaction count the same run rode (run-finalize.ts omits it when zero): the finite
+  // non-negative heal is the same policy as the prompt counters, so a torn or hand-edited
+  // log line can never put NaN or a negative in the map, and zero-means-absent keeps an
+  // older, compaction-less event and a compaction-free run contributing nothing.
+  const compactions = nonNegativeNumber(ev.compactions, 0);
+  if (compactions > 0) addTo(target.compactionsByRole, role, compactions);
   target.tokensOut += tokens;
 }
 

@@ -323,6 +323,14 @@ export class PiStreamParser {
    * completed `compaction_end` or on an `entry_appended` that appends a `compaction` entry, never
    * on a `compaction_start` alone (see `applyCompaction`). */
   compacted = false;
+  /** How many completed compactions this run wrote — the same evidence the `compacted` flag
+   * records, counted instead of collapsed. A `compaction_end` carrying a result and a
+   * boundary-draft `entry_appended` whose entry is a `compaction` each add one; a
+   * `compaction_start`, an aborted or failed end, and an `entry_appended` of any other entry
+   * type add nothing (see `applyCompaction`). Beside the flag on purpose: a run rewritten five
+   * times and one rewritten once carry the same `compacted`, and the difference is what an
+   * operator reads. */
+  compactions = 0;
   /** Incremented for every parsed event that represents real forward progress — message,
    * turn, and tool boundaries, retries, session events, and content-bearing updates
    * (message_update deltas and tool_execution_updates alike). A content-free keepalive never
@@ -629,6 +637,11 @@ export class PiStreamParser {
     this.applyCompaction(event);
   }
 
+  // `compacted` and `compactions` share one evidence rule, stated once: the two arms below are
+  // the only compaction evidence the stream has, so the flag and the count can never disagree
+  // about what counts. The flag answers "was the session rewritten at all" and the count
+  // answers "how many times" — a run that compacted five times reads identically on the flag
+  // alone, and each completed compaction is a rewrite the operator paid for.
   // `compacted` is evidence the session was rewritten, so it comes from pi's `compaction_end`
   // carrying a result object, not from `compaction_start`: pi emits the start before it has
   // summarized anything and, when the compaction never runs to completion, exits without ever
@@ -644,10 +657,14 @@ export class PiStreamParser {
   // is monotonic: one written compaction stands, since a later failed compaction cannot un-write
   // it.
   private applyCompaction(event: PiStreamEvent): void {
-    if (event.type === "compaction_end" && event.aborted !== true && isJsonObject(event.result))
+    if (event.type === "compaction_end" && event.aborted !== true && isJsonObject(event.result)) {
       this.compacted = true;
-    if (event.type === "entry_appended" && isJsonObject(event.entry) && event.entry.type === "compaction")
+      this.compactions += 1;
+    }
+    if (event.type === "entry_appended" && isJsonObject(event.entry) && event.entry.type === "compaction") {
       this.compacted = true;
+      this.compactions += 1;
+    }
   }
 
   // Open-tool-call tracking for the stall warning: a call that sits open and silent is

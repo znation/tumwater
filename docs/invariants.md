@@ -5500,18 +5500,24 @@ appends that entry and emits `entry_appended` for it (`_commitBoundaryDrafts`), 
 already in the session when the event fires — the same completion bar a completed `compaction_end`
 meets, and no `compaction_end` ever reaches a print-mode run's stream for it. A compaction event
 still counts as forward progress for the hang
-watchdog whether or not it completes — the two rules are decided separately. The claude
+watchdog whether or not it completes — the two rules are decided separately. The count of completed
+compactions (`compactions`) follows the same evidence rule as the flag, read as a number: each
+completed `compaction_end` and each `entry_appended` of a `compaction` entry adds one, and a start,
+an aborted or failed end, or any other entry type adds none, so the flag and the count can never
+disagree about what counts. The claude
 translator, whose `system/compact_boundary` marker appears only after claude has rewritten the
 context, therefore emits the completed pair rather than a bare start.
 
-**Binds.** `src/pi/pi-stream.ts` (`applyCompaction`, `countProgress`, `compacted`),
+**Binds.** `src/pi/pi-stream.ts` (`applyCompaction`, `countProgress`, `compacted`, `compactions`),
 `src/agent/claude/claude-stream.ts` (`compact_boundary`), `src/verdict/no-change.ts`
 (`checkpointAborted`), `src/agent/agent-settle.ts` (`resultFromParser`).
 
 **Pinned by.** `test/pi-parser.test.ts` — "parser records that pi auto-compacted the session",
+"parser counts a completed compaction from either arm, never more than one per event",
 "parser ignores a compaction_end that aborted or failed", "a boundary-draft compaction
 entry_appended marks the session compacted" and "an entry_appended of any other entry type is
-not compaction evidence"; `test/runner-interrupted.test.ts`
+not compaction evidence"; `test/run-usage.test.ts` —
+"fold counts compactions from every run and reset clears the window"; `test/runner-interrupted.test.ts`
 — "a checkpoint abort whose compaction never completed is not a cut-off and arms no resume" and
 "a run cut off at the context ceiling warns, skips backoff, and resumes";
 `test/claude-stream.test.ts` — "retries and compaction translate to the canonical events the
