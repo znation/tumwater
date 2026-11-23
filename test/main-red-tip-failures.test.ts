@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
+import { baselineCache, noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { mainTipFailures } from "../src/baseline/main-red.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -159,6 +159,56 @@ test("no declared re-run skips straight to main's fresh full check, without a re
     assert.equal(verdict.status, "red");
     assert.equal(verdict.status === "red" && verdict.sha, mainSha(root));
     assert.deepEqual(checkScopes(root), [["baseline", "failed"]]);
+  } finally {
+    restore();
+  }
+});
+
+// BUGS.md 2026-11-22 (INV-CZ1): a fresh full check of main's tip that reaches NO verdict — it
+// skips on a broken toolchain — must not read as "main is clean". The verdict this exact tip
+// already carries (the main watch's recorded red, or the one a previous generation saved) answers
+// the attribution question instead, so a change failing only a test that recorded red names is
+// excused rather than convicted.
+test("a full check of main's tip that skips falls back to that tip's recorded red", async () => {
+  const restore = fakeNpmDispatch('echo "xcrun: error: unable to find utility" >&2; exit 1', null);
+  try {
+    const { root, wt } = await fixture('echo "xcrun: error: unable to find utility" >&2; exit 1', null);
+    const tip = mainSha(root);
+    baselineCache.set(tip, { status: "red", sha: tip, script: "build", failingTests: ["X"] });
+    const verdict = await mainTipFailures(root, ROLE, wt, "main", defaultConfig(), {
+      tests: ["X"],
+      files: { X: "t.test.js" },
+    });
+    assert.equal(verdict.status, "red", "the recorded red answers: not a comparison that failed");
+    assert.equal(verdict.status === "red" ? verdict.sha : undefined, tip, "keyed to the tip under test");
+    assert.deepEqual(verdict.status === "red" ? verdict.failingTests : undefined, ["X"]);
+    // The fresh check really ran and really skipped — the recorded red is a fallback, not a cache
+    // short-circuit (a cached GREEN must stay distrusted, BUGS.md 2026-10-06).
+    const scopes = checkScopes(root);
+    assert.ok(scopes.length > 0, "the tip's check ran");
+    assert.ok(
+      scopes.every(([scope, status]) => scope === "baseline" && status === "skipped"),
+      JSON.stringify(scopes),
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("a recorded red naming no test leaves the tip's verdict unavailable", async () => {
+  const restore = fakeNpmDispatch('echo "xcrun: error: unable to find utility" >&2; exit 1', null);
+  try {
+    const { root, wt } = await fixture('echo "xcrun: error: unable to find utility" >&2; exit 1', null);
+    const tip = mainSha(root);
+    // A red whose failing-test list is empty (or at FAILING_TESTS_MAX) may be cut short: nothing
+    // can be subtracted from it, so it must not excuse the change's named failure.
+    baselineCache.set(tip, { status: "red", sha: tip, script: "build", failingTests: [] });
+    const verdict = await mainTipFailures(root, ROLE, wt, "main", defaultConfig(), {
+      tests: ["X"],
+      files: { X: "t.test.js" },
+    });
+    assert.equal(verdict.status, "unavailable");
+    assert.match(verdict.status === "unavailable" ? verdict.why : "", /its check was skipped/);
   } finally {
     restore();
   }

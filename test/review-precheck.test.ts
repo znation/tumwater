@@ -19,11 +19,12 @@ import { reviewAheadOfMain } from "../src/review/review.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { createMainWatch } from "../src/baseline/main-watch.js";
-import { persistBaselineVerdicts } from "../src/baseline/main-baseline.js";
+import { persistBaselineVerdicts, baselineCache } from "../src/baseline/main-baseline.js";
 import { baselineVerdictsPath } from "../src/paths.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
 import { commitIn, mainSha } from "./fixtures/repo-fixtures.js";
+import { shortSha } from "../src/text/format.js";
 import { withPi } from "./fakes/fake-pi.js";
 import { gateCtx, ROLE } from "./fixtures/gate-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
@@ -113,6 +114,42 @@ test("a restart that restores a red main excuses the failures that saved red nam
     assert.deepEqual(buildCheckEvents(root), ["gate:failed"]);
     assert.ok(
       warningMessages(root).some((m) => m.includes("gate check fails only main's known failures: X")),
+      JSON.stringify(warningMessages(root)),
+    );
+  });
+});
+
+// The sibling of the restart case above, the second arm BUGS.md 2026-11-22 filed: the saved red
+// names nothing the change fails, so the first excuse arm cannot fire and the gate asks main's
+// tip. That fresh check SKIPS (no verdict), and the old code convicted the change of the failure
+// main's own RECORDED red at that exact tip already names — the operator's rejected merges while
+// main was red. The recorded verdict must answer the comparison instead.
+test("a skipped check of main's tip still excuses what main's recorded red at that tip names", async () => {
+  // The change's check fails X; main's own check (run fresh in the attribution worktree) dies on
+  // a toolchain signature, so it reaches no verdict. The verdict file holds main red on X for
+  // main's exact tip and nothing else, so the live known-failure set stays empty (the saved red
+  // names X, but only for a sha the watch never settled in this process — see the test above for
+  // the arm that does) and only the tip-keyed recorded verdict can excuse the change.
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool",
+    KNOWN_FAILURE_TOOL,
+    "build",
+    "echo 'xcrun: error: unable to find utility' >&2; exit 1",
+  );
+  const tip = uniqueMain(root);
+  const other = "0".repeat(40); // a sha no commit here has
+  writeFileDeep(
+    baselineVerdictsPath(root),
+    JSON.stringify({ greens: [], reds: [{ sha: other, script: "build", failingTests: ["Z"] }] }),
+  );
+  persistBaselineVerdicts(root);
+  baselineCache.set(tip, { status: "red", sha: tip, script: "build", failingTests: ["X"] });
+  await withPi('true', async () => {
+    const state = freshRunnerState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "approved", "X is a test main's recorded red at this tip fails");
+    assert.ok(
+      warningMessages(root).some((m) => m.includes(`fails only tests main ${shortSha(tip)} fails too: X`)),
       JSON.stringify(warningMessages(root)),
     );
   });

@@ -8,7 +8,7 @@ import { canRerun, rerunCommandLine, rerunTests } from "../build/build-check-rer
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { failureHeadline, FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { baselineCheckEventLogger, type BaselineCheckRun } from "../build/build-check-events.js";
-import { checkMainBaseline, watchedBaseline } from "./main-baseline.js";
+import { baselineCache, checkMainBaseline, watchedBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "../prompt/gate-notes.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
@@ -463,6 +463,10 @@ async function verdictAtMainTipIn(
       warnMainRedOnce(root, baseline, role);
       return { status: "red", sha: baseline.sha, failingTests: baseline.failingTests ?? [] };
     }
+    // The fresh check answered nothing (skipped, no declared check, slept through): the verdict
+    // this tip already has still attributes the failure (INV-CZ1, recordedRedAtTip below).
+    const recorded = recordedRedAtTip(tip);
+    if (recorded !== undefined) return recorded;
     return {
       status: "unavailable",
       why: check.skipReason
@@ -474,6 +478,22 @@ async function verdictAtMainTipIn(
   } catch (err) {
     return { status: "unavailable", why: errorMessage(err) };
   }
+}
+
+/** The verdict cache's red for the exact tip the attribution just failed to re-check (INV-CZ1's
+ * last arm, BUGS.md 2026-11-22): a fresh full check of main's tip that reaches no verdict — a
+ * skipped run (no toolchain in the mirror, a locked worktree) or a slept-through one — leaves the
+ * change convicted of a failure main's own recorded red at that very commit already names. Only
+ * a red keyed to this exact sha counts: an ancestor's red may have healed, and a red whose
+ * failing-test list is at FAILING_TESTS_MAX may have been cut short, so `namedFailures` must
+ * return a non-empty set to subtract anything. A cached GREEN still answers nothing — the same
+ * distrust of a stale green that makes the caller ask with forceFresh. */
+function recordedRedAtTip(tip: string): MainTipVerdict | undefined {
+  const entry = baselineCache.get(tip);
+  if (entry?.status !== "red") return undefined;
+  const named = namedFailures(entry);
+  if (named.length === 0) return undefined;
+  return { status: "red", sha: entry.sha, failingTests: [...named] };
 }
 
 /** A gate check's named failures and the file each lives in (BuildCheckOutcome's failingTests and
