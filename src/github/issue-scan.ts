@@ -199,8 +199,10 @@ const UPSTREAM_CLOSED_MAX = 50;
  * newest `closedAt` (a tie breaking toward the higher number, as `retainClosedRow` does) and stores
  * the list back in ascending number order, the order the read prints. Only a listing known to be
  * complete may call this: a walk cut short at `MAX_ISSUE_PAGES` never saw the issue, so it cannot
- * have missed it. Mutates the ledger; nothing else in it changes — `waitingPush`, `closed`,
- * `queued` and `declined` records stay owed even though GitHub no longer lists the issue.
+ * have missed it. Mutates the ledger; the only other record a loss settles is `waitingPush`, which
+ * is dropped for a lost issue because the push banner promises a close GitHub has already made —
+ * `closed`, `queued` and `declined` records stay owed even though GitHub no longer lists the issue,
+ * since they are the read's history and `isReopened`'s clock, not a promise of a future close.
  * Each newly recorded loss also logs one `github_issue_upstream_closed` event naming the repo, the
  * issue and GitHub's last word on it, so the operator's log says what the ledger-only record
  * cannot: a row already sitting in `upstreamClosed` logs nothing, so a loss is logged once, not
@@ -236,6 +238,31 @@ function recordUpstreamCloses(
     .sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0) || b.number - a.number)
     .slice(0, UPSTREAM_CLOSED_MAX)
     .sort((a, b) => a.number - b.number);
+  dropLostWaitingPush(ledger, ledger.upstreamClosed);
+}
+
+/** Drop the `waitingPush` records of issues the stored upstream-close list holds. The banner built
+ * from that map promises a close that happens when main is pushed, and GitHub has already made it
+ * for a lost issue, so the promise can never be kept — the same never-clearing-banner class INV-DE4
+ * settled for declined issues. Every number in the list is consulted, not just this scan's new
+ * losses, so a ledger written by a build that dropped nothing self-heals on its next complete
+ * listing. A key the list does not hold keeps its record, and an emptied map is deleted rather
+ * than left as `{}`. The copy-then-`delete` idiom is the one `closeOne` uses in
+ * src/github/issue-close.ts; candidacy for a close never consults this map — `closeCandidates`
+ * re-derives the fix commits — so a reopened issue gets a fresh record from the next close pass. */
+function dropLostWaitingPush(ledger: GithubIssuesLedger, lost: readonly GithubIssueRow[]): void {
+  if (ledger.waitingPush === undefined) return;
+  const lostNumbers = new Set(lost.map((row) => row.number));
+  const waiting = { ...ledger.waitingPush };
+  let dropped = false;
+  for (const key of Object.keys(waiting)) {
+    if (!lostNumbers.has(Number(key))) continue;
+    delete waiting[key];
+    dropped = true;
+  }
+  if (!dropped) return;
+  if (Object.keys(waiting).length === 0) delete ledger.waitingPush;
+  else ledger.waitingPush = waiting;
 }
 
 /** One scan: when enabled and the project has a GitHub remote, probe `gh`, list the open issues,

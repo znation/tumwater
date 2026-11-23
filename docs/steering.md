@@ -72,7 +72,8 @@ complete scan notices it is gone and keeps a record of it in the mirror's ledger
 leaves a trace instead of vanishing: `tumwater issues` lists those rows last, under a `closed
 upstream` count in the header, and ages them by when the mirror last saw them open rather than by a
 close date tumwater cannot have. Such a row is never mirrored and never counted as unmirrored, so it
-holds nothing up — it is the mirror's own record, not a request.
+holds nothing up — not the mirror's counts, and not the banner that waits for a push to close it —
+it is the mirror's own record, not a request.
 
 ## Getting your own edit onto main
 

@@ -70,7 +70,10 @@ export interface GithubIssuesLedger {
    * never closes it on GitHub: the record exists only so the mirror read can say the issue is
    * gone. The scan writes it (src/github/issue-scan.ts `recordUpstreamCloses`). */
   upstreamClosed?: GithubIssueRow[];
-  /** Issues whose fix is on main but not yet on GitHub's base branch, with the shas waiting. */
+  /** Issues whose fix is on main but not yet on GitHub's base branch, with the shas waiting. The
+   * closer writes and clears it; the scan also drops an entry whose issue GitHub closed upstream
+   * (src/github/issue-scan.ts `recordUpstreamCloses`), because the banner built from this map
+   * promises a close on the next push and GitHub has already made it. */
   waitingPush?: Record<string, string[]>;
   /** Director-reported fixes (part 4/5), each with the sha that fixed it. */
   fixedIn?: Record<string, { sha: string; at: number }>;

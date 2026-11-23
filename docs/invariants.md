@@ -5880,8 +5880,15 @@ counts at the whole mirror whatever rows arrived, and says an empty mirror in wo
  `closedRows` is never recorded, so the two lists stay disjoint and a reopened issue leaves no record
  behind. The list is capped at `UPSTREAM_CLOSED_MAX` records, trimmed to the newest `closedAt` and
  stored ascending by number, the rule `retainClosedRow` keeps for closed rows. Nothing else in the
- ledger is touched by a loss: `waitingPush`, `closed`, `queued` and `declined` records stay owed, and
- because the queue and the close pass iterate `open`, a lost issue is neither offered nor closed. The
+ ledger is touched by a loss except `waitingPush`: `closed`, `queued` and `declined` records stay
+ owed, because they are the read's history and `isReopened`'s clock, while a `waitingPush` record is
+ a promise of a future close — the same complete listing drops that issue's `waitingPush` entry, over
+ every number its stored `upstreamClosed` list holds (so a ledger written before the drop existed
+ self-heals on its next complete scan), and deletes the map when that leaves it empty; a capped,
+ failed or absent listing drops none, so on a repo past `MAX_ISSUE_PAGES` the entry stays. Because of
+ that drop the surfaces cannot raise the blue `github-close` push banner for a lost issue —
+ `githubCloseForStatus` counts exactly that map — and the queue and the close pass iterate `open`, so
+ a lost issue is neither offered nor closed. The
  same fold logs one `github_issue_upstream_closed` event per newly recorded loss — repo, issue and
  that row's `updatedAt` — so the operator's log names what the ledger alone only shows as a row; a
  row already carried in `upstreamClosed` logs nothing, so a loss is announced once and not once per
@@ -5894,8 +5901,9 @@ counts at the whole mirror whatever rows arrived, and says an empty mirror in wo
  nor `--closed` — listing it as open would show a loss as an issue the mirror still holds.
 
 **Binds.** `src/github/issue-scan.ts` (`listOpenIssues`, `recordUpstreamCloses`,
-`scanGithubIssues`), `src/github/github-issues-state.ts` (`GithubIssueRow.closedAt`,
-`GithubIssuesLedger.upstreamClosed`, `readGithubIssues`), `src/github/github-issues-render.ts`
+`dropLostWaitingPush`, `scanGithubIssues`), `src/github/github-issues-state.ts`
+(`GithubIssueRow.closedAt`, `GithubIssuesLedger.upstreamClosed`, `GithubIssuesLedger.waitingPush`,
+`githubCloseForStatus`, `readGithubIssues`), `src/github/github-issues-render.ts`
 (`issueRows`, `issuesHeader`, `issueAge`, `issueStateLines`, `stateIssueRows`, `IssueState`), the
 event sites that give the type its
 line (`src/events/events.ts`, `src/events/event-labels.ts`, `src/events/event-format-config.ts`,
@@ -5907,8 +5915,11 @@ recorded as closed upstream, not lost", "a listing that stopped at MAX_ISSUE_PAG
 upstream closes", "an upstream close skips an issue tumwater closed, and a reopen clears its
 record", "an upstream-close record whose issue the ledger still lists open is never queued or
 closed again", "the upstream-close list keeps the 50 newest records, stored ascending", "a gh
-outage or a failed listing records no upstream close and keeps the records it holds", and "losing an
-issue upstream logs one github_issue_upstream_closed event, and a re-scan logs none";
+outage or a failed listing records no upstream close and keeps the records it holds", "losing an
+issue upstream logs one github_issue_upstream_closed event, and a re-scan logs none", "a complete
+listing drops a lost issue's waitingPush record and settles nothing else", and "a complete listing
+drops a stale waitingPush record for a carried upstream close, keeps the others, and deletes an
+emptied map";
 `test/event-format.test.ts` — "formatEvent renders github_issue_upstream_closed naming the issue,
 the repo, and the last sighting" and "eventMessage gives every event type its own line, never the
 bare code"; `test/failure-state-change.test.ts` — "every event type is replayed or explicitly
@@ -5924,7 +5935,8 @@ upstreamClosed holding a non-row to no upstream rows", "issues --lost keeps only
 upstream-closed rows, at their whole-list positions", "issues --lost composes with --show,
 --grep, the flag gate and the other states", and "issues --lost names an empty loss list in
 words, and an empty mirror in its header"; `test/cli-issues-follow.test.ts` — "issues -f --lost
-repaints the lost subset at its whole-list position".
+repaints the lost subset at its whole-list position"; `test/github-issue-close.test.ts` — "a
+waitingPush record the scan dropped leaves githubCloseForStatus with nothing to count".
 
 ## Once rounds: every starting hold settles its runner, so a held team still exits
 

@@ -15,7 +15,7 @@ import {
   type GithubIssueRow,
 } from "../src/github/github-issues-state.js";
 import { mirrorStates, type MirrorEntry } from "../src/github/issue-mirrors.js";
-import { pollGithubIssues } from "../src/github/issue-scan.js";
+import { pollGithubIssues, scanGithubIssues } from "../src/github/issue-scan.js";
 import { fakeGh } from "./fakes/fake-gh.js";
 import { tmpdir, loggingGit } from "./fixtures/repo-fixtures.js";
 
@@ -130,6 +130,43 @@ test("the status figures count waiting fixes and retired-only issues, and are ab
     assert.equal(githubCloseForStatus(dir), undefined, "nothing waiting");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a waitingPush record the scan dropped leaves githubCloseForStatus with nothing to count", async () => {
+  // What the scan's drop amounts to on the surfaces: the blue `github-close` banner is built only
+  // from this figure, so a ledger whose only waiting fix belongs to an issue GitHub closed upstream
+  // answers undefined after the next complete scan and no banner is raised at all. The hand-written
+  // pairing is the shape the previous build wrote, so an existing install self-heals with no role
+  // touching it. A second waitingPush entry for a number the upstream list does not hold still
+  // counts, so the drop is per issue, not all-or-nothing.
+  const repo = githubRepo();
+  try {
+    const lost: GithubIssueRow = { ...row(8), closedAt: 1_000 };
+    writeGithubIssues(repo.dir, {
+      repo: "o/r",
+      branch: "main",
+      checkedAt: 1_000,
+      gh: "ok",
+      open: [],
+      upstreamClosed: [lost],
+      waitingPush: { "8": ["aaaa"] },
+    });
+    await scanGithubIssues(repo.dir, repo.config, fakeGh({ issues: [[]] }).probe, NOW);
+    assert.equal(
+      githubCloseForStatus(repo.dir),
+      undefined,
+      "the lost issue's waiting fix is gone, so no banner has a count to print",
+    );
+
+    writeGithubIssues(repo.dir, {
+      ...(readGithubIssues(repo.dir) as GithubIssuesLedger),
+      waitingPush: { "8": ["aaaa"], "9": ["bbbb"] },
+    });
+    await scanGithubIssues(repo.dir, repo.config, fakeGh({ issues: [[issue(9)]] }).probe, NOW + 1_000);
+    assert.deepEqual(githubCloseForStatus(repo.dir), { repo: "o/r", waitingPush: 1, retiredOnly: 0 });
+  } finally {
+    repo.cleanup();
   }
 });
 

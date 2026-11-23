@@ -25,6 +25,7 @@ import {
 } from "../src/github/issue-scan.js";
 import { githubIssuesPath } from "../src/paths.js";
 import { nextIssuePrompt } from "../src/github/issue-queue.js";
+import { issueRows, renderIssueDetail } from "../src/github/github-issues-render.js";
 import { fakeGh } from "./fakes/fake-gh.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -401,11 +402,20 @@ test("a listing that stopped at MAX_ISSUE_PAGES records no upstream closes", asy
     // A capped scan that misses #500 from its pages — five full pages again, one renumbered — still
     // records nothing: it never saw the issue, so it has no evidence of a loss.
     const shrunk = pages.map((page, p) => page.map((_, i) => issue(p * 100 + i + 1 === 500 ? 501 : p * 100 + i + 1)));
+    writeGithubIssues(dir, {
+      ...(readGithubIssues(dir) as GithubIssuesLedger),
+      waitingPush: { "500": ["abc1234"] },
+    });
     await scanGithubIssues(dir, config, fakeGh({ issues: shrunk }).probe, 2_000);
     const ledger = readGithubIssues(dir)!;
     assert.equal(ledger.open.length, 500, "the capped listing is still five pages");
     assert.equal(ledger.open.some((r) => r.number === 500), false, "#500 is missing from it");
     assert.equal(ledger.upstreamClosed, undefined, "a capped listing records no upstream close");
+    assert.deepEqual(
+      readLedgerFile(dir).waitingPush,
+      { "500": ["abc1234"] },
+      "and it settles no push hold either: it has no evidence the issue is gone",
+    );
     assert.equal(
       readEvents(dir).filter((e) => e.type === "github_issue_upstream_closed").length,
       0,
@@ -519,6 +529,89 @@ test("an upstream-close record whose issue the ledger still lists open is never 
   }
 });
 
+test("a complete listing drops a lost issue's waitingPush record and settles nothing else", async () => {
+  // A lost issue's `waitingPush` record is a promise the push banner repeats — "push main and it
+  // closes" — and GitHub has already closed the issue, so the promise can never be kept. The other
+  // records are history, so they read on. The render half is checked here on the scanned ledger,
+  // not on a hand-built row: the lost issue must print no waiting-for-a-push line while a
+  // still-open issue whose fix is unpushed still prints its own.
+  const { dir, config, cleanup } = githubRepo({});
+  try {
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7), issue(8), issue(9)]] }).probe, 1_000);
+    const closed8 = { at: 500, shas: ["abc1234"] };
+    const queued8 = { at: 600, updatedAt: "2026-11-20T00:00:00Z" };
+    const declined8 = { at: 700, updatedAt: "2026-11-20T00:00:00Z", reason: "out of scope" };
+    writeGithubIssues(dir, {
+      ...(readGithubIssues(dir) as GithubIssuesLedger),
+      waitingPush: { "8": ["abc1234"], "9": ["def5678"] },
+      closed: { "8": closed8 },
+      queued: { "8": queued8 },
+      declined: { "8": declined8 },
+    });
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7), issue(9)]] }).probe, 2_000);
+    const ledger = readGithubIssues(dir)!;
+    assert.deepEqual(ledger.upstreamClosed?.map((r) => r.number), [8], "#8 is recorded as lost");
+    assert.deepEqual(readLedgerFile(dir).waitingPush, { "9": ["def5678"] }, "only the lost key is gone");
+    assert.deepEqual(ledger.closed?.["8"], closed8, "the close marker survives the loss");
+    assert.deepEqual(ledger.queued?.["8"], queued8, "the queue hold survives the loss");
+    assert.deepEqual(ledger.declined?.["8"], declined8, "and so does the decline record");
+
+    const rows = issueRows(ledger);
+    const lost = rows.find((r) => r.number === 8)!;
+    const detail = renderIssueDetail(lost, lost.position, 3_000);
+    assert.ok(detail.includes("closed upstream — last seen open"), detail);
+    assert.ok(!detail.includes("waiting for a push"), "a lost issue states no push it cannot make");
+    const waiting = rows.find((r) => r.number === 9)!;
+    assert.ok(
+      renderIssueDetail(waiting, waiting.position, 3_000).includes("waiting for a push of def5678"),
+      "an open issue whose fix is unpushed still says so",
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test("a complete listing drops a stale waitingPush record for a carried upstream close, keeps the others, and deletes an emptied map", async () => {
+  // The self-heal: an install written by the build that dropped nothing keeps a `waitingPush` entry
+  // for an issue its ledger already holds in `upstreamClosed`. Every number the stored list
+  // holds is consulted, not just this scan's new losses, so the next complete listing clears the
+  // banner with
+  // no role touching the file. A key the list does not hold keeps its record, and a map left
+  // with no keys is deleted rather than written as `{}`.
+  const { dir, config, cleanup } = githubRepo({});
+  try {
+    fs.mkdirSync(path.dirname(githubIssuesPath(dir)), { recursive: true });
+    fs.writeFileSync(
+      githubIssuesPath(dir),
+      JSON.stringify({
+        repo: "o/r",
+        branch: "main",
+        checkedAt: 1_000,
+        gh: "ok",
+        open: [row7(1_000)],
+        upstreamClosed: [row8(2_000)],
+        waitingPush: { "8": ["abc1234"], "7": ["def5678"] },
+      }),
+    );
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7)]] }).probe, 3_000);
+    let ledger = readGithubIssues(dir)!;
+    assert.deepEqual(ledger.upstreamClosed?.map((r) => r.number), [8], "the carried record is still there");
+    assert.deepEqual(
+      readLedgerFile(dir).waitingPush,
+      { "7": ["def5678"] },
+      "the stale lost key is gone and an open issue's record stays",
+    );
+
+    writeGithubIssues(dir, { ...ledger, waitingPush: { "8": ["abc1234"] } });
+    await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7)]] }).probe, 4_000);
+    ledger = readGithubIssues(dir)!;
+    assert.equal(ledger.waitingPush, undefined, "a map emptied by the drop is deleted");
+    assert.equal("waitingPush" in readLedgerFile(dir), false, "so the file holds no empty map");
+  } finally {
+    cleanup();
+  }
+});
+
 test("the upstream-close list keeps the 50 newest records, stored ascending", async () => {
   // The same cap the closer puts on closed rows, so no ledger list grows unbounded. All 51 losses
   // share one scan instant, and a tie breaks toward the higher number, so #1 is the oldest cut.
@@ -543,13 +636,27 @@ test("a gh outage or a failed listing records no upstream close and keeps the re
     await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7), issue(8)]] }).probe, 1_000);
     await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(7)]] }).probe, 2_000);
     const held = readGithubIssues(dir)!.upstreamClosed;
+    writeGithubIssues(dir, {
+      ...(readGithubIssues(dir) as GithubIssuesLedger),
+      waitingPush: { "8": ["abc1234"] },
+    });
     const logged = readEvents(dir).filter((e) => e.type === "github_issue_upstream_closed").length;
     await scanGithubIssues(dir, config, fakeGh({ auth: false }).probe, 3_000);
     const ledger = readGithubIssues(dir)!;
     assert.equal(ledger.gh, "unauthenticated");
     assert.deepEqual(ledger.upstreamClosed, held, "an outage keeps the records");
+    assert.deepEqual(
+      readLedgerFile(dir).waitingPush,
+      { "8": ["abc1234"] },
+      "and keeps the push hold it cannot settle without a listing",
+    );
     await scanGithubIssues(dir, config, fakeGh({ apiFail: true }).probe, 4_000);
     assert.deepEqual(readGithubIssues(dir)!.upstreamClosed, held, "and so does a failed listing");
+    assert.deepEqual(
+      readLedgerFile(dir).waitingPush,
+      { "8": ["abc1234"] },
+      "and the push hold through it too",
+    );
     assert.equal(
       readEvents(dir).filter((e) => e.type === "github_issue_upstream_closed").length,
       logged,
