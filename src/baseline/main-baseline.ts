@@ -17,6 +17,7 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { baselineVerdictsPath } from "../paths.js";
 import { memoSetLru } from "../collections.js";
+import { seedKnownFailures } from "./main-known-failures.js";
 
 /** The team-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
  * machinery that produces it. Split out of build/build-check.ts — which keeps running and
@@ -196,7 +197,14 @@ export function persistBaselineVerdicts(root: string): void {
   greensFile = undefined; // the load below re-writes nothing it just read
   const stored = readJsonFile<{ greens?: unknown; reds?: unknown }>(file);
   for (const entry of storedVerdictList(stored, "greens")) restoreGreenVerdict(entry);
-  for (const entry of storedVerdictList(stored, "reds")) restoreRedVerdict(entry);
+  let newestRed: string[] | undefined;
+  for (const entry of storedVerdictList(stored, "reds")) {
+    const restored = restoreRedVerdict(entry);
+    // saveGreens writes the reds in cache insertion order, so the last well-formed one is the
+    // newest red the previous generation held — the record of main's own failures to seed.
+    if (restored !== undefined) newestRed = restored;
+  }
+  if (newestRed !== undefined) seedKnownFailures(root, newestRed);
   greensFile = file;
 }
 
@@ -225,10 +233,12 @@ function restoreGreenVerdict(entry: unknown): void {
   rememberBaseline(parsed.sha, { status: "green", sha: parsed.sha, ...from, ...checkedAt });
 }
 
-/** Restore one saved red: optional `script` and failing tests, unless the cache holds it. */
-function restoreRedVerdict(entry: unknown): void {
+/** Restore one saved red, carrying its failing tests (and offenders, when captured), unless the
+ * cache holds it. Returns the restored entry's failing tests — an empty array when it names
+ * none — or undefined when nothing was restored (malformed, or already held). */
+function restoreRedVerdict(entry: unknown): string[] | undefined {
   const parsed = storedVerdictEntry(entry);
-  if (parsed === null || baselineCache.has(parsed.sha)) return;
+  if (parsed === null || baselineCache.has(parsed.sha)) return undefined;
   const failingTests = Array.isArray(parsed.failingTests)
     ? parsed.failingTests.filter((t): t is string => typeof t === "string")
     : [];
@@ -243,6 +253,7 @@ function restoreRedVerdict(entry: unknown): void {
     failingTests,
     ...(failingOffenders !== undefined ? { failingOffenders } : {}),
   });
+  return failingTests;
 }
 
 /** A saved red's failingOffenders, or undefined when absent or malformed: its values must be

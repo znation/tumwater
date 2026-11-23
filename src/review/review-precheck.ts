@@ -223,7 +223,7 @@ async function mainVerdictForFailure(
  * own verdict at main's tip: green there convicts the change (rejected through the shared
  * reject path); red there makes the failure main's, whatever test names either side printed, so
  * the change goes on to review; an unavailable verdict cannot attribute it, so the author's
- * failure is the safe default and the reasons say the baseline could not be had. */
+ * failure is the safe default and the reasons say so first, the check's own output after. */
 async function namelessFailureResult(
   root: string,
   role: string,
@@ -242,8 +242,8 @@ async function namelessFailureResult(
   }
   return {
     resolved: await reject([
-      ...reasons,
       `main's baseline was unavailable (${main.why}), so the failure is attributed to this change`,
+      ...reasons,
     ]),
   };
 }
@@ -296,18 +296,21 @@ async function namedFailureResult(
   return { resolved: await reject(rejectionReasons(reasons, main, own)) };
 }
 
-/** The three-arm final rejection reasons: on a green main, the check's own reasons; on a red
- * main, those plus which failures are the change's own (mainRedNotTheseFailures); with no
- * verdict for main, those plus that the baseline could not be had and the failure is the
- * change's. Same text and order as the original attribution. */
+/** The three-arm final rejection reasons, the DECIDING attribution first: on a green main, the
+ * check's own reasons; on a red main, which failures are the change's own
+ * (mainRedNotTheseFailures) then those reasons; with no verdict for main, that the baseline
+ * could not be had and the failure is the change's, then those reasons. The attribution leads
+ * because `mergeFailureReason` (src/merge/merge-slot.ts) reports `reasons[0]` alone, and quoting
+ * the check's raw first line there hid whether the change was convicted or the comparison could
+ * not be made (BUGS.md 2026-11-22). */
 function rejectionReasons(
   reasons: string[],
   main: MainTip,
   own: readonly string[] | undefined,
 ): string[] {
   if (main.status === "green") return reasons;
-  if (main.status === "red") return [...reasons, mainRedNotTheseFailures(main.sha, own ?? [])];
-  return [...reasons, `main's baseline was unavailable (${main.why}), so the failure is attributed to this change`];
+  if (main.status === "red") return [mainRedNotTheseFailures(main.sha, own ?? []), ...reasons];
+  return [`main's baseline was unavailable (${main.why}), so the failure is attributed to this change`, ...reasons];
 }
 
 /** Run the gate's deterministic build pre-check. `reject` is the gate's one shared rejection

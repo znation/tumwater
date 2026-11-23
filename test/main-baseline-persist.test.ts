@@ -12,6 +12,7 @@ import {
   settleRedByRerun,
 } from "../src/baseline/main-baseline.js";
 import { defaultConfig } from "../src/config/config.js";
+import { knownMainFailures } from "../src/baseline/main-watch.js";
 import { baselineVerdictsPath } from "../src/paths.js";
 import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
 import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -78,6 +79,7 @@ test("a restart reloads a saved red with its failing tests, and a new run keeps 
   );
   persistBaselineVerdicts(root);
   assert.equal(cachedBaselineVerdict(sha(7)), "red");
+  assert.deepEqual(knownMainFailures(root), ["a", "b"], "the gate's known-failure read is seeded too");
   noteGreenBaseline(sha(8)); // any write mirrors the cache again
   const saved = savedGreens(root) as { reds: Array<{ sha: string }> };
   assert.deepEqual(

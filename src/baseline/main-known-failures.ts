@@ -143,6 +143,19 @@ export function setKnownFailures(root: string, tests: string[]): void {
   knownFailures.set(root, tests);
 }
 
+/** Seed `root`'s known-failure map from a red verdict this process did NOT settle — the verdicts
+ * a previous generation saved and `persistBaselineVerdicts` loads back (main-baseline.ts). The
+ * watch's `setKnownFailures` fires only when a pass settles a verdict in this process, so a
+ * restart into a red main left the map empty while the cache held main's red with its failing
+ * tests: the gate's first excuse arm (`onlyKnownMainFailures`) then knew nothing and a change
+ * that adds no new failure was rejected while main was red (BUGS.md 2026-11-22, INV-CZ1). No
+ * red spell is opened — the opener stays per-process, as the module doc says — so the culprit
+ * the next settled red names is this generation's own tip. */
+export function seedKnownFailures(root: string, tests: string[]): void {
+  if (knownFailures.get(root) !== undefined) return; // a settled verdict in this process wins
+  setKnownFailures(root, tests);
+}
+
 /** Record `root`'s newest verdict's policy-scan offender lists in the knownOffenders map. */
 export function setKnownOffenders(root: string, offenders: Record<string, string[]>): void {
   knownOffenders.set(root, offenders);

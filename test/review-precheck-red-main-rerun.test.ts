@@ -134,6 +134,6 @@ test("a re-run that fails a different test stands inconclusive, and the nameless
     // against the tip, in the shared phrasing.
     const reasons = state.lastReview?.reasons ?? [];
     assert.match(reasons[0] ?? "", /X/);
-    assert.equal(reasons.at(-1), mainRedNotTheseFailures(mainSha(root), ["X"]));
+    assert.equal(reasons[0], mainRedNotTheseFailures(mainSha(root), ["X"]));
   });
 });

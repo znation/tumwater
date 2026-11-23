@@ -103,7 +103,7 @@ test("a twice-failed gate whose base the watch checked red is rejected for the f
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config: WATCH_CONFIG }, state);
     assert.equal(result.decision, "rejected", "main fails Y, not X: X is the change's own");
-    assert.equal(state.lastReview?.reasons.at(-1), mainRedNotTheseFailures(red, ["X"]));
+    assert.equal(state.lastReview?.reasons[0], mainRedNotTheseFailures(red, ["X"]));
     assert.equal(baselineRuns(root), watched + 1, "main's check ran fresh at its tip");
   });
 });

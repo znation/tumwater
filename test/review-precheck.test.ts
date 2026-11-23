@@ -19,11 +19,14 @@ import { reviewAheadOfMain } from "../src/review/review.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { createMainWatch } from "../src/baseline/main-watch.js";
+import { persistBaselineVerdicts } from "../src/baseline/main-baseline.js";
+import { baselineVerdictsPath } from "../src/paths.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
 import { commitIn, mainSha } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
 import { gateCtx, ROLE } from "./fixtures/gate-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { buildCheckEvents, gateBuildFixture, uniqueMain } from "./fixtures/precheck-fixtures.js";
 
 // A nameless failure (a compile error) is decided at once by running the gate command at main's
@@ -81,7 +84,37 @@ test("a gate failure of a known failure plus another test is rejected for the ot
     assert.equal(result.decision, "rejected");
     assert.ok(!warningMessages(root).some((m) => m.includes("known failures")));
     const reasons = state.lastReview?.reasons ?? [];
-    assert.match(reasons.at(-1) ?? "", /^main [0-9a-f]{8} is red too, but these failures are this change's own: Y$/);
+    assert.match(reasons[0] ?? "", /^main [0-9a-f]{8} is red too, but these failures are this change's own: Y$/,
+      "the deciding attribution leads, where mergeFailureReason quotes it");
+  });
+});
+
+// A restart into a red main (BUGS.md 2026-11-22): the previous generation saved main's red with
+// its failing tests, and `persistBaselineVerdicts` loads it without the watch settling a verdict
+// in this process. The gate's first excuse arm reads the known-failure map, which the watch alone
+// used to fill, so a change that fails only what main already fails was rejected while main was
+// red. Here the fresh attribution path would convict it — main's OWN check passes at its tip —
+// so only the restored red's saved failing tests can excuse the change.
+test("a restart that restores a red main excuses the failures that saved red names", async () => {
+  // The worktree's check fails test X; main's committed manifest declares a passing check, so a
+  // fresh check of main's tip comes back green and would blame the change.
+  const { root, wt } = await gateBuildFixture("buildcheck-tool", KNOWN_FAILURE_TOOL, "build", "echo ok");
+  const red = uniqueMain(root);
+  writeFileDeep(
+    baselineVerdictsPath(root),
+    JSON.stringify({ greens: [], reds: [{ sha: red, script: "build", failingTests: ["X"] }] }),
+  );
+  persistBaselineVerdicts(root); // what team startup does (cli/cli-start.ts)
+  await withPi('true', async () => {
+    const state = freshRunnerState(ROLE);
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "approved", "X is a test main's restored red fails: not this change's");
+    // The excuse fired on the very first failed run: no flake re-run and no check of main's tip.
+    assert.deepEqual(buildCheckEvents(root), ["gate:failed"]);
+    assert.ok(
+      warningMessages(root).some((m) => m.includes("gate check fails only main's known failures: X")),
+      JSON.stringify(warningMessages(root)),
+    );
   });
 });
 

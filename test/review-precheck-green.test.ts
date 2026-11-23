@@ -60,11 +60,12 @@ test("a pre-check that fails twice with no verdict for main rejects, saying the 
     assert.equal(result.decision, "rejected", "the author's failure is the safe default");
     assert.ok(!fs.existsSync(marker), "no pi run");
     const reasons = state.lastReview?.reasons ?? [];
-    assert.match(reasons[0] ?? "", /^check failed \(`.*`\): boom$/);
     assert.equal(
-      reasons.at(-1),
+      reasons[0],
       "main's baseline was unavailable (its check was skipped (toolchain)), so the failure is attributed to this change",
+      "the attribution leads: mergeFailureReason quotes reasons[0] alone",
     );
+    assert.match(reasons.at(-1) ?? "", /^check failed \(`.*`\): boom$/);
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "gate:skipped"]);
   });
 });
