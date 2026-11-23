@@ -107,6 +107,122 @@ the `afterRun` fallback, and `test/doctor-checks.test.ts`
 writes rollout files and orders them by mtime). Drive them with a fixture rollout a few KB and an injected
 byte ceiling, never a real multi-hundred-MB file, and never a real model.
 
+### A work-role runner re-queues the prompt its skipping run declined, and that queue is read as fresh demand, so a `relief_wait` recovery spins at the poll cadence (mirrors GitHub issue #2; found by the director role 2026-11-23)
+
+**Symptom.** A role whose worktree branch holds a relief commit beside the merge pin it queued — the
+reporter's `ci`, which ran 18,257 times in ~2 h, each run `durationMs≈1000`, `result=skipped`, no
+model call ever made — repeats every scheduler poll (~2 s) although its state carries a correct
+future `nextRunAt`. The same shape appeared on `feature` and `feature-3`. The reporter's two prompts
+(`Main was reported red at commit …`, plus a user message) stayed in that role's inbox the whole
+incident, never fulfilled. Event shape: `run_start` → `prompt_taken` → `run_end result=skipped` →
+`wake reason=inbox` → `run_start`, without end.
+
+**Reproduce.** Seed a pooled worktree whose branch is ahead of main, `state.queuedSummary` set to a
+merge entry for that branch's pin, and a second commit on the branch ahead of the pin — that is
+`recoverLeftover`'s `heldBesidePin` true, so it returns `{kind:"relief_wait", entry}`
+(src/runner/runner-leftover.ts). Give the role one deliverable inbox prompt. Run the eligibility
+pass (`skipRunner` → `isEligible` in src/scheduling/) and then the run's end: the run starts,
+ends `skipped`, its prompt is back in the queue, and the next poll admits it again. `nextRunAt` is
+never consulted, and the poll logs the `{type:"wake", reason:"inbox"}` line the reporter saw
+(src/orchestrator/orchestrator-launch.ts logs a wake for every admit reason but `scheduled` and `startup`).
+
+**Suspected cause.** Three verified facts, and the two defences that already stop this for the
+director are keyed to the director alone:
+
+- The skip re-queues the prompt it declined: `handleRecoveredLeftover`
+  (src/runner/runner-leftover-recovery.ts) routes every recovery kind except `already_queued` to
+  `ctx.finishRecoveryRun` → `finishRecoveryRunPhase` (src/runner/runner-recovery.ts), which ends the
+  run `skipped` and then calls `ctx.pending.requeueUnfulfilled(userPrompt)`
+  (`PendingPrompt.enqueueCarryingImages` in src/inbox/pending-prompt.ts) regardless of the recovery
+  kind — so the re-queued file's name stamp is stamped inside the run that just ended.
+- The queue is then read as fresh demand: `skipRunner` counts it with `inboxSize(root, runner.role)`
+  (src/scheduling/skip.ts) and `inboxGate(inboxCount)` (src/scheduling/scheduling.ts) admits
+  `inboxCount > 0` with `reason:"inbox"` ahead of `gapGate`/`scheduledGate`, so a correctly computed
+  `nextRunAt` (main's head unchanged → the role's slow clock) is simply never consulted.
+- The defences are director-scoped: `skipRunner` computes `EligibilityOptions.inboxSelfRequeued`
+  (every deliverable stamp from `inbox.deliverablePromptStamps` at or before
+  `state.lastRunEndedAt`) only when `baseRoleOf(runner.role) === "director"`, and `ownPinDraining`
+  only for `runner.role === DIRECTOR_ROLE` against `directorDrainingPin`, which
+  `directorPinOwedRun` (src/scheduling/scope.ts) derives from `mergePinSha(root, DIRECTOR_ROLE)`.
+  `directorGate` honours both — it holds the inbox on `ownPinDraining` and routes a self-requeued
+  inbox through `dueOnMinInterval`, citing that hot loop — while the work-role arm `inboxGate`
+  consults neither.
+
+**Fix (one run), in the scheduling layer only.**
+
+1. `skipRunner` (src/scheduling/skip.ts): drop the `baseRoleOf(runner.role) === "director"` guard
+   from the `inboxSelfRequeued` computation so it is evaluated for every role (it already requires
+   `inboxCount > 0` and a set `lastRunEndedAt`, so an empty or undeliverable inbox stays false).
+2. `inboxGate` (src/scheduling/scheduling.ts): take the state, `now` and `opts` as `directorGate`
+   does, and resolve a `inboxSelfRequeued` inbox through `dueOnMinInterval(s, now, "inbox")`
+   instead of admitting immediately — the same rule `directorGate` already applies to itself. A
+   prompt an operator submitted after the run ended still runs immediately.
+3. Extend the drain hold to work roles: compute the runner's own draining pin with
+   `mergePinSha(root, runner.role)` (src/merge/merge-pins.ts already takes a role) in
+   `buildSchedulingScope` and set `ownPinDraining` when it equals `state.queuedSummary?.sha`, so a
+   role waiting on the merge slot for its own change holds its inbox instead of churning on it.
+   Queued prompts are not dropped by the hold: they run as soon as the pin lands or the claim is
+   released (`buildSchedulingScope` releases stale claims each pass).
+
+**Acceptance.** New tests in `test/scheduling.test.ts` (which already pins `isEligible`): a
+non-director runner whose inbox holds only a prompt stamped at or before its `lastRunEndedAt` and
+whose `nextRunAt` is in the future is not admitted; the same runner is admitted once `nextRunAt`
+has passed; a prompt stamped after `lastRunEndedAt` is admitted immediately; a non-director runner
+whose own `mergePinSha` equals its `queuedSummary.sha` is held while that pin is queued and
+admitted again when the pin is gone. One end-to-end regression in `test/orchestrator*.test.ts`
+style with the relief fixture: two consecutive polls for a `ci` runner in the `relief_wait` state
+start at most one run — reuse the `relief_wait` fixture shape already in
+`test/runner-recovery.test.ts` and `test/runner-leftover.test.ts`.
+
+**Sibling.** The report's other ask — that repeated `skipped` outcomes escalate their interval
+instead of returning to the fixed minimum — is a separate defect in a different file (`run/run-apply.ts`),
+recorded below. Neither depends on the other; land either first.
+
+### Consecutive `skipped` outcomes never escalate a role's interval, so a role that declines to run returns on the fixed minimum forever (mirrors GitHub issue #2; found by the director role 2026-11-23)
+
+**Symptom.** A role that ends run after run with `result=skipped` keeps one cadence: its `nextRunAt`
+is reset to the plain per-role minimum (`ci` and `qa` default to
+`minRunIntervalSeconds: 7200` in src/config/config.ts) no matter how many skips run in a row, and
+`backoffSeconds` never moves. An idle role climbs the idle ladder; a skipping role does not, so a
+role permanently unable to act pays the minimum every single time it is woken. This is the
+reporter's second expectation in issue #2, and it bounds the damage of the entry above: even with
+the wake fixed, a role woken by anything still restarts on the minimum.
+
+**Reproduce.** `applyRunOutcome(s, cfg, "ci", {result:"skipped", …})` twice on a fresh state
+(src/run/run-apply.ts) and read `s.nextRunAt` after each: both land at `now + minRunIntervalSeconds
+* 1000`, `s.backoffSeconds` unchanged. Compare the idle arm, which advances through
+`scheduleBackoff(s, cfg.idleBackoff)`.
+
+**Suspected cause.** `scheduleSkippedOutcome` (src/run/run-apply.ts) calls
+`scheduleAtMinInterval(s, cfg)` and nothing else — its comment states the rule ("no backoff
+bookkeeping") — and no counter counts skips: `applyRunStreaks` folds `cutOffStreak`,
+`quietKillStreak`, `consecutiveErrors` and `noChangeStreak` (src/runner/runner-state.ts), and the
+skipped arm is the only productive-shaped outcome with no ladder.
+
+**Fix (one run), in `src/run/run-apply.ts` and its state type only.**
+
+1. Add `skippedStreak?: number` to `RunnerState` (src/runner/runner-state.ts), named with the
+   newer `*Streak` family, and fold it in `applyRunStreaks` with the same
+   `bumpOrResetStreak(s.skippedStreak, outcome.result === "skipped")` the
+   `cutOffStreak`/`quietKillStreak` arms use.
+2. `scheduleSkippedOutcome` escalates non-director roles with `scheduleBackoff(s, cfg.idleBackoff)`
+   — the idle ladder, capped at `cfg.idleBackoff.maxSeconds` (default 3600 s) by
+   `nextBackoffSeconds` (src/scheduling/backoff.ts) — so a skipping role sleeps at most its idle
+   ceiling, never longer. Keep the director on `scheduleAtMinInterval`: its inbox arms do not
+   consult `nextRunAt`, but a queued operator request must not be pushed behind an escalating
+   clock, and the entry's comment should say so.
+3. The arms that reset the ladder with `scheduleResetToMinInterval` (`scheduleCompletedOutcome`,
+   `scheduleRejectedOutcome`, `scheduleObserverOutcome`) clear `skippedStreak` too, so a role that
+   does real work is back at the bottom of the ladder. Do not touch `scheduleErrorOutcome`, the
+   `no_change` streak, or yield scaling.
+
+**Acceptance.** New tests in `test/run-apply.test.ts`: two consecutive `skipped` ends put
+`nextRunAt` strictly further out than one, and never past `cfg.idleBackoff.maxSeconds * 1000`; a
+`changed` (or `rejected`) end clears `skippedStreak`, so the next skip is back at the per-role
+minimum; the director's `skipped` end still schedules at exactly `minRunIntervalSeconds`. The
+existing skipped-arm assertions in that file keep passing, which shows the escalation is the only
+behaviour change.
+
 ### A plan run re-adds a merged, already-archived plan under PLANS.md `## Planned`, and no guard compares `## Planned` against PLANS-DONE.md, so finished work is handed back out as open work (found by the selfcheck role 2026-11-23)
 
 **Symptom.** Twice on 2026-11-22 a `tumwater(plan):` commit added a copy of a plan that main had
