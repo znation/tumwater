@@ -77,51 +77,6 @@ start at most one run — reuse the `relief_wait` fixture shape already in
 instead of returning to the fixed minimum — is a separate defect in a different file (`run/run-apply.ts`),
 recorded below. Neither depends on the other; land either first.
 
-### Consecutive `skipped` outcomes never escalate a role's interval, so a role that declines to run returns on the fixed minimum forever (mirrors GitHub issue #2; found by the director role 2026-11-23)
-
-**Symptom.** A role that ends run after run with `result=skipped` keeps one cadence: its `nextRunAt`
-is reset to the plain per-role minimum (`ci` and `qa` default to
-`minRunIntervalSeconds: 7200` in src/config/config.ts) no matter how many skips run in a row, and
-`backoffSeconds` never moves. An idle role climbs the idle ladder; a skipping role does not, so a
-role permanently unable to act pays the minimum every single time it is woken. This is the
-reporter's second expectation in issue #2, and it bounds the damage of the entry above: even with
-the wake fixed, a role woken by anything still restarts on the minimum.
-
-**Reproduce.** `applyRunOutcome(s, cfg, "ci", {result:"skipped", …})` twice on a fresh state
-(src/run/run-apply.ts) and read `s.nextRunAt` after each: both land at `now + minRunIntervalSeconds
-* 1000`, `s.backoffSeconds` unchanged. Compare the idle arm, which advances through
-`scheduleBackoff(s, cfg.idleBackoff)`.
-
-**Suspected cause.** `scheduleSkippedOutcome` (src/run/run-apply.ts) calls
-`scheduleAtMinInterval(s, cfg)` and nothing else — its comment states the rule ("no backoff
-bookkeeping") — and no counter counts skips: `applyRunStreaks` folds `cutOffStreak`,
-`quietKillStreak`, `consecutiveErrors` and `noChangeStreak` (src/runner/runner-state.ts), and the
-skipped arm is the only productive-shaped outcome with no ladder.
-
-**Fix (one run), in `src/run/run-apply.ts` and its state type only.**
-
-1. Add `skippedStreak?: number` to `RunnerState` (src/runner/runner-state.ts), named with the
-   newer `*Streak` family, and fold it in `applyRunStreaks` with the same
-   `bumpOrResetStreak(s.skippedStreak, outcome.result === "skipped")` the
-   `cutOffStreak`/`quietKillStreak` arms use.
-2. `scheduleSkippedOutcome` escalates non-director roles with `scheduleBackoff(s, cfg.idleBackoff)`
-   — the idle ladder, capped at `cfg.idleBackoff.maxSeconds` (default 3600 s) by
-   `nextBackoffSeconds` (src/scheduling/backoff.ts) — so a skipping role sleeps at most its idle
-   ceiling, never longer. Keep the director on `scheduleAtMinInterval`: its inbox arms do not
-   consult `nextRunAt`, but a queued operator request must not be pushed behind an escalating
-   clock, and the entry's comment should say so.
-3. The arms that reset the ladder with `scheduleResetToMinInterval` (`scheduleCompletedOutcome`,
-   `scheduleRejectedOutcome`, `scheduleObserverOutcome`) clear `skippedStreak` too, so a role that
-   does real work is back at the bottom of the ladder. Do not touch `scheduleErrorOutcome`, the
-   `no_change` streak, or yield scaling.
-
-**Acceptance.** New tests in `test/run-apply.test.ts`: two consecutive `skipped` ends put
-`nextRunAt` strictly further out than one, and never past `cfg.idleBackoff.maxSeconds * 1000`; a
-`changed` (or `rejected`) end clears `skippedStreak`, so the next skip is back at the per-role
-minimum; the director's `skipped` end still schedules at exactly `minRunIntervalSeconds`. The
-existing skipped-arm assertions in that file keep passing, which shows the escalation is the only
-behaviour change.
-
 ### A plan run re-adds a merged, already-archived plan under PLANS.md `## Planned`, and no guard compares `## Planned` against PLANS-DONE.md, so finished work is handed back out as open work (found by the selfcheck role 2026-11-23)
 
 **Symptom.** Twice on 2026-11-22 a `tumwater(plan):` commit added a copy of a plan that main had

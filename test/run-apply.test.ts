@@ -228,6 +228,61 @@ test("applyRunOutcome: rejected and skipped runs wait the minimum interval witho
   }
 });
 
+test("applyRunOutcome: consecutive skipped runs climb the idle ladder, capped, and a real run resets it", () => {
+  // A skipped outcome used to reschedule on minRunIntervalSeconds alone — "no backoff
+  // bookkeeping" — so a role that declines to run over and over (nothing worth doing, a
+  // deferral, a skip gate) woke on the fixed minimum forever while an idle role climbed the
+  // idle ladder. It now advances the same ladder, so its wake is bounded by idleBackoff.max.
+  const cfg = testConfig(); // idleBackoff: 30 s base, ×2, cap 3600 s
+  const s = freshRunnerState("ci");
+  const ladders: number[] = [];
+  for (let i = 0; i < 8; i++) {
+    const before = Date.now();
+    applyRunOutcome(s, cfg, s.role, { result: "skipped" });
+    ladders.push(s.backoffSeconds);
+    assert.equal(s.skippedStreak, i + 1, `skip ${i + 1} counts the streak`);
+    assert.ok(
+      s.backoffSeconds <= cfg.idleBackoff.maxSeconds,
+      `skip ${i + 1} never passes the idle cap`,
+    );
+    assert.equal(
+      s.nextRunAt,
+      before + s.backoffSeconds * 1000,
+      `skip ${i + 1} wakes after its own ladder step`,
+    );
+  }
+  // 30, 60, 120, 240, 480, 960, 1920, then the cap holds at 3600.
+  assert.deepEqual(ladders, [30, 60, 120, 240, 480, 960, 1920, 3600]);
+  // A run that does real work re-arms the ladder from the bottom, so the next skip is one
+  // base step out, not the continuation of the skip streak.
+  applyRunOutcome(s, cfg, s.role, { result: "changed", commit: "abc1234" });
+  assert.equal(s.skippedStreak, 0, "a changed run clears the skip streak");
+  assert.equal(s.backoffSeconds, 0, "and the shared ladder");
+  applyRunOutcome(s, cfg, s.role, { result: "skipped" });
+  assert.equal(s.skippedStreak, 1);
+  assert.ok(
+    s.nextRunAt - Date.now() <= cfg.idleBackoff.initialSeconds * 1000 + 500,
+    "the skip after real work is back at the ladder's first step",
+  );
+  // A rejected run resets it too — the entry names that arm.
+  s.skippedStreak = 4;
+  applyRunOutcome(s, cfg, s.role, { result: "rejected" });
+  assert.equal(s.skippedStreak, 0, "a rejected run clears the skip streak");
+});
+
+test("applyRunOutcome: the director's skipped run still schedules at exactly the minimum interval", () => {
+  // The director runs on inbox demand; escalating its clock would park a queued operator
+  // request behind an idle backoff of up to an hour, so its skip arm stays on the minimum.
+  const cfg = testConfig();
+  const s = freshRunnerState(DIRECTOR_ROLE);
+  for (let i = 0; i < 3; i++) {
+    const before = Date.now();
+    applyRunOutcome(s, cfg, s.role, { result: "skipped" });
+    assert.equal(s.backoffSeconds, 0, `director skip ${i + 1} raises no ladder`);
+    assert.ok(s.nextRunAt >= before && s.nextRunAt <= before + cfg.minRunIntervalSeconds * 1000 + 500);
+  }
+});
+
 test("applyRunOutcome: a queued run schedules like a change without counting a commit", () => {
   // Merge queue 3/5: the run committed and enqueued — productive work, so the minimum-interval
   // schedule applies — but `commits` keeps meaning "merged to main": applyMergeOutcome

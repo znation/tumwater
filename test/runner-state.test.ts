@@ -287,6 +287,7 @@ test("loadRunnerState heals a corrupt persisted numeric field", () => {
       quietKillStreak: [1],
       consecutiveErrors: -1,
       noChangeStreak: "lots",
+      skippedStreak: "lots",
       unreviewFailures: "lots",
       parkedSince: "soon",
       streakAcked: -3, // the breaker's excused-streak ack heals like the error streak it excuses
@@ -308,6 +309,7 @@ test("loadRunnerState heals a corrupt persisted numeric field", () => {
     "quietKillStreak",
     "consecutiveErrors",
     "noChangeStreak",
+    "skippedStreak",
     "unreviewFailures",
     "parkedSince",
     "streakAcked",

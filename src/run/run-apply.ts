@@ -154,6 +154,13 @@ function applyRunStreaks(s: RunnerState, outcome: RunOutcome): void {
   // Observational only — never warns, unlike the error/quiet-kill streaks: a legitimately
   // idle maintenance role with an empty backlog can hold a long streak and that is expected.
   s.noChangeStreak = bumpOrResetStreak(s.noChangeStreak, outcome.result === "no_change");
+  // The skip streak counts consecutive runs that DECLINED to run (`skipped`: nothing worth
+  // doing, a deliberate deferral, a skip gate). It is the skipped arm's escalation counter —
+  // scheduleSkippedOutcome climbs the idle ladder off it — and any completed result other than
+  // `skipped` resets it, so a role that does real work (or fails, or is rejected) is back at the
+  // bottom of the ladder on its next skip. Observational for the dashboards like noChangeStreak:
+  // nothing warns off it, since a legitimately empty backlog makes skipping expected.
+  s.skippedStreak = bumpOrResetStreak(s.skippedStreak, outcome.result === "skipped");
   // The yield ring records the result beside the streaks: a merge or a counted empty
   // stretches the role's min-run gap (yieldMultiplier, read by isEligible), an error-class
   // result is skipped entirely — no evidence either way (yield-scaled clocks, PLANS.md).
@@ -218,7 +225,7 @@ function canResumeCutOff(s: RunnerState, role: string, outcome: RunOutcome): boo
 function scheduleRunAfterOutcome(s: RunnerState, cfg: TumwaterConfig, role: string, outcome: RunOutcome): void {
   if (outcome.result === "changed" || outcome.result === "queued") scheduleCompletedOutcome(s, cfg, outcome);
   else if (outcome.result === "rejected") scheduleRejectedOutcome(s, cfg);
-  else if (outcome.result === "skipped") scheduleSkippedOutcome(s, cfg);
+  else if (outcome.result === "skipped") scheduleSkippedOutcome(s, cfg, role);
   else if (outcome.result === "aborted") scheduleAbortedOutcome(s, role, outcome);
   else if (outcome.result === "quiet_killed") scheduleQuietKilledOutcome(s, cfg, role, outcome);
   else if (outcome.result === "user_aborted") scheduleUserAbortedOutcome(s, cfg);
@@ -251,11 +258,24 @@ function scheduleRejectedOutcome(s: RunnerState, cfg: TumwaterConfig): void {
   scheduleResetToMinInterval(s, cfg);
 }
 
-/** Schedule a role whose run was skipped — the "skipped" arm: the director idles at the
- * minimum interval until the inbox has work; no backoff bookkeeping. */
-function scheduleSkippedOutcome(s: RunnerState, cfg: TumwaterConfig): void {
-  // Director idles until the inbox has work; no backoff bookkeeping.
-  scheduleAtMinInterval(s, cfg);
+/** Schedule a role whose run was skipped — the "skipped" arm: a role that declines to run
+ * climbs the idle ladder like any other unproductive outcome, so consecutive skips never push
+ * it past `cfg.idleBackoff.maxSeconds`; the director stays on the minimum interval. */
+function scheduleSkippedOutcome(s: RunnerState, cfg: TumwaterConfig, role: string): void {
+  // The director runs on inbox demand: an operator prompt is the only thing that starts it, and
+  // isEligible's director arm admits a fresh prompt without consulting nextRunAt. It still
+  // stays on the minimum interval on purpose: escalating a skipping director's clock would park
+  // a queued operator request behind an idle backoff of up to an hour (the skip itself proves
+  // nothing about demand — an empty inbox skips, and so does a prompt the director re-queued).
+  if (role === DIRECTOR_ROLE) {
+    scheduleAtMinInterval(s, cfg);
+    return;
+  }
+  // Every other role: a skip is an unproductive run, so it escalates on the idle ladder the
+  // idle arm uses — capped at idleBackoff.maxSeconds by nextBackoffSeconds, so a role
+  // permanently unable to act sleeps at most its idle ceiling instead of paying the fixed
+  // per-role minimum every time it is woken (BUGS.md 2026-11-23).
+  scheduleBackoff(s, cfg.idleBackoff);
 }
 
 /** Schedule a role whose run was aborted mid-flight — the "aborted" arm: a shutdown is not a

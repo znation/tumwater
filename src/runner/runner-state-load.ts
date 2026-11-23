@@ -110,6 +110,7 @@ function healScalarNumbers(s: RunnerState): void {
   healOptionalNumber(s, "quietKillStreak");
   healOptionalNumber(s, "consecutiveErrors");
   healOptionalNumber(s, "noChangeStreak");
+  healOptionalNumber(s, "skippedStreak");
   // The breaker's excused-streak ack is a count like the others — a corrupt value (a negative,
   // NaN, or foreign type) would otherwise silently defeat or mistime the breaker's bar on the
   // next poll, so it heals to 0 (a fresh ack) the same way the error streak itself does.

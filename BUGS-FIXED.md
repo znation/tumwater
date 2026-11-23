@@ -5,6 +5,57 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Consecutive `skipped` outcomes never escalate a role's interval, so a role that declines to run returns on the fixed minimum forever (mirrors GitHub issue #2; found by the director role 2026-11-23) — fixed 2026-11-23 by the bugfix role
+
+**Symptom.** A role that ends run after run with `result=skipped` keeps one cadence: its `nextRunAt`
+is reset to the plain per-role minimum (`ci` and `qa` default to
+`minRunIntervalSeconds: 7200` in src/config/config.ts) no matter how many skips run in a row, and
+`backoffSeconds` never moves. An idle role climbs the idle ladder; a skipping role does not, so a
+role permanently unable to act pays the minimum every single time it is woken. This is the
+reporter's second expectation in issue #2, and it bounds the damage of the entry above: even with
+the wake fixed, a role woken by anything still restarts on the minimum.
+
+**Reproduce.** `applyRunOutcome(s, cfg, "ci", {result:"skipped", …})` twice on a fresh state
+(src/run/run-apply.ts) and read `s.nextRunAt` after each: both land at `now + minRunIntervalSeconds
+* 1000`, `s.backoffSeconds` unchanged. Compare the idle arm, which advances through
+`scheduleBackoff(s, cfg.idleBackoff)`.
+
+**Suspected cause.** `scheduleSkippedOutcome` (src/run/run-apply.ts) calls
+`scheduleAtMinInterval(s, cfg)` and nothing else — its comment states the rule ("no backoff
+bookkeeping") — and no counter counts skips: `applyRunStreaks` folds `cutOffStreak`,
+`quietKillStreak`, `consecutiveErrors` and `noChangeStreak` (src/runner/runner-state.ts), and the
+skipped arm is the only productive-shaped outcome with no ladder.
+
+**Fix (one run), in `src/run/run-apply.ts` and its state type only.**
+
+1. Add `skippedStreak?: number` to `RunnerState` (src/runner/runner-state.ts), named with the
+   newer `*Streak` family, and fold it in `applyRunStreaks` with the same
+   `bumpOrResetStreak(s.skippedStreak, outcome.result === "skipped")` the
+   `cutOffStreak`/`quietKillStreak` arms use.
+2. `scheduleSkippedOutcome` escalates non-director roles with `scheduleBackoff(s, cfg.idleBackoff)`
+   — the idle ladder, capped at `cfg.idleBackoff.maxSeconds` (default 3600 s) by
+   `nextBackoffSeconds` (src/scheduling/backoff.ts) — so a skipping role sleeps at most its idle
+   ceiling, never longer. Keep the director on `scheduleAtMinInterval`: its inbox arms do not
+   consult `nextRunAt`, but a queued operator request must not be pushed behind an escalating
+   clock, and the entry's comment should say so.
+3. The arms that reset the ladder with `scheduleResetToMinInterval` (`scheduleCompletedOutcome`,
+   `scheduleRejectedOutcome`, `scheduleObserverOutcome`) clear `skippedStreak` too, so a role that
+   does real work is back at the bottom of the ladder. Do not touch `scheduleErrorOutcome`, the
+   `no_change` streak, or yield scaling.
+
+**Acceptance.** New tests in `test/run-apply.test.ts`: two consecutive `skipped` ends put
+`nextRunAt` strictly further out than one, and never past `cfg.idleBackoff.maxSeconds * 1000`; a
+`changed` (or `rejected`) end clears `skippedStreak`, so the next skip is back at the per-role
+minimum; the director's `skipped` end still schedules at exactly `minRunIntervalSeconds`. The
+existing skipped-arm assertions in that file keep passing, which shows the escalation is the only
+behaviour change.
+
+**Landed.** Exactly the entry's shape: `skippedStreak?: number` on `RunnerState` (named with the newer `*Streak` family) and healed to 0 by `healScalarNumbers` like the other streaks; one fold in `applyRunStreaks`, `bumpOrResetStreak(s.skippedStreak, outcome.result === "skipped")`; and `scheduleSkippedOutcome` now takes `role` and climbs the idle ladder (`scheduleBackoff(s, cfg.idleBackoff)`) for every non-director role, staying on `scheduleAtMinInterval` for the director with the reason in its comment. Step 3 needed no code: the one fold in step 1 already resets the count on EVERY non-skipped outcome, including the `scheduleResetToMinInterval` arms, so the reset the entry asks for comes with the fold rather than at each arm — a `changed` run after seven skips leaves `skippedStreak` 0 and `backoffSeconds` 0, and the next skip is one ladder step out. `scheduleErrorOutcome`, the `no_change` streak and yield scaling are untouched.
+
+**Validation gap:** none — the entry's own reproduce recipe ran as a unit test over the existing `applyRunOutcome` harness; nothing was missing to confirm the flat cadence.
+
+**Trace.** `src/run/run-apply.ts` (`scheduleSkippedOutcome`, the `applyRunStreaks` fold), `src/runner/runner-state.ts` (`skippedStreak`), `src/runner/runner-state-load.ts` (`healScalarNumbers`); pinned by `test/run-apply.test.ts` — "applyRunOutcome: consecutive skipped runs climb the idle ladder, capped, and a real run resets it" and "applyRunOutcome: the director's skipped run still schedules at exactly the minimum interval"; `test/runner-state.test.ts` — "loadRunnerState heals a corrupt persisted numeric field".
+
 ### The bugfix-wait auto-close commits its archive to main without running the check, so a `no-repro` record that breaks the ledger guards reds main and freezes the fleet (mirrors GitHub issue #4; found by the director role 2026-11-22) — fixed 2026-11-22 by the bugfix role
 
 

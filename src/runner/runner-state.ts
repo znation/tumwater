@@ -137,6 +137,12 @@ export interface RunnerState {
    * never warns (unlike consecutiveErrors/quietKillStreak). Reset by any completed result
    * other than `no_change`. Absent on states written before the field existed — reads as 0. */
   noChangeStreak?: number;
+  /** Consecutive runs that ended `skipped` — the run declined to do anything (nothing worth
+   * doing, a deliberate deferral, a skip gate). Escalates the skipped arm's clock: the role
+   * that keeps declining to run wakes on the idle ladder instead of its fixed per-role
+   * minimum, bounded by the ladder's cap. Reset by any completed result other than `skipped`.
+   * Absent on states written before the field existed — reads as 0. */
+  skippedStreak?: number;
   /** Where in its cycle the runner was when it last persisted state: "review" means the
    * interruption hit during the review gate, so any uncommitted worktree edits are the
    * reviewer's stray output (discarded on resume), not author work. Set + saved around the
