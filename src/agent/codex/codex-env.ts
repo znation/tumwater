@@ -11,9 +11,10 @@
  * per-token billing behind tumwater's back (decision 5). Everything else survives, including the
  * run marker and the PATH that carries the notes shim.
  *
- * The set half points Codex at a home of the team's own (`CODEX_HOME`) when one is configured, so
- * team sessions and trust entries stay out of the operator's `~/.codex` (finding 10). Unset, runs
- * keep the operator's home. */
+ * The set half points Codex at a home of the team's own (`CODEX_HOME`) when one is resolved, so
+ * team sessions and trust entries stay out of the operator's `~/.codex` (finding 10). Every
+ * caller resolves one — `codexHome` falls back to the per-team home under the team root when
+ * `backends.codex.configDir` is unset — so a run never inherits the operator's home. */
 import { scrubEnv } from "../env-scrub.js";
 
 export interface CodexEnvOptions {

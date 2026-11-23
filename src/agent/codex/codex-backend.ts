@@ -145,8 +145,12 @@ export const codexBackend: AgentBackend = {
     const base = backendRunEnv(run);
     // A team home of its own (`CODEX_HOME`) keeps team sessions and trust entries out of the
     // operator's `~/.codex` (design §4, finding 10); unset `configDir` defaults to the team
-    // home under the run's root instead (`codexHome`), so every run's env points at it.
-    const home = codexHome(resolvedBackendConfig(run.config, "codex"), teamRootOf(run.sessionDir));
+    // home under the run's root instead (`codexHome`), so every run's env points at it. The root
+    // is `nearestTumwaterRoot`, exactly as `prepare` resolves it: the write guard's trust is
+    // keyed by (home, definition), so the two must derive the same home, and teamRootOf's
+    // no-ancestor fallback would point a hand run's CODEX_HOME at a `.tumwater` in a shared
+    // directory (paths.ts's phantom-root caution) that `prepare` never keyed on.
+    const home = codexHome(resolvedBackendConfig(run.config, "codex"), nearestTumwaterRoot(run.sessionDir));
     const env = codexEnv(base, { home });
     const { sessionId, resumed } = resolveCodexSession(run, home);
     const thinking = run.config.thinking;
@@ -261,7 +265,7 @@ export const codexBackend: AgentBackend = {
 
   afterRun(run: AgentRunSpec, invocation: AgentInvocation, translator: CodexStreamTranslator): string[] {
     const ct = translator;
-    const home = codexHome(resolvedBackendConfig(run.config, "codex"), teamRootOf(run.sessionDir));
+    const home = codexHome(resolvedBackendConfig(run.config, "codex"), nearestTumwaterRoot(run.sessionDir));
     const id = invocation.sessionId ?? ct.sessionId?.();
     const fresh = invocation.sessionId === undefined;
     // The rollout is authoritative, so its loss is worth one warning: a fresh run keeps the

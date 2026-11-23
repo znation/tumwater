@@ -117,8 +117,8 @@ export async function checkCodexAuth(
  * is the operator's own `~/.codex` — when an explicitly configured dir resolves there (an unset
  * `backends.codex.configDir` defaults to the team's own `<root>/.tumwater/codex-home`) — naming
  * the shared trust entries, team sessions in the `codex resume` picker, any skills and a global
- * `AGENTS.md`. A home of the team's own reads ok, naming the resolved home. Stands down when no
- * seam routes to codex. */
+ * `AGENTS.md`. A home of the team's own reads ok, naming the resolved home, an unset `configDir`
+ * saying the row's home is the default team home. Stands down when no seam routes to codex. */
 export async function checkCodexHome(root: string): Promise<CheckOutcome | null> {
   const base = codexCheckBase(root);
   if (base === null || "level" in base) return base;
@@ -126,9 +126,7 @@ export async function checkCodexHome(root: string): Promise<CheckOutcome | null>
   const configDir = resolvedBackendConfig(base.config, "codex").configDir;
   if (home === path.join(os.homedir(), ".codex"))
     return warnOutcome(
-      configDir === undefined
-        ? "backends.codex.configDir is unset — the team codex home resolves to the user's own ~/.codex, so trust entries, team sessions in the resume picker, skills and a global AGENTS.md are shared, not isolated; set backends.codex.configDir to a home of the team's own"
-        : `team codex home ${home} is the user's own ~/.codex — trust entries, team sessions in the resume picker, skills and a global AGENTS.md are shared, not isolated; set backends.codex.configDir to a home of the team's own`,
+      `team codex home ${home} is the user's own ~/.codex — trust entries, team sessions in the resume picker, skills and a global AGENTS.md are shared, not isolated; set backends.codex.configDir to a home of the team's own`,
     );
   return configDir === undefined
     ? okOutcome(`team codex home: ${home} (unset backends.codex.configDir defaults to the team home)`)

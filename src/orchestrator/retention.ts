@@ -299,7 +299,8 @@ async function pruneOpencodeHalf(root: string, days: number, marker: SessionPrun
  * own: the rollout fallback unlinks only a home the prune pass saw, and only a session the
  * ledger recorded as expired, so it never deletes the operator's files. Only an explicitly
  * configured dir that resolves there makes the team home the operator's own `~/.codex`, so the
- * team is not isolated from it (doctor's codex-home row warns that case). */
+ * team is isolated by default and shares that home only when configured to (doctor's codex-home
+ * row warns that case). */
 async function pruneCodexHalf(root: string, days: number, marker: SessionPruneMarker, signal: AbortSignal): Promise<void> {
   marker.beginHalf("codex");
   const { config } = loadConfigSafe(root);

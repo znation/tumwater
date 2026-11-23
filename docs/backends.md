@@ -320,11 +320,11 @@ the team's trust entries, sessions and any skills out of `~/.codex`. It needs on
 dir: `CODEX_HOME=~/.codex-tumwater codex login --device-auth`. Never copy an `auth.json` between
 homes: ChatGPT refresh tokens rotate, so two homes sharing one token family log each other out —
 login a second home separately. Unset `configDir` defaults to a per-team home under the run's
-root (`<root>/.tumwater/codex-home`), so a run with no configured home never lands in the
-operator's `~/.codex`; only a config that names `~/.codex` (or a caller with no team root at
-hand) still reaches it. Doctor's `codex home` row warns when the resolved home is the user's
-own `~/.codex`, and otherwise reports the team home — including `(unset backends.codex.configDir
-defaults to the team home)`.
+root (`<root>/.tumwater/codex-home`), shared by every worktree of that root and needing its own
+one-time login, so a run with no configured home never lands in the operator's `~/.codex`; only a
+config that names `~/.codex` (or a caller with no team root at hand) still reaches it. Doctor's
+`codex home` row warns when the resolved home is the user's own `~/.codex`, and otherwise reports
+the team home — including `(unset backends.codex.configDir defaults to the team home)`.
 
 **Subscription billing only.** A ChatGPT login is subscription billing: codex runs report no cost,
 their tokens are shown in the report, and they feed the message-cap, not the USD cap. API-key

@@ -5254,7 +5254,7 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 
 ### INV-CE2: the doctor's codex-home row warns whenever the resolved team home is the operator's own `~/.codex`
 
-**Guarantee.** `checkCodexHome` compares the resolved team home (the `<root>/.tumwater/codex-home` default when `backends.codex.configDir` is unset, or the expanded configured dir) against the operator's personal `~/.codex`. An equal home (only ever an explicitly configured dir that resolves there, since the unset default is the team's own home) warns naming the shared trust entries, sessions, skills and `AGENTS.md`; any other home reads ok naming it. An unisolated team home is thus a visible doctor row, never a silent default.
+**Guarantee.** `checkCodexHome` compares the resolved team home (the `<root>/.tumwater/codex-home` default when `backends.codex.configDir` is unset, or the expanded configured dir) against the operator's personal `~/.codex`. An equal home (only ever an explicitly configured dir that resolves there, since the unset default is the team's own home) warns naming the shared trust entries, sessions, skills and `AGENTS.md`; any other home reads ok naming it, an unset `configDir` saying so in the row. An unisolated team home is thus a visible doctor row, never a silent default.
 
 **Binds.** `src/doctor/doctor-codex-checks.ts` (`checkCodexHome`), `src/agent/codex/codex-catalog.ts` (`codexHome`).
 
