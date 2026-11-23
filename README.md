@@ -11,7 +11,7 @@ tumwater start --gui
 
 Then open http://127.0.0.1:7180 to watch the team work. Requires Node 20.3+ on macOS or Linux.
 
-![The tumwater web dashboard running tumwater's own team: a sidebar with the project, its team status, and the Team, History, Usage, Failures, and Settings views, with today's spend against the cap and the pause control; the director prompt box; and today's progress (roles running, commits merged, runs, open backlog) above the roles grouped by what they are doing, each with its status, current work or last result, spend, and controls](docs/gui.png)
+![The tumwater web dashboard running tumwater's own team: a sidebar with the project, its team status, and the Team, History, Usage, Failures, Pending, and Settings views, with today's spend against the cap and the pause and stop-later controls; the director prompt box; and today's progress (roles running, commits merged, runs, open backlog) above the roles grouped by what they are doing, each with its status, current work or last result, spend, and controls](docs/gui.png)
 
 > ### ⚠️ Warning: tumwater eats tokens
 >
