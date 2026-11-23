@@ -44,7 +44,8 @@ import { ERROR_STORM_QUIET, type ErrorStorm } from "../team/team-error-storm.js"
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../team/team-failure-spread.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { instancePauseKey, runnerEnabled } from "../roles/runner-ids.js";
-import { publishInfoFields, type OrchestratorInfo } from "../team/team-orchestrator-info.js";
+import { publishInfoFields } from "../team/team-orchestrator-info.js";
+import type { OrchestratorInfo } from "../team/team-orchestrator-info-types.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
 
 /** The orchestrator poll loop's team-wide gates and alarms, as one family: the daily cost budget

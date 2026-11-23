@@ -18,7 +18,7 @@ import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import type { OrchestratorInfo } from "../src/team/team-orchestrator-info.js";
+import type { OrchestratorInfo } from "../src/team/team-orchestrator-info-types.js";
 
 /** A minimal runner stand-in, as in test/gate-polls.test.ts: applyBudgetGateWiring assigns its
  * config, sets the cap flag, and — on a budget reopen — matches runModelPair() against the

@@ -34,7 +34,7 @@ import { configForRole, reviewConfig, seamPairName, type ResolvedModelConfig } f
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
-import type { OrchestratorInfo } from "../src/team/team-orchestrator-info.js";
+import type { OrchestratorInfo } from "../src/team/team-orchestrator-info-types.js";
 import { readOrchestratorInfo, writeOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { checkFallbackModel, checkModelChecks } from "../src/doctor/doctor-fallback-checks.js";
 import { teamAlerts } from "../src/ui/team-alerts.js";

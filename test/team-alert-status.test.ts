@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildGithubScanAlerts, buildStatusAlerts } from "../src/ui/team-alert-status.js";
 import { formatClock } from "../src/text/datetime.js";
-import type { ModelCheckInfo } from "../src/team/team-orchestrator-info.js";
+import type { ModelCheckInfo } from "../src/team/team-orchestrator-info-types.js";
 import type { StatusSnapshot } from "../src/status/status-types.js";
 
 // team-alert-status.ts's buildStatusAlerts: the status and role-phase alerts build the

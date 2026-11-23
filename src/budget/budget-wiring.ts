@@ -15,7 +15,7 @@ import type {
 } from "../config/config-schema.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
-import type { ChainTierInfo, OrchestratorInfo } from "../team/team-orchestrator-info.js";
+import type { ChainTierInfo, OrchestratorInfo } from "../team/team-orchestrator-info-types.js";
 import { publishInfoFields } from "../team/team-orchestrator-info.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";

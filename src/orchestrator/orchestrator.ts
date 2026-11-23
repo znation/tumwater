@@ -1,5 +1,6 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { readOrchestratorInfo, writeOrchestratorInfo, type OrchestratorInfo } from "../team/team-orchestrator-info.js";
+import { readOrchestratorInfo, writeOrchestratorInfo } from "../team/team-orchestrator-info.js";
+import type { OrchestratorInfo } from "../team/team-orchestrator-info-types.js";
 import { runnerIds } from "../roles/runner-ids.js";
 import { newLiveConfigReload } from "./config-live.js";
 import {

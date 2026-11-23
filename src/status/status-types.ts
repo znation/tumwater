@@ -13,7 +13,7 @@ import type {
   OrchestratorInfo,
   PermitSnapshot,
   SlotPoolSnapshot,
-} from "../team/team-orchestrator-info.js";
+} from "../team/team-orchestrator-info-types.js";
 import type { SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import type { MergeInFlight } from "../merge/merge-slot.js";
 import type { MainCheckStatus } from "./status-main-check.js";

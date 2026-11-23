@@ -11,7 +11,7 @@ import { modelPairName, pairDailyCost } from "../budget/budget.js";
 import { usd, usdCap } from "../text/format.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
-import type { ModelCheckInfo } from "../team/team-orchestrator-info.js";
+import type { ModelCheckInfo } from "../team/team-orchestrator-info-types.js";
 import { modelCheckFault } from "../model-check/model-check.js";
 import { joinWithMore } from "../text/text.js";
 

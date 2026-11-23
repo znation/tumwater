@@ -4,7 +4,7 @@ import { compactTokens, usd } from "../text/format.js";
 import { clockHm, formatAge, formatTimestamp, humanAgo, nextRunPhrase, secondsUntil } from "../text/datetime.js";
 import { windowLabel } from "../agent/subscription-account.js";
 import { backendDefaultLabel, backendDisplayName } from "../agent/backend-traits.js";
-import type { ChainTierInfo } from "../team/team-orchestrator-info.js";
+import type { ChainTierInfo } from "../team/team-orchestrator-info-types.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import type { RoleViewPayload } from "./role-view-types.js";

@@ -10,7 +10,7 @@ import type { FallbackModelConfig, ModelTier } from "../config/config-schema.js"
 import type { ClaudeBilling } from "../agent/claude/claude-account.js";
 import type { CoverageRow } from "../observer/qa-coverage.js";
 import type { FilingRow } from "../observer/feedback-filings.js";
-import type { ChainTierInfo } from "../team/team-orchestrator-info.js";
+import type { ChainTierInfo } from "../team/team-orchestrator-info-types.js";
 
 export interface RoleViewPayload {
   /** The role's id as the caller named it. */

@@ -16,7 +16,7 @@ import type { ModelCheckVerdict } from "../src/model-check/model-check-probe.js"
 import type { ResolvedModelConfig } from "../src/config/config-views.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { piLogPath } from "../src/paths.js";
-import type { OrchestratorInfo } from "../src/team/team-orchestrator-info.js";
+import type { OrchestratorInfo } from "../src/team/team-orchestrator-info-types.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { initializedRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";

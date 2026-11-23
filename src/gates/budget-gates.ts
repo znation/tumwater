@@ -35,7 +35,7 @@ import { piPairFree, readPiProviders, type PiModelDef } from "../pi/pi-models.js
 import { readOpencodeCache, type OpencodeCatalogCache } from "../agent/opencode/opencode-catalog.js";
 import { readAccount, type SubscriptionAccount } from "../agent/subscription-account.js";
 import type { RunnerState } from "../runner/runner-state.js";
-import type { ChainTierInfo } from "../team/team-orchestrator-info.js";
+import type { ChainTierInfo } from "../team/team-orchestrator-info-types.js";
 import {
   budgetFallbackView,
   chainInfo,

@@ -4,7 +4,8 @@
  * in this order every poll — requests and watch, gates, redeploy, merge drain, scheduling,
  * reserve and exit — and moved here without reordering any of them. */
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { publishInfoFields, type OrchestratorInfo } from "../team/team-orchestrator-info.js";
+import { publishInfoFields } from "../team/team-orchestrator-info.js";
+import type { OrchestratorInfo } from "../team/team-orchestrator-info-types.js";
 import { configuredInstances, runnerEnabled } from "../roles/runner-ids.js";
 import type { newLiveConfigReload } from "./config-live.js";
 import type { FallbackBreakerPolicy } from "../budget/fallback-breaker.js";

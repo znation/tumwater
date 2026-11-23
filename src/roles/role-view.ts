@@ -42,7 +42,8 @@ import { readRegularTextOrNull, statOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
 import { finiteNumber, objectOrEmpty } from "../files/json-object.js";
 import { canonicalRoleId } from "./legacy-role-ids.js";
-import { orchestratorAlive, readOrchestratorInfo, type ChainTierInfo } from "../team/team-orchestrator-info.js";
+import { orchestratorAlive, readOrchestratorInfo } from "../team/team-orchestrator-info.js";
+import type { ChainTierInfo } from "../team/team-orchestrator-info-types.js";
 
 /** The roles.<base>.<field> value the FILE actually holds, or undefined when the file never
  * set that field. Needed only for the seeded per-role fields: overlayDefaults fills every

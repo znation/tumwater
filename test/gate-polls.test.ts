@@ -24,7 +24,7 @@ import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
 import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
-import type { OrchestratorInfo } from "../src/team/team-orchestrator-info.js";
+import type { OrchestratorInfo } from "../src/team/team-orchestrator-info-types.js";
 import { ERROR_STREAK_BREAKER } from "../src/run/run-apply.js";
 import { runnerPaused } from "../src/roles/runner-ids.js";
 import { pausedRoles as pausedRoleMarkers } from "../src/team/team-state.js";

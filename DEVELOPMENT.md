@@ -363,8 +363,10 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   held beside the gate family: which pairs the team can run on, the probes it launches, the roles
   held while a pair is unchecked or failed, and the `modelChecks` block observers read).
 - `src/team/`: team-wide state (`team-state.ts` — the pause markers and their writers), the
-  provider/kind hold, the team polls, the failure spread and error-storm alarms, and the
-  worktree reclaim pass (`team-reclaim.ts`).
+  provider/kind hold, the team polls, the failure spread and error-storm alarms, the orchestrator
+  info file's published shape as its own contract file (`team-orchestrator-info-types.ts`, the
+  same `status-types.ts` pattern above, so the separate-process observers read the shapes without
+  importing the reader/writer), and the worktree reclaim pass (`team-reclaim.ts`).
 - `src/scheduling/`: scheduling policy — per-role waits between runs (backoff), the quiet-hours
   parser, multi-instance claims, the `--once` round, and the poll's per-runner pass: the shared
   scope precompute (`scope.ts`), the skip decision (`skip.ts`), and the post-gate admission

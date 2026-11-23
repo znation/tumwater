@@ -5,8 +5,8 @@ import {
   publishInfoFields,
   readOrchestratorInfo,
   writeOrchestratorInfo,
-  type OrchestratorInfo,
 } from "../src/team/team-orchestrator-info.js";
+import type { OrchestratorInfo } from "../src/team/team-orchestrator-info-types.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
