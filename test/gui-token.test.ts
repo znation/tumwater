@@ -53,6 +53,18 @@ test("the token gate returns 401 JSON for missing, wrong, and empty credentials"
         `${route}: the wrong-token and no-token bodies must differ`,
       );
 
+      // The motivating case: a browser reopening the URL `tumwater gui` printed after the
+      // token rotated carries the stale credential in the query string, so the query
+      // spelling must take the mismatch arm too, not only the header spelling.
+      const staleQuery = await fetch(`${base + route}?token=stale`);
+      assert.equal(staleQuery.status, 401, `${route}: stale query credential`);
+      const staleQueryBody = (await staleQuery.json()) as { error: string };
+      assert.match(
+        staleQueryBody.error,
+        /does not match/,
+        `${route}: a stale ?token= from a printed URL must be named a mismatch, not a missing token`,
+      );
+
       const empty = await fetch(base + route, { headers: { authorization: "Bearer " } });
       assert.equal(empty.status, 401, `${route}: empty credential`);
       // An empty credential is no credential: it takes the missing arm, not the mismatch arm.
