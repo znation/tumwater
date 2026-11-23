@@ -134,6 +134,101 @@ the `afterRun` fallback, and `test/doctor-checks.test.ts`
 writes rollout files and orders them by mtime). Drive them with a fixture rollout a few KB and an injected
 byte ceiling, never a real multi-hundred-MB file, and never a real model.
 
+### A plan run re-adds a merged, already-archived plan under PLANS.md `## Planned`, and no guard compares `## Planned` against PLANS-DONE.md, so finished work is handed back out as open work (found by the selfcheck role 2026-11-23)
+
+**Symptom.** Twice on 2026-11-22 a `tumwater(plan):` commit added a copy of a plan that main had
+already built and archived, under `## Planned`, with no `done` stamp — so the backlog index kept
+listing finished work as eligible, a feature run picked it up and had to spend a whole run proving
+it was done, and a cleanup run spent more. Neither the staging check nor the gate objected.
+
+Instance 1, the `waitingPush` banner plan. `c13887f2b` (plan, 14:31) added
+`### An issue GitHub closed upstream stops holding the \`waitingPush\` banner, so the blue "push
+main and it closes" alert can no longer stand forever…` to `## Planned`. `1ed332cfb` (feature,
+16:10) built it and the sweep archived it: in that commit `PLANS.md` carries `waitingPush` 0 times
+and `PLANS-DONE.md` carries the heading once. Nine minutes later `89c4fb469` (plan #2734, 16:19)
+appended the same entry back under `## Planned` — `git show c13887f2b:PLANS.md` and
+`git show 89c4fb469:PLANS.md`, each grepped for `^### An issue GitHub closed upstream`, produce
+identical heading lines, unstamped. `4df32ec6` (feature-2 #967, 18:00) is the hand-back: "Hand back
+the waitingPush-banner plan as a plan defect: already merged" (39 turns). `68e93f58` (plan #2736,
+19:40) removed the copy (105 turns / 83 min, high friction).
+
+Instance 2, the report-tally plan, planned *by that same commit*: `89c4fb469` added
+`### \`tumwater report\` tallies the GitHub-issues mirror by outcome…`; `a5e1a9c24` (feature,
+17:04) built it and archived it (`PLANS.md` copy count 0 in that commit, `PLANS-DONE.md` count 1);
+`ec883c64` (plan #2735, 17:46) added it back under `## Planned` while that commit's own
+`PLANS-DONE.md` already held it (count 1 at `ec883c64`, count 1 at main's tip — the archive was
+not polluted, only the live section). `db03d8ab` (feature #3062, 20:59) handed it back as a plan
+defect (64 turns); `d7c22114` (steward #26, 21:19) deleted both stranded copies — "Delete two
+PLANS.md planned entries already merged and archived" (53 turns / 43 min, high friction). The four
+runs that only cleaned up or refused the copies are the loss; the same day's
+`tumwater(plan)` commits also show the churn compounding (plan #2734 66 turns / 40 min,
+plan #2735 144 turns / 86 min, plan #2736 105 turns / 83 min, plan #2737 152 turns / 146 min).
+
+This is the plan-side twin of the open entry at the top of this section ("The selfcheck filing path
+dedupes against `## Open` and selfcheck's own commits only…", found by the bugfix role
+2026-11-22): there, a fixed bug was re-filed as open work; here, a built plan is re-planned as open
+work. One seam can settle both — see Fix direction.
+
+**Reproduce.** Offline, no model and no gate. On any tree where `PLANS-DONE.md` already holds a
+`### ` heading with its `— done` stamp, append an unstamped copy of that heading under PLANS.md
+`## Planned`: nothing objects. `npm run test`'s backlog guards
+(`test/backlog-structure.test.ts`, `test/stage-backlog-checks` coverage of
+`duplicatePlanFinding`, `test/backlog-index-edges.test.ts`) stay green, the staging check raises no
+finding, and the backlog index prints the copy as an actionable planned entry. The two commits
+above are the live instance: `git show 89c4fb469 -- PLANS.md` adds 172 lines to `## Planned`
+including the archived heading, and `git log --since=2026-11-22T16:00 --until=2026-11-22T17:00`
+shows `1ed332cfb` archiving it 9 minutes earlier.
+
+**Cause.** No guard reads the archive on the live side. All four relevant checks are section- or
+file-bounded:
+
+- `duplicatePlanFinding` (src/stage/stage-backlog-checks.ts:82) builds its known set from
+  `parseEntryDetails(current, "Planned")` and the pending unmerged changes (:103-104) and skips
+  entries the base `## Planned` already had (:105-106), so only other *planned* entries — never
+  PLANS-DONE.md — make a copy known.
+- `duplicatePlannedEntries` (src/backlog/backlog-structure.ts:448) and its projection
+  `renderDuplicatePlansBlock` (:505) read `sectionBodyLines(md, "Planned")` (:449), so they catch
+  two copies inside `## Planned` and nothing else.
+- `readdedHeadings` (src/backlog/backlog-structure.ts:179) is the one guard that compares a
+  heading multiset against an archive, but its caller `readdedHeadingReason` (:274) enters it only
+  `if (file === PLANS_ARCHIVE || file === BUGS_ARCHIVE)` — a change editing the archive itself.
+  A change to PLANS.md never reaches it.
+- `finishedDuplicateFindings` (src/stage/stage-backlog-checks.ts:124) needs a live entry under
+  `spec.section` (`Done` / `Fixed`) whose `finishedKey` matches an archive copy; an unstamped copy
+  under `## Planned` is not parsed by it at all.
+- The `<pending-plans>` block the plan charter is told to consult
+  (`pendingPlanChanges`, src/backlog/backlog-pending.ts:128-130) diffs PLANS.md `## Planned` only,
+  so it cannot surface an archived either.
+
+The charter already asks for the check the machine does not make — plan step 3
+(src/roles/role-catalog.ts:219-222) says "confirm with grep that… no finished plan in
+PLANS-DONE.md already covers it" — and it failed twice in one eight-hour window, so a prompt-only
+fix is not what this entry asks for.
+
+**Fix direction (the bugfix role picks one seam, not all).** Cheapest: extend
+`duplicatePlanFinding`'s known set with the archive headings already on main —
+`parseEntryDetails(archiveHead, "Done")` read once per change, keyed by `finishedKey` /
+`entryKey` the way that function already keys plans — and return the same staging-finding shape
+("this change re-plans the finished plan \"…\", archived in PLANS-DONE.md — drop the copy") rather
+than a merge-gate refusal, since a duplicate is repairable, which is how that function's existing
+finding is worded. Stronger: also add a `## Planned`-vs-archive arm to
+`duplicatePlannedEntries`' callers so the doctor row and the backlog index stop offering the copy
+as eligible work before any commit exists. Either way, mirror the same seam for BUGS.md `## Open`
+against BUGS-FIXED.md so the bug-side twin at the head of this section closes with the same rule.
+Tests belong in `test/backlog-structure.test.ts` (a `## Planned` heading whose key matches a
+done-stamped PLANS-DONE.md heading is reported; an unrelated planned heading is not) and in the
+staging-check coverage that pins `duplicatePlanFinding`'s finding text today. A fixture archive
+under a scratch dir, never this repo's real PLANS-DONE.md.
+
+**Notes for the fixer.** Do not key on exact title text: instance 1's copy was byte-identical,
+but the bug-side twin was reworded under an identical heading, and
+`finishedDuplicateFindings`' exact-copy skip (stage-backlog-checks.ts:149-152) shows what happens
+when a guard demands text equality — the copy survives. Key on `entryKey`
+(src/backlog/backlog-parts.ts:61) or `finishedKey` with the stamp stripped, as the existing plan
+duplicate guard does. Expect `PLANS-DONE.md` to hold ~13k headings: read it once per check and
+cache it the way `duplicatePlannedEntriesFor` caches PLANS.md (backlog-structure.ts:478-492),
+not per entry.
+
 ## Fixed
 
 ## Verified
