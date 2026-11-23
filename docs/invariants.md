@@ -5114,7 +5114,9 @@ missing parity record.
 **Binds.** `src/observer/qa-coverage.ts` (`newestExercise`, `qaCoverageStalled`,
 `QA_COVERAGE_STALE_MS`), `src/doctor/doctor-project-checks.ts` (`checkQaCoverage`).
 
-**Pinned by.** `test/qa-coverage.test.ts` — the `qaCoverageStalled` cases (empty false, boundary
+**Pinned by.** `test/qa-coverage.test.ts` — the `newestExercise` cases (empty ledger null, greatest
+`lastRunAt` wins whatever its insertion position, a tie keeps the first entry that reached it) and
+the `qaCoverageStalled` cases (empty false, boundary
 false, one past true, mixed fresh+old false, malformed-only reads empty); `test/doctor-checks.test.ts`
 — "checkQaCoverage reads ok for a missing or fresh ledger and warns once stale past the window".
 

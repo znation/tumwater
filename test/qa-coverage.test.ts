@@ -5,6 +5,7 @@ import {
   QA_FLOWS,
   QA_COVERAGE_STALE_MS,
   coverageRows,
+  newestExercise,
   qaCoverageStalled,
   readQaCoverage,
   recordFlow,
@@ -160,6 +161,29 @@ test("qaCoverageStalled is false for an empty ledger and true only once the newe
     JSON.stringify({ flows: { status: { lastRunAt: "soon", result: "passed" } } }),
   );
   assert.equal(qaCoverageStalled(readQaCoverage(root), NOW), false);
+});
+
+test("newestExercise names the flow with the greatest lastRunAt, null for an empty ledger, first entry on a tie", () => {
+  // An empty ledger yields no flow name at all — the arm the doctor's "no qa flow coverage
+  // recorded yet" row reads.
+  assert.equal(newestExercise({}), null);
+  // The greatest stamp wins regardless of insertion order: `logs`, one hour old, beats `status`
+  // (one day) and `gui` (two days), so a fold that took the last or the first entry instead of
+  // the newest would name the wrong flow on the doctor's `qa coverage` row.
+  const ledger: QaCoverage = {
+    status: { lastRunAt: NOW - DAY, result: "passed" },
+    gui: { lastRunAt: NOW - 2 * DAY, result: "passed" },
+    logs: { lastRunAt: NOW - HOUR, result: "passed" },
+  };
+  assert.deepEqual(newestExercise(ledger), { flow: "logs", lastRunAt: NOW - HOUR });
+  // A tie keeps the FIRST entry that reached the newest time — the rule both old hand-rolled
+  // folds shared and the helper now owns: `status` is inserted before `prompt` and both carry
+  // NOW, so `status` is the named flow. A `>=` comparison would name `prompt` instead.
+  const tie: QaCoverage = {
+    status: { lastRunAt: NOW, result: "passed" },
+    prompt: { lastRunAt: NOW, result: "bug", summary: "prompt --list misnumbered" },
+  };
+  assert.deepEqual(newestExercise(tie), { flow: "status", lastRunAt: NOW });
 });
 
 test("renderCoverageBlock leads with never-exercised flows, then oldest-first", () => {
