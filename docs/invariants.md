@@ -599,7 +599,8 @@ wait the admission bought, redning the e2e tier for a verdict the starved host n
 (BUGS.md 2026-11-12, 2026-11-14, 2026-11-17). Even a host under the bar at those point-in-time
 checks can re-saturate INSIDE the 150 s spawn wait, and only that wait (a real child scheduled on
 a host only stall postpones) is the one the bound exists for — so a spawn wait run through
-`waitForQuietHost` re-samples the host every poll and defers the moment a sample crosses the same
+`waitForQuietHost` re-samples the host on its sampling cadence (every 2 s by default) and defers
+the moment a sample crosses the same
 bar, instead of reddening a verdict the starved host never fairly reached (BUGS.md 2026-11-20). The
 headroom is one fixed fraction, not a knob, and no production budget behaviour depends on it.
 

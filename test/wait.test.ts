@@ -133,7 +133,10 @@ test("waitForQuietHost defers the moment a mid-wait sample crosses, without livi
     },
   );
   assert.equal(result.deferred, true, "a crossing sample mid-wait defers, never a verdict");
-  assert.ok(clock.now() <= 120_000, `deferred without living the wait; saw ${clock.now()}`);
+  // The plan's criterion, read off the inputs rather than the code: the sampler crosses at 60 s
+  // and the gate samples at most once per pollEvery (the 2 s default), so a correct gate defers
+  // by 62 s — never after living through the 120 s budget it was supposed to cut short.
+  assert.ok(clock.now() <= 62_000, `deferred no later than the post-cross sample; saw ${clock.now()}`);
   if (result.deferred) {
     assert.equal(result.load1, 3.6);
     assert.equal(result.load5, 3.6);
