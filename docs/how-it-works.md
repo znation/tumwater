@@ -750,7 +750,9 @@ stale settings.
   because the dashboard never forces. Its `GitHub issues` card reads the mirror's ledger file
   through `GET /api/issues` — the browser twin of `tumwater issues`, the same read and the same
   numbering — naming the mirror's counts and each issue's number, title, trust, mirror state and
-  age; it never calls `gh`, since the hourly scan and the doctor's check are `gh`'s only callers.
+  age; it never calls `gh` — in `src/`, `gh` is spawned at one site (`src/github/gh.ts`) and only
+  the hourly scan, the close pass it runs, and the doctor's `github issues` and `feedback filing`
+  rows hold a runner.
 - Review runs show as `── review @ <ts> ──` in role transcripts.
 - Runtime state lives in `.tumwater/` (gitignored). Durable state lives in tracked markdown and
   `tumwater.json`.
