@@ -12,6 +12,7 @@ import { PRINCIPLES_MAX_CHARS } from "../src/prompt/principles.js";
 import { BRIEF_TEXT_MAX_CHARS, PROMPT_END, PROMPT_START } from "../src/brief/brief.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { checkBuildCheck } from "../src/doctor/doctor-project-checks.js";
+import { checkSalvagePatches } from "../src/doctor/doctor-salvage.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { snapshotWith } from "./fixtures/status-fixtures.js";
 import type { StatusSnapshot } from "../src/status/status-types.js";
@@ -453,8 +454,13 @@ test("the standing amber alerts raise from the snapshot's raw flags, worded like
   // salvage-patches: an operator-kept patch under .tumwater/salvage/ raises the alert with the
   // doctor row's detail; none raises nothing.
   fs.mkdirSync(salvageDir(root), { recursive: true });
-  fs.writeFileSync(path.join(salvageDir(root), "a.patch"), "body");
-  const salvage = has({ salvagePatches: [{ position: 1, file: "a.patch", savedAt: Date.now(), bytes: 4 }] }, "salvage-patches");
+  const keptPatch = path.join(salvageDir(root), "a.patch");
+  fs.writeFileSync(keptPatch, "body");
+  // An hour old, so the row's age and countdown buckets stay put across the row's own re-read
+  // below (a just-written patch's `oldest 0m` would age mid-test).
+  const savedAt = Date.now() - 3_600_000;
+  fs.utimesSync(keptPatch, new Date(savedAt), new Date(savedAt));
+  const salvage = has({ salvagePatches: [{ position: 1, file: "a.patch", savedAt, bytes: 4 }] }, "salvage-patches");
   assert.ok(salvage, "a salvagePatches snapshot raises the standing salvage-patches alert");
   assert.equal(salvage?.tone, "amber");
   assert.equal(salvage?.title, "Salvaged workspace patches kept for you");
@@ -462,6 +468,31 @@ test("the standing amber alerts raise from the snapshot's raw flags, worded like
   assert.match(salvage?.detail ?? "", /1\. a\.patch/);
   assert.match(salvage?.detail ?? "", /tumwater salvage --drop/);
   assert.ok(!has({}, "salvage-patches"), "no kept patch raises nothing");
+
+  // The alert is the row's twin down to the retention clause: it names the CONFIGURED window the
+  // arm passes, in the same wording, including the off form (the follow-up the dashboard
+  // salvage-View plan recorded — the alert counted patches but never said one was going stale).
+  assert.equal(
+    salvage?.detail,
+    checkSalvagePatches(root, config.sessionRetentionDays).detail,
+    "the alert detail is the row's warn sentence whole for the same tree and window",
+  );
+  assert.match(salvage?.detail ?? "", /; session retention prunes a patch older than 7d, so the oldest goes in 7d/);
+  const offConfig = defaultConfig();
+  offConfig.sessionRetentionDays = 0;
+  const offSnap = { ...base, salvagePatches: [{ position: 1, file: "a.patch", savedAt, bytes: 4 }] };
+  const offAlert = teamAlerts(offSnap, [], [], Date.now(), undefined, null, {
+    snap: offSnap as StatusSnapshot,
+    config: offConfig,
+    root,
+  }).find((a) => a.key === "salvage-patches");
+  assert.equal(
+    offAlert?.detail,
+    checkSalvagePatches(root, 0).detail,
+    "the off window rides the alert too, twin to the row",
+  );
+  assert.match(offAlert?.detail ?? "", /; session retention is off, so these patches are never pruned/);
+  assert.doesNotMatch(offAlert?.detail ?? "", /goes in /, "the off window names no countdown");
 });
 
 // The same alerts on the CLI surface: renderStatus composes the banners from the snapshot's

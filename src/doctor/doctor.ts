@@ -1,4 +1,4 @@
-import { loadConfigSafe } from "../config/config.js";
+import { loadConfigSafe, defaultConfig } from "../config/config.js";
 import { envPath } from "../files/files.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../team/team-orchestrator-info.js";
 import { type ProcessProbe, systemProcessProbe } from "../process/process-table.js";
@@ -222,7 +222,15 @@ function doctorSteps(
     { name: "merge lock", run: () => checkMergeLock(root) },
     { name: "workspaces", run: () => checkWorktreePool(root) },
     { name: "parallel instances", run: () => checkWorkInstances(root, config) },
-    { name: "salvage patches", run: () => checkSalvagePatches(root) },
+    // The row names the retention window the team runs, so it reads the loaded config the way
+    // the contention rows read maxConcurrentChecks: a config that will not load stays undefined
+    // and the row falls back to the default window — the `init` row and the standing
+    // config-problem alert are the surfaces that name a config gone bad.
+    {
+      name: "salvage patches",
+      run: () =>
+        checkSalvagePatches(root, config?.sessionRetentionDays ?? defaultConfig().sessionRetentionDays),
+    },
     { name: "leftover role branches", run: () => checkLeftoverRoleBranches(root, config) },
     { name: "tumwater pins", run: () => checkTumwaterPins(root) },
     // The disk floor (plans/disk-floor.md, part 1/4): a broken config stays undefined (checkInit

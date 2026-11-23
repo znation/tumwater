@@ -129,12 +129,18 @@ function pushConfigProblemAlert(out: TeamAlert[], problem: string): void {
   });
 }
 
-// The doctor `salvage patches` row's warn detail names the count, the oldest patch's age
-// and the remedy, so the alert reuses it whole through the six shared doctor-twin arms.
-function pushSalvagePatchesAlert(out: TeamAlert[], root: string): void {
+// The doctor `salvage patches` row's warn sentence names the count, the oldest patch's age and
+// the remedy, so the alert reuses it whole through the six shared doctor-twin arms. It passes the
+// configured retention window to the row, so the alert names the same deadline the row does —
+// including the `sessionRetentionDays: 0` form that says these patches are never pruned.
+function pushSalvagePatchesAlert(
+  out: TeamAlert[],
+  root: string,
+  retentionDays: number,
+): void {
   pushDoctorTwinAlert(
     out,
-    checkSalvagePatches(root),
+    checkSalvagePatches(root, retentionDays),
     "salvage-patches",
     "Salvaged workspace patches kept for you",
   );
@@ -153,7 +159,7 @@ export function buildStandingAlerts(input: StandingAlertsInput): TeamAlert[] {
   if (snap.roleNotesOverCap && snap.roleNotesOverCap.length > 0)
     pushRoleNotesAlert(out, snap.roleNotesOverCap, root);
   if (snap.salvagePatches && snap.salvagePatches.length > 0)
-    pushSalvagePatchesAlert(out, root);
+    pushSalvagePatchesAlert(out, root, config.sessionRetentionDays);
   pushInstancePoolAlert(out, config);
   if (snap.configProblem) pushConfigProblemAlert(out, snap.configProblem);
   return out;

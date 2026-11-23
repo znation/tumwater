@@ -542,7 +542,10 @@ resolves both like any conflict. Edits nothing gives back (ones a run chose to d
 check's scratch files) are saved directly under `.tumwater/salvage/` for you to read. Those kept
 patches are surfaced until session retention prunes them: a doctor `salvage patches` row and the
 standing amber `salvage-patches` alert on `tumwater status` and the dashboard name them
-(capped, with a count of the rest), so work a run left behind is never silently discarded. Both
+(capped, with a count of the rest) and say how long the oldest has left before the pass reaches it
+— a countdown against the configured window, `at the next prune pass` once that deadline has
+passed, or that the patches are never pruned when the window is `0` — so work a run left behind is
+never silently discarded. Both
 kinds are deleted with the session store by the `sessionRetentionDays` pass, which also ages out
 each role's pi session files, its session ledgers and the full-output files kept for oversized
 tool results, and purges the expired OpenCode and Codex sessions each backend's ledger names. It

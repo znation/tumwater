@@ -96,7 +96,8 @@ import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { backdate } from "./helpers/backdate.js";
 import { atLocalTs as tsDaysAgo, dayKey } from "./helpers/oracles.js";
 import { withEnv, setEnv } from "./helpers/env.js";
-import { fakeBins, readyRepo } from "./fixtures/doctor-fixtures.js";
+import { fakeBins, noProcesses, readyRepo } from "./fixtures/doctor-fixtures.js";
+import { runDoctor } from "../src/doctor/doctor.js";
 import { withReadOnlyDir } from "./helpers/fs-faults.js";
 import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
@@ -789,13 +790,18 @@ test("checkSalvagePatches ok with no direct patch, warn naming count and age for
   const now = Date.now();
   // Missing salvage dir: ok, naming nothing kept.
   const absent = makeRepo();
-  assert.deepEqual(checkSalvagePatches(absent), { level: "ok", detail: "no salvaged workspace patches are kept for you" });
+  assert.deepEqual(checkSalvagePatches(absent, 7), { level: "ok", detail: "no salvaged workspace patches are kept for you" });
 
   // A patch waiting for a role's next run under pending/ is deliberately out of scope: ok.
   const pending = makeRepo();
   fs.mkdirSync(salvagePendingDir(pending, "feature"), { recursive: true });
   fs.writeFileSync(path.join(salvagePendingDir(pending, "feature"), "a.patch"), "pending");
-  assert.equal(checkSalvagePatches(pending).level, "ok");
+  assert.equal(checkSalvagePatches(pending, 7).level, "ok");
+  assert.equal(
+    checkSalvagePatches(pending, 7).detail,
+    "no salvaged workspace patches are kept for you",
+    "the ok sentence is byte-identical whatever the retention window is",
+  );
 
   // One direct patch: warn naming the count, the oldest patch's age, the patch under its
   // whole-list number, and the `tumwater salvage` remedy.
@@ -804,7 +810,7 @@ test("checkSalvagePatches ok with no direct patch, warn naming count and age for
   const file = path.join(salvageDir(warn), "a.patch");
   fs.writeFileSync(file, "patch body");
   fs.utimesSync(file, new Date(now - 3_600_000), new Date(now - 3_600_000));
-  const out = checkSalvagePatches(warn, now);
+  const out = checkSalvagePatches(warn, 7, now);
   assert.equal(out.level, "warn");
   assert.match(out.detail, /1 salvaged workspace patch kept for you/);
   assert.match(out.detail, /oldest 1h/);
@@ -824,11 +830,99 @@ test("checkSalvagePatches ok with no direct patch, warn naming count and age for
   const newer = path.join(salvageDir(two), "b.patch");
   fs.writeFileSync(newer, "newer patch body");
   fs.utimesSync(newer, new Date(now - 1_800_000), new Date(now - 1_800_000));
-  const twoOut = checkSalvagePatches(two, now);
+  const twoOut = checkSalvagePatches(two, 7, now);
   assert.equal(twoOut.level, "warn");
   assert.match(twoOut.detail, /2 salvaged workspace patches kept for you/);
   assert.match(twoOut.detail, /oldest 2h/);
   assert.match(twoOut.detail, /1\. a\.patch, 2\. b\.patch/);
+});
+
+// The row names the window it prunes on, not just that a deadline exists (the follow-up the
+// dashboard salvage-View plan recorded): one clause, phrased once, that `tumwater status`'s
+// standing alert copies whole.
+test("checkSalvagePatches names the retention window — a countdown ahead of the deadline, the next prune pass once it is due, and never pruned when the window is off", () => {
+  const now = Date.now();
+  const HOUR = 3_600_000;
+  /** A repo whose salvage dir holds one `a.patch` saved `savedAgo` ms before `now` — the mtime
+   * is the field both this row and the prune pass read. */
+  const onePatch = (savedAgo: number) => {
+    const root = makeRepo();
+    fs.mkdirSync(salvageDir(root), { recursive: true });
+    const file = path.join(salvageDir(root), "a.patch");
+    fs.writeFileSync(file, "patch body");
+    fs.utimesSync(file, new Date(now - savedAgo), new Date(now - savedAgo));
+    return root;
+  };
+
+  // A live window with the deadline ahead: the window in days plus a countdown for the oldest.
+  // A 1 h-old patch under a 1 d window has 23 h left, and the clause sits between the named
+  // patches and the remedy.
+  const ahead = checkSalvagePatches(onePatch(HOUR), 1, now);
+  assert.equal(ahead.level, "warn");
+  for (const phrase of [
+    "1 salvaged workspace patch kept for you",
+    "oldest 1h",
+    "1. a.patch",
+    "; session retention prunes a patch older than 1d, so the oldest goes in 23h",
+    "tumwater salvage --apply <n>",
+  ]) {
+    assert.ok(ahead.detail.includes(phrase), `the detail names ${phrase}`);
+  }
+  const ordered = [
+    "1 salvaged workspace patch kept for you",
+    "oldest 1h",
+    "1. a.patch",
+    "; session retention prunes a patch older than 1d, so the oldest goes in 23h",
+    "tumwater salvage --apply <n>",
+  ].map((p) => ahead.detail.indexOf(p));
+  assert.deepEqual(ordered, [...ordered].sort((a, b) => a - b), "the clause sits after the named patches, before the remedy");
+
+  // A disabled window states the threat is off outright, still as a warn, with no countdown.
+  const off = checkSalvagePatches(onePatch(HOUR), 0, now);
+  assert.equal(off.level, "warn", "a disabled window is information, not a new warning");
+  assert.match(off.detail, /; session retention is off, so these patches are never pruned/);
+  assert.doesNotMatch(off.detail, /goes in /, "a disabled window names no countdown");
+  assert.doesNotMatch(off.detail, /older than 0d/);
+
+  // A window the oldest patch has already outlived (a stopped team, a failed pass): the same
+  // window and "at the next prune pass" — never the 0s countdown humanUntil would clamp to.
+  const past = checkSalvagePatches(onePatch(48 * HOUR), 1, now);
+  assert.equal(past.level, "warn");
+  assert.match(past.detail, /; session retention prunes a patch older than 1d, so the oldest goes at the next prune pass/);
+  assert.doesNotMatch(past.detail, /goes in 0s/);
+  assert.doesNotMatch(past.detail, /goes in -/);
+
+  // The boundary: a patch exactly `retentionDays` days old sits at the pass's cutoff — the very
+  // next pass reaches it — so it reads the next-pass wording, never a `0s` countdown.
+  const due = checkSalvagePatches(onePatch(24 * HOUR), 1, now);
+  assert.match(due.detail, /goes at the next prune pass/);
+  assert.doesNotMatch(due.detail, /goes in 0s/);
+});
+
+// The row takes the window the team actually runs: the doctor passes the loaded config's
+// sessionRetentionDays, the same last-good/default fallback the contention rows use for
+// maxConcurrentChecks.
+test("the doctor salvage patches row reads the configured sessionRetentionDays and falls back to the default on an unloadable config", async () => {
+  const root = readyRepo();
+  const now = Date.now();
+  fs.mkdirSync(salvageDir(root), { recursive: true });
+  const file = path.join(salvageDir(root), "a.patch");
+  fs.writeFileSync(file, "patch body");
+  fs.utimesSync(file, new Date(now - 3_600_000), new Date(now - 3_600_000));
+  const rowOf = async (report: Awaited<ReturnType<typeof runDoctor>>) =>
+    report.checks.find((c) => c.name === "salvage patches");
+
+  writeConfig(root, { sessionRetentionDays: 0 });
+  const off = await rowOf(await runDoctor(root, fakeBins("git", "pi"), noProcesses, ["salvage patches"]));
+  assert.equal(off?.level, "warn");
+  assert.match(off?.detail ?? "", /; session retention is off, so these patches are never pruned/);
+  assert.doesNotMatch(off?.detail ?? "", /older than 7d/, "the configured 0 window, not the default 7d");
+
+  // A config that will not load is the `init` row's and the standing config-problem alert's to
+  // name; this row still answers with the default window rather than skipping itself.
+  writeMalformedJson(path.join(root, "tumwater.json"));
+  const fallback = await rowOf(await runDoctor(root, fakeBins("git", "pi"), noProcesses, ["salvage patches"]));
+  assert.match(fallback?.detail ?? "", /; session retention prunes a patch older than 7d, so the oldest goes in 7d/);
 });
 
 test("checkEventLog fails an events.jsonl whose permissions deny reading", { skip: runningAsRoot() }, () => {
