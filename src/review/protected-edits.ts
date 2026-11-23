@@ -41,15 +41,18 @@ export async function briefEditReason(
  * editing: the brief text block of a brief file (changed, removed, or the file deleted —
  * a block that only moves passes), or PRINCIPLES.md from a role other than director or
  * steward. undefined when neither happened. Reads the worktree and the change's merge-base
- * like backlogStructureReason; a missing file reads as empty and never throws. */
+ * like backlogStructureReason; a missing file reads as empty and never throws. `baseRev` is the
+ * change's base revision, resolved here when the caller has not resolved it already (the stage
+ * check resolves it once for all of its checks). */
 export async function protectedEditReason(
   wt: string,
   mainBranch: string,
   files: string[],
   role: string,
+  baseRev?: string,
 ): Promise<string | undefined> {
-  const baseRev = await changeBaseRev(wt, mainBranch);
-  const brief = await briefEditReason(wt, baseRev, files);
+  const rev = baseRev ?? (await changeBaseRev(wt, mainBranch));
+  const brief = await briefEditReason(wt, rev, files);
   if (brief !== undefined) return brief;
   if (files.includes("PRINCIPLES.md") && !PRINCIPLES_ROLES.has(baseRoleOf(role)))
     return `PRINCIPLES.md is edited by the ${role} role — only the director and steward roles may edit it; record an objection in PLANS.md instead and revert the edit`;

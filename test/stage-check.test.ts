@@ -15,7 +15,7 @@ import {
   ungroundedRefusalFinding,
 } from "../src/stage/stage-backlog-checks.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { commitIn, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { commitIn, loggingGit, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Unit coverage for src/stage/stage-check.ts (PLANS.md "Pre-queue self-check, part 1/2"):
@@ -229,6 +229,39 @@ test("a changed file still holding a conflict marker yields the conflict finding
 
 test("a git failure yields no findings instead of throwing", async () => {
   assert.deepEqual(await stageCheckFindings(tmpdir("stage-check-norepo-"), "main", "feature"), []);
+});
+
+test("one stage check resolves the merge-base once and re-reads no base file twice", async () => {
+  // The change's base is the same revision for every finding, and the backlog files compared
+  // against it are the same handful, so one pass spawns `merge-base` once and `git show`
+  // once per base file (src/stage/stage-check.ts's StageBase). The 9.6 MB PLANS-DONE.md is
+  // among them, so a repeat would be the priciest of the duplicates.
+  const logFile = path.join(tmpdir("stage-check-gitlog-"), "git.log");
+  const restore = loggingGit(logFile);
+  try {
+    const { wt } = await repoWith({
+      "PLANS.md": doneMd(),
+      "PLANS-DONE.md": doneMd(planEntry("2026-10-19", "Old body.")),
+      "BUGS.md": BUGS_BASE,
+      "BUGS-FIXED.md": fixedBug("a"),
+    });
+    fs.writeFileSync(path.join(wt, "PLANS.md"), doneMd(planEntry("2026-10-20", "New body.")));
+    fs.writeFileSync(path.join(wt, "BUGS.md"), `${BUGS_BASE}\n### Another bug: details (found by qa 2026-10-06)\n\n**Symptom:** also broke.\n`);
+    fs.writeFileSync(path.join(wt, "QUESTIONS.md"), "# Questions\n\n## Open\n");
+    await stageCheckFindings(wt, "main", "feature");
+  } finally {
+    restore();
+  }
+  const lines = fs.readFileSync(logFile, "utf8").trim().split("\n");
+  const countOf = (match: (line: string) => boolean): number => lines.filter(match).length;
+  assert.equal(countOf((l) => l.startsWith("merge-base ")), 1);
+  // Every base read names the merge-base SHA, so a duplicated `show <sha>:<file>` would be a
+  // re-read of a file this pass already has.
+  const baseShows = lines.filter((l) => /^show [0-9a-f]{40}:/.test(l)).map((l) => l.slice(5));
+  assert.equal(baseShows.length, new Set(baseShows).size);
+  for (const file of ["PLANS.md", "PLANS-DONE.md", "BUGS.md", "BUGS-FIXED.md"]) {
+    assert.ok(baseShows.some((s) => s.endsWith(`:${file}`)), `no base read of ${file}`);
+  }
 });
 
 // PLANS.md "Pre-queue self-check, part 2/2": the git-level path checks appended to

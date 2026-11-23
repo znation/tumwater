@@ -94,23 +94,61 @@ const PLANS_ARCHIVE = finishedArchiveOf("PLANS.md").archive;
 /** Where finished bugs are archived. */
 const BUGS_ARCHIVE = finishedArchiveOf("BUGS.md").archive;
 
-/** `file` as it stands at the change's merge-base with `mainBranch`, or undefined when the
- * merge-base or the read fails. */
-const baseFileText = (wt: string, mainBranch: string, file: string): Promise<string | undefined> =>
-  changeBaseRev(wt, mainBranch).then((rev) => fileContentAt(wt, rev, file)).catch(() => undefined);
+/** The change's base reads for ONE stage check, made by `stageBaseFor`: `rev` is the change's
+ * merge-base with `mainBranch`, `at` is `file` as it stands at that revision, and `headOf` is
+ * `file` in the worktree. Both are memoized for the check, and `rev` is resolved lazily and at
+ * most once, because the findings below compare the same handful of backlog files against the
+ * same base: measured on this repo with a clean change over PLANS.md and BUGS.md, the check
+ * resolved the merge-base 7 times and re-read the same base revisions 6 extra times — two of
+ * them the 9.6 MB PLANS-DONE.md — costing 12 of the 27 git spawns it runs. The worktree side is
+ * memoized for the same reason: a clean change read PLANS.md and PLANS-DONE.md from disk twice
+ * each. The cache lives and dies inside one `stageCheckFindings` call, so no read can go stale:
+ * the checks never write these files, and a re-read at a later point in the same pass could only
+ * disagree with an earlier one. */
+interface StageBase {
+  /** The change's merge-base with `mainBranch` — one spawn, shared by every base read. */
+  rev(): Promise<string>;
+  /** `file` at `rev`, or undefined when the merge-base or the read fails — the guard every
+   * base read in this pass needs, so it lives on the read rather than at each call site. */
+  at(file: string): Promise<string | undefined>;
+  /** `file` as the worktree holds it. */
+  headOf(file: string): string;
+  /** `file`'s worktree text and its text at `rev`, fetched in one call: every ordering finding
+   * that compares a backlog file's head to its base reads both the same way, so the pair is
+   * read together rather than re-stated at each call site. */
+  both(file: string): Promise<{ head: string; base: string | undefined }>;
+}
 
-/** `file`'s worktree text and its text at the change's merge-base with `mainBranch`, fetched in
- * one call: every ordering finding that compares a backlog file's head to its base reads both the
- * same way, so the pair is read together rather than re-stated at each call site. `base` is
- * undefined when the merge-base or the read fails (the same guard `baseFileText` carries). */
-async function headAndBase(
-  wt: string,
-  mainBranch: string,
-  file: string,
-): Promise<{ head: string; base: string | undefined }> {
+/** The `StageBase` for `wt`'s change against `mainBranch`. */
+function stageBaseFor(wt: string, mainBranch: string): StageBase {
+  let revRead: Promise<string> | null = null;
+  const rev = (): Promise<string> => {
+    if (revRead === null) revRead = changeBaseRev(wt, mainBranch);
+    return revRead;
+  };
+  const atCache = new Map<string, Promise<string>>();
+  const at = (file: string): Promise<string | undefined> => {
+    let read = atCache.get(file);
+    if (read === undefined) {
+      read = rev().then((r) => fileContentAt(wt, r, file));
+      atCache.set(file, read);
+    }
+    return read.catch(() => undefined);
+  };
+  const headCache = new Map<string, string>();
+  const headOf = (file: string): string => {
+    let text = headCache.get(file);
+    if (text === undefined) {
+      text = readDirTextOrEmpty(wt, file);
+      headCache.set(file, text);
+    }
+    return text;
+  };
   return {
-    head: readDirTextOrEmpty(wt, file),
-    base: await baseFileText(wt, mainBranch, file),
+    rev,
+    at,
+    headOf,
+    both: async (file) => ({ head: headOf(file), base: await at(file) }),
   };
 }
 
@@ -125,49 +163,49 @@ const pushReason = async (findings: string[], check: Promise<string | undefined>
  * ungrounded refusal that cites another part, a duplicate `## Planned` entry the change adds
  * against main's planned set plus every unmerged change (part 5/6), and a newly retired plan
  * whose Retired note's evidence does not check out. */
-async function plansFindings(wt: string, mainBranch: string, pending: readonly PendingPlanChange[]): Promise<string[]> {
-  const { head, base } = await headAndBase(wt, mainBranch, "PLANS.md");
+async function plansFindings(wt: string, mainBranch: string, pending: readonly PendingPlanChange[], base: StageBase): Promise<string[]> {
+  const { head, base: baseMd } = await base.both("PLANS.md");
   // Finished plans are archived in PLANS-DONE.md (plans/backlog-archive.md): a requires clause
   // naming a merged part resolves there, on both sides of the comparison alike.
-  const archived = parseEntryDetails(readDirTextOrEmpty(wt, PLANS_ARCHIVE), "Done").map((e) => e.title);
-  if (base === undefined) return [];
+  const archived = parseEntryDetails(base.headOf(PLANS_ARCHIVE), "Done").map((e) => e.title);
+  if (baseMd === undefined) return [];
   // The duplicate finding's known set is main's tip at staging, not the merge-base: a plan a
   // sibling merged while this run worked is on main but not in the run's base, and is exactly
   // the 11-03 incident this check exists to catch. What the change itself adds is still judged
   // against the merge-base, so an entry main gained with the same key is a duplicate, not a
   // pre-existing one. The other findings stay merge-base-relative. A failed read falls back to
   // the merge-base.
-  const mainPlans = (await fileContentAt(wt, mainBranch, "PLANS.md")) || base;
+  const mainPlans = (await fileContentAt(wt, mainBranch, "PLANS.md")) || baseMd;
   // The finished-plan set comes from main's tip for the same reason: the archive move that
   // follows a merge lands in main's PLANS-DONE.md while a plan run works, so the run's own
   // worktree never sees it. A failed read falls back to the worktree's copy, and a missing
   // archive reads as empty.
-  const mainArchive = (await fileContentAt(wt, mainBranch, PLANS_ARCHIVE).catch(() => "")) || readDirTextOrEmpty(wt, PLANS_ARCHIVE);
+  const mainArchive = (await fileContentAt(wt, mainBranch, PLANS_ARCHIVE).catch(() => "")) || base.headOf(PLANS_ARCHIVE);
   const findings = [
-    planDependencyFinding(head, base, archived),
-    ungroundedRefusalFinding("PLANS.md", head, base),
-    malformedNeedsReviewFinding("PLANS.md", head, base),
-    duplicatePlanFinding(head, base, pending, mainPlans, mainArchive),
-    await retireEvidenceFinding(wt, mainBranch, head, base).catch(() => undefined),
+    planDependencyFinding(head, baseMd, archived),
+    ungroundedRefusalFinding("PLANS.md", head, baseMd),
+    malformedNeedsReviewFinding("PLANS.md", head, baseMd),
+    duplicatePlanFinding(head, baseMd, pending, mainPlans, mainArchive),
+    await retireEvidenceFinding(wt, mainBranch, head, baseMd).catch(() => undefined),
   ];
   return findings.filter((f): f is string => f !== undefined);
 }
 
 /** The finished-archive findings: duplicates of entries the archive already holds, plus the
  * acceptance greps of the plan entries the change finished (for a PLANS.md change). */
-async function archiveFindings(wt: string, mainBranch: string, files: string[]): Promise<string[]> {
+async function archiveFindings(wt: string, files: string[], base: StageBase): Promise<string[]> {
   const baseRev = FINISHED_ARCHIVES.some((s) => files.includes(s.file) || files.includes(s.archive))
-    ? await changeBaseRev(wt, mainBranch).catch(() => undefined)
+    ? await base.rev().catch(() => undefined)
     : undefined;
   const findings: string[] = [];
   for (const spec of FINISHED_ARCHIVES) {
     if (baseRev === undefined || !(files.includes(spec.file) || files.includes(spec.archive))) continue;
-    const at = (f: string) => fileContentAt(wt, baseRev, f);
+    const at = (f: string): Promise<string> => base.at(f).then((t) => t ?? "");
     const duplicates = await (async () => {
       return finishedDuplicateFindings(
         spec,
-        { head: readDirTextOrEmpty(wt, spec.file), base: await at(spec.file) },
-        { head: readDirTextOrEmpty(wt, spec.archive), base: await at(spec.archive) },
+        { head: base.headOf(spec.file), base: await at(spec.file) },
+        { head: base.headOf(spec.archive), base: await at(spec.archive) },
       );
     })().catch(() => []);
     findings.push(...duplicates);
@@ -180,7 +218,7 @@ async function archiveFindings(wt: string, mainBranch: string, files: string[]):
         const keyed = (md: string) =>
           parseEntryDetails(md, section).map((e) => ({ ...e, key: finishedKey(e.title, FINISHED_PLAN_RE) }));
         const seen = new Set(keyed(await at(f)).map((e) => e.key));
-        return keyed(readDirTextOrEmpty(wt, f)).filter((e) => !seen.has(e.key));
+        return keyed(base.headOf(f)).filter((e) => !seen.has(e.key));
       };
       const entries = [...(await finished(spec.file, spec.section)), ...(await finished(spec.archive, spec.section))];
       // A retired plan was never built, so its acceptance greps are expected to fail: it is
@@ -195,30 +233,30 @@ async function archiveFindings(wt: string, mainBranch: string, files: string[]):
 /** The BUGS.md record findings: an ungrounded refusal that cites another bug, a malformed
  * `Needs review` hold note the change adds, and a `## Open` copy of a bug a closed record
  * already holds. */
-async function bugsFindings(wt: string, mainBranch: string): Promise<string[]> {
-  const { head, base } = await headAndBase(wt, mainBranch, "BUGS.md");
+async function bugsFindings(wt: string, mainBranch: string, base: StageBase): Promise<string[]> {
+  const { head, base: baseMd } = await base.both("BUGS.md");
   // The closed-bug set is read from main's tip, not the merge-base and not the worktree: the fix
   // that archived the bug lands while the filing run works, so the copy and the archive never
   // meet inside the worktree (the same reason duplicatePlanFinding reads main's PLANS.md). A
   // failed read falls back to the worktree's own copy.
   const read = await fileContentAt(wt, mainBranch, BUGS_ARCHIVE).catch(() => "");
-  const archive = read || readDirTextOrEmpty(wt, BUGS_ARCHIVE);
+  const archive = read || base.headOf(BUGS_ARCHIVE);
   const findings = [
-    base === undefined ? undefined : ungroundedRefusalFinding("BUGS.md", head, base),
-    malformedNeedsReviewFinding("BUGS.md", head, base ?? ""),
-    refiledFixedBugFinding(head, base ?? "", archive),
+    baseMd === undefined ? undefined : ungroundedRefusalFinding("BUGS.md", head, baseMd),
+    malformedNeedsReviewFinding("BUGS.md", head, baseMd ?? ""),
+    refiledFixedBugFinding(head, baseMd ?? "", archive),
   ];
   return findings.filter((f): f is string => f !== undefined);
 }
 
 /** The stray-placeholder findings: a `_None yet._` line a changed record still leaves in a
  * section that holds entries. */
-async function placeholderFindings(wt: string, mainBranch: string, files: string[]): Promise<string[]> {
+async function placeholderFindings(files: string[], base: StageBase): Promise<string[]> {
   const findings: string[] = [];
   for (const file of PLACEHOLDER_FILES) {
     if (!files.includes(file)) continue;
-    const { head, base } = await headAndBase(wt, mainBranch, file);
-    const stray = strayPlaceholderFinding(file, head, base ?? "");
+    const { head, base: baseMd } = await base.both(file);
+    const stray = strayPlaceholderFinding(file, head, baseMd ?? "");
     if (stray !== undefined) findings.push(stray);
   }
   return findings;
@@ -245,14 +283,20 @@ export async function stageCheckFindings(
 ): Promise<string[]> {
   const files = await changedFiles(wt).catch(() => null);
   if (files === null || files.length === 0) return [];
+  // The one merge-base resolution and the one read of each backlog file this pass shares
+  // (StageBase above); every backlog finding takes its base from here.
+  const base = stageBaseFor(wt, mainBranch);
+  // Resolved once here for the checks outside StageBase; changeBaseRev cannot reject (gitTry
+  // catches every failure and falls back to `mainBranch`), so this never throws.
+  const baseRev = await base.rev();
   const findings: string[] = [];
-  if (files.includes("PLANS.md")) findings.push(...(await plansFindings(wt, mainBranch, pending)));
-  findings.push(...(await archiveFindings(wt, mainBranch, files)));
-  if (files.includes("BUGS.md")) findings.push(...(await bugsFindings(wt, mainBranch)));
-  findings.push(...(await placeholderFindings(wt, mainBranch, files)));
-  await pushReason(findings, protectedEditReason(wt, mainBranch, files, role));
+  if (files.includes("PLANS.md")) findings.push(...(await plansFindings(wt, mainBranch, pending, base)));
+  findings.push(...(await archiveFindings(wt, files, base)));
+  if (files.includes("BUGS.md")) findings.push(...(await bugsFindings(wt, mainBranch, base)));
+  findings.push(...(await placeholderFindings(files, base)));
+  await pushReason(findings, protectedEditReason(wt, mainBranch, files, role, baseRev));
   await pushReason(findings, secretLeakReason(wt, mainBranch, files));
-  findings.push(...(await gitLevelFindings(wt, mainBranch).catch(() => [])));
+  findings.push(...(await gitLevelFindings(wt, mainBranch, baseRev).catch(() => [])));
   const markers = conflictMarkerReason(wt, files);
   if (markers !== undefined) findings.push(markers);
   return findings;

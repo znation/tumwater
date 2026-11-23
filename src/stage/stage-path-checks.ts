@@ -68,11 +68,17 @@ function parseNameStatus(out: string | null): NameStatusEntry[] {
 
 /** Stage the change and run the git-level findings over the resulting index, then restore the
  * index to HEAD so the staging is invisible to the run's own change detection. Each check is
- * best-effort: a failed git command contributes nothing. */
-export async function gitLevelFindings(wt: string, mainBranch: string): Promise<string[]> {
+ * best-effort: a failed git command contributes nothing. `baseRev` is the change's base revision,
+ * resolved by the caller when it already has one (the stage check resolves it once for every
+ * check it runs); otherwise it is resolved here. */
+export async function gitLevelFindings(
+  wt: string,
+  mainBranch: string,
+  baseRev?: string,
+): Promise<string[]> {
   await gitTry(wt, "add", "-A");
   try {
-    const base = await changeBaseRev(wt, mainBranch);
+    const base = baseRev ?? (await changeBaseRev(wt, mainBranch));
     const entries = parseNameStatus(await gitTry(wt, "diff", "--cached", "-M", "--name-status", base));
     const findings = await staleReferenceFindings(wt, entries);
     const diff = (await gitTry(wt, "diff", "--cached", "-U0", base)) ?? "";
