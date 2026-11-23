@@ -1466,3 +1466,80 @@ test("a comment repeat both of whose copies the change left untouched yields no 
 
   assert.deepEqual(findings.filter((f) => f.includes(DUP_HIT)), []);
 });
+
+// The re-filed-fixed-bug finding (BUGS.md "The selfcheck filing path dedupes against `## Open`
+// and selfcheck's own commits only", INV-N7): a `## Open` entry the change adds whose heading
+// identity a finished-bug record already holds is open work for work already done.
+
+/** A BUGS.md whose `## Open` holds `entries` (headings) and whose `## Fixed` holds `fixed`. */
+function bugsRecord(open: string, fixed = ""): string {
+  return `# Bugs\n\n## Open\n\n${open}\n## Fixed\n\n${fixed}\n`;
+}
+
+const REFILED_TITLE =
+  "The selfcheck filing path dedupes against `## Open` and selfcheck's own commits only, so a bug already fixed and archived the same day is re-filed as open work (found by the bugfix role 2026-11-22)";
+
+test("stageCheckFindings flags a BUGS.md open entry a fixed-bug record already holds", async () => {
+  const { wt } = await repoWith({
+    "BUGS.md": bugsRecord("_None yet._\n"),
+    "BUGS-FIXED.md": `# Fixed bugs\n\n## Fixed\n\n### ${REFILED_TITLE} — fixed 2026-11-23 by the bugfix role\n\n**Fix:** it works now.\n`,
+  });
+  fs.writeFileSync(path.join(wt, "BUGS.md"), bugsRecord(`### ${REFILED_TITLE}\n\n**Symptom:** it filed twice.\n`));
+
+  const findings = await stageCheckFindings(wt, "main", "selfcheck");
+  assert.equal(findings.length, 1, `expected one finding, got ${JSON.stringify(findings)}`);
+  assert.match(findings[0]!, /BUGS\.md/);
+  assert.match(findings[0]!, /BUGS-FIXED\.md/);
+  assert.match(findings[0]!, /## Open/);
+});
+
+test("an open copy whose heading carries no closing stamp still matches the stamped one", async () => {
+  // The live incident's shape: the archived heading ends in `— fixed … by the bugfix role`, the
+  // re-filed copy is the same heading without it, so an exact heading compare would miss it.
+  const { wt } = await repoWith({
+    "BUGS.md": bugsRecord("_None yet._\n"),
+    "BUGS-FIXED.md":
+      `# Fixed bugs\n\n## Fixed\n\n### ${REFILED_TITLE} (fixed 2026-11-22)\n\n**Fix:** it works now.\n`,
+  });
+  fs.writeFileSync(path.join(wt, "BUGS.md"), bugsRecord(`### ${REFILED_TITLE}\n\n**Symptom:** it filed twice.\n`));
+
+  const findings = await stageCheckFindings(wt, "main", "selfcheck");
+  assert.equal(findings.length, 1, `expected one finding, got ${JSON.stringify(findings)}`);
+  assert.match(findings[0]!, /BUGS-FIXED\.md/);
+});
+
+test("a re-filed entry main archived while the change ran is flagged from main's tip", async () => {
+  // The known set is main's tip at staging, not the merge-base: the fix that archived the bug
+  // landed while the filing run worked, and the worktree's BUGS-FIXED.md never saw it.
+  const { root, wt } = await repoWith({ "BUGS.md": bugsRecord("_None yet._\n") });
+  writeFileDeep(path.join(root, "BUGS-FIXED.md"), `# Fixed bugs\n\n## Fixed\n\n### ${REFILED_TITLE} — fixed 2026-11-23 by the bugfix role\n\n**Fix:** it works now.\n`);
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "archive the fix");
+  fs.writeFileSync(path.join(wt, "BUGS.md"), bugsRecord(`### ${REFILED_TITLE}\n\n**Symptom:** it filed twice.\n`));
+
+  const findings = await stageCheckFindings(wt, "main", "selfcheck");
+  assert.equal(findings.length, 1, `expected one finding, got ${JSON.stringify(findings)}`);
+  assert.match(findings[0]!, /BUGS-FIXED\.md/);
+});
+
+test("a fresh open bug, a pre-existing open twin, and a fix move all stay quiet", async () => {
+  const archived = `### ${REFILED_TITLE} — fixed 2026-11-23 by the bugfix role\n\n**Fix:** it works now.\n`;
+  // A genuinely new bug.
+  const fresh = await repoWith({
+    "BUGS.md": bugsRecord("_None yet._\n"),
+    "BUGS-FIXED.md": `# Fixed bugs\n\n## Fixed\n\n${archived}`,
+  });
+  fs.writeFileSync(path.join(fresh.wt, "BUGS.md"), bugsRecord("### A brand new bug (found by the qa role 2026-11-23)\n\n**Symptom:** it broke.\n"));
+  assert.deepEqual(await stageCheckFindings(fresh.wt, "main", "selfcheck"), []);
+
+  // The twin the base's `## Open` already held: not this change's doing, even though its body
+  // is edited here.
+  const pre = await repoWith({ "BUGS.md": bugsRecord(`### ${REFILED_TITLE}\n\n**Symptom:** it filed twice.\n`), "BUGS-FIXED.md": `# Fixed bugs\n\n## Fixed\n\n${archived}` });
+  fs.writeFileSync(path.join(pre.wt, "BUGS.md"), bugsRecord(`### ${REFILED_TITLE}\n\n**Symptom:** it filed twice.\n\n**Progress:** looked, still open.\n`));
+  assert.deepEqual(await stageCheckFindings(pre.wt, "main", "selfcheck"), []);
+
+  // The fix move itself: the entry leaves `## Open` and lands in `## Fixed`.
+  const move = await repoWith({ "BUGS.md": bugsRecord(`### ${REFILED_TITLE}\n\n**Symptom:** it filed twice.\n`) });
+  fs.writeFileSync(path.join(move.wt, "BUGS.md"), bugsRecord("_None yet._\n", `### ${REFILED_TITLE} — fixed 2026-11-23 by the bugfix role\n\n**Fix:** it works now.\n`));
+  assert.deepEqual(await stageCheckFindings(move.wt, "main", "selfcheck"), []);
+});

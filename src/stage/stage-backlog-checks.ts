@@ -170,6 +170,39 @@ export function finishedDuplicateFindings(
   return findings;
 }
 
+/** The staging finding for a `## Open` bug entry that `head` (the edited BUGS.md) adds over
+ * `base` (its text at the change's merge-base) while a closed record of the same bug already
+ * holds it: a `## Fixed` entry in `archive` (BUGS-FIXED.md, at main's tip so a fix a sibling
+ * merged during the run counts) or in `head`'s own `## Fixed` section, sharing the entry's
+ * stamp-insensitive identity (`finishedKey` with FIXED_DATE_RE — the identity
+ * `finishedDuplicateFindings` uses, so the closing `— fixed YYYY-MM-DD …` stamp and the
+ * `(found …)` parenthetical are both invisible). The 2026-11-22 incident: a selfcheck run
+ * re-filed under `## Open` a bug that another run had fixed and archived 100 minutes earlier,
+ * and the next bugfix run spent itself on work already done. Only entries new over the
+ * merge-base count — a twin already on main is not this change's doing. At most one finding:
+ * the first such entry in file order. A re-filed copy is repairable by a later edit, so this is
+ * a staging finding, never a merge-gate refusal. */
+export function refiledFixedBugFinding(head: string, base: string, archive: string): string | undefined {
+  const keyed = (md: string, section: string) =>
+    parseEntryDetails(md, section).map((e) => ({ ...e, key: finishedKey(e.title, FIXED_DATE_RE) }));
+  const held = [...keyed(archive, "Fixed"), ...keyed(head, "Fixed")];
+  if (held.length === 0) return undefined;
+  const openWas = new Set(keyed(base, "Open").map((e) => e.key));
+  for (const e of keyed(head, "Open")) {
+    if (openWas.has(e.key)) continue;
+    const hit = held.find((h) => h.key === e.key);
+    if (hit === undefined) continue;
+    const where = keyed(archive, "Fixed").some((a) => a.key === e.key) ? "BUGS-FIXED.md" : "BUGS.md's `## Fixed`";
+    return (
+      `this change adds BUGS.md "## Open" entry "${truncate(e.title, 160)}", but that bug is already ` +
+      `closed: ${where} holds "${truncate(hit.title, 160)}" — delete this copy, or fold what it adds into ` +
+      "the closed entry, before this change commits; a re-filed copy is repairable, so this is a staging " +
+      "finding, not a merge-gate refusal"
+    );
+  }
+  return undefined;
+}
+
 /** The skeleton placeholder that marks an empty backlog section. */
 const PLACEHOLDER_LINE = "_None yet._";
 /** The live backlog files; the archives have no placeholder sections. */

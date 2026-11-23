@@ -1113,6 +1113,30 @@ done heading carries, and flags one that does not", "stageCheckFindings carries 
 duplicate and the retire-evidence findings" and "stageCheckFindings names a duplicate of a plan
 main gained while the change ran".
 
+### INV-N7: a change that adds a `## Open` bug a closed record already holds gets its fix-up turn at staging
+
+**Guarantee.** `stageCheckFindings` reports a `## Open` bug entry the change adds over its
+merge-base with main whose stamp-insensitive heading identity (`finishedKey` with `FIXED_DATE_RE`,
+so a closing `— fixed YYYY-MM-DD …` stamp and a `(found …)` parenthetical are both invisible) a
+`## Fixed` entry in BUGS-FIXED.md **at main's tip at staging**, or in BUGS.md's own `## Fixed`
+section, already holds — the 2026-11-22 incident, where a selfcheck run re-filed under `## Open`
+a bug another run had fixed and archived 100 minutes earlier and the next bugfix run spent itself
+on work already done. Reading the archive at main's tip, not the merge-base, is what catches that
+shape: the fix landed while the filing run worked, so the worktree's copy of the archive never
+saw it. Only entries new over the merge-base count — a twin already on main is another change's
+and stays the director's to retire. At most one finding, the first such entry in file order. Like
+`duplicatePlanFinding`, this is a staging finding only: a re-filed copy is repairable by a later
+edit, so it is never a merge-gate refusal. A git hiccup falls back to the worktree's archive copy;
+a read that yields nothing anywhere yields no finding.
+
+**Binds.** `src/stage/stage-backlog-checks.ts` (`refiledFixedBugFinding`),
+`src/stage/stage-check.ts` (`bugsFindings`, `stageCheckFindings`).
+
+**Pinned by.** `test/stage-check.test.ts` — "stageCheckFindings flags a BUGS.md open entry a
+fixed-bug record already holds", "an open copy whose heading carries no closing stamp still
+matches the stamped one", "a re-filed entry main archived while the change ran is flagged from
+main's tip" and "a fresh open bug, a pre-existing open twin, and a fix move all stay quiet".
+
 ## The backlog archive: finished entries move once, and only the ones a change added
 
 The archive moves finished entries out of PLANS.md / BUGS.md into PLANS-DONE.md / BUGS-FIXED.md: at

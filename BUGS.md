@@ -6,52 +6,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-### The selfcheck filing path dedupes against `## Open` and selfcheck's own commits only, so a bug already fixed and archived the same day is re-filed as open work (found by the bugfix role 2026-11-22)
-
-**Symptom.** The red-check plumbing bug was filed, fixed, and archived, then filed again as open
-work on the same day, and the second copy cost a whole bugfix run to discover it was already done.
-`a433bf483` (selfcheck, 2026-11-22 11:11) filed "A red check's reasons number node:assert's own
-dump, the test runner's frames, and lint's status line…"; the bugfix run fixed it in `2de19d585`
-(15:39), whose commit-time archive sweep moved the stamped entry to BUGS-FIXED.md (it is there
-now, heading at :54 with its `— fixed 2026-11-22 by the bugfix role` stamp, its Validation gap and
-its Fix paragraph). 100 minutes later `517593882` (selfcheck, 17:20) appended a copy of that same entry back under
-`## Open`, reworded in places but under the identical `### ` heading. The next bugfix run (this one) opened with that entry as its
-assignment: the code it asks for — `checkingMachinery` in src/build/build-check-report.ts — was
-already on main, and the fix's own tests confirmed it (test/build-check-report.test.ts, 26 pass;
-neutering `checkingMachinery`'s `FRAMING_LINE` term turned exactly 3 of them red, restored green).
-The copy could not be closed normally either: a live `## Fixed` entry the archive already holds
-with different text is refused by `finishedDuplicateFindings` (src/stage/stage-backlog-checks.ts,
-"is already archived in BUGS-FIXED.md — … delete this copy"), so the only clean step was deleting
-the dead copy, which is what this change does.
-
-**Reproduce.** Offline, no model and no gate. On any tree where a BUGS.md entry's stamped form is
-already in BUGS-FIXED.md, append a copy of its unstamped (open) text under BUGS.md `## Open`:
-nothing in the suite or the staging check objects — the backlog guards (backlog-structure,
-validation-gap, doctor-backlog, backlog-index, comment-width: 167 tests this run, all pass with
-the copy present) stay green — while the copy sits in `## Open` as eligible open work the backlog
-index hands out (which is how this run was assigned it). The two commits above are the live instance: `git show 517593882 -- BUGS.md` adds 72 lines
-to `## Open`, and `git log --since=2026-11-22T15:00 --until=2026-11-22T18:00 --format='%h %ad %s'`
-shows the fix commit `2de19d585` landing between the two filings.
-
-**Suspected cause.** The filing path has no dedupe, and the two that exist read the wrong section.
-`fileBug`/`appendOperatorEntry` (src/backlog/backlog-write.ts:544, :515) append unconditionally.
-The plan side has a duplicate guard — `duplicatePlanFinding` (src/stage/stage-backlog-checks.ts:82)
-and `renderDuplicatePlansBlock` (src/backlog/backlog-structure.ts:505) — but both parse
-`"Planned"` only, so a duplicated `## Open` bug is invisible to them; the bug-side archive guards
-(`readdedHeadings`, `finishedDuplicateFindings`) only judge finished sections, never a filed copy.
-The selfcheck charter's own dedupe step (src/roles/role-catalog.ts:551-555) tells the role to
-check "BUGS.md's ## Open section and `git log <selfcheck commits>`" — neither reaches this case:
-the entry was no longer under `## Open` at filing time (the sweep had archived it) and the fix was
-a `tumwater(bugfix):` commit, which that grep excludes by construction.
-
-**Fix direction (the bugfix role picks one seam, not both).** Cheapest: extend the selfcheck
-charter's step 4 to grep the archives — "check BUGS.md's `## Open`, BUGS-FIXED.md, and
-`git log` for all roles, not selfcheck's own" — since the loss was a digest cluster whose fix had
-already landed. Stronger: make `fileBug` refuse (or warn, naming the archived heading and its
-`fixed YYYY-MM-DD` stamp) when the title's `entryKey` matches a `## Fixed` entry in BUGS-FIXED.md,
-and mirror it in a staging finding so a hand-edit copy gets a fix-up turn the way a duplicate plan
-does. Reusing `entryKey` (src/backlog/backlog-parts.ts:61) or `finishedKey` (src/stage/stage-backlog-checks.ts:66)
-keeps the match stamp-insensitive, the way `duplicatePlanFinding` matches plans.
 
 ### The merge gate's red-main exemption can fail to fire, so a change that adds no new failures is rejected while main is red (mirrors GitHub issue #5; found by the director role 2026-11-22)
 

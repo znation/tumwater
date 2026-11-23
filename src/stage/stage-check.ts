@@ -84,12 +84,15 @@ import {
   retireEvidenceFinding,
   strayPlaceholderFinding,
   ungroundedRefusalFinding,
+  refiledFixedBugFinding,
 } from "./stage-backlog-checks.js";
 import { gitLevelFindings } from "./stage-path-checks.js";
 import { malformedNeedsReviewFinding } from "../backlog/backlog-structure.js";
 
 /** Where finished plans are archived (plans/backlog-archive.md). */
 const PLANS_ARCHIVE = finishedArchiveOf("PLANS.md").archive;
+/** Where finished bugs are archived. */
+const BUGS_ARCHIVE = finishedArchiveOf("BUGS.md").archive;
 
 /** `file` as it stands at the change's merge-base with `mainBranch`, or undefined when the
  * merge-base or the read fails. */
@@ -184,13 +187,21 @@ async function archiveFindings(wt: string, mainBranch: string, files: string[]):
   return findings;
 }
 
-/** The BUGS.md record findings: an ungrounded refusal that cites another bug, and a malformed
- * `Needs review` hold note the change adds. */
+/** The BUGS.md record findings: an ungrounded refusal that cites another bug, a malformed
+ * `Needs review` hold note the change adds, and a `## Open` copy of a bug a closed record
+ * already holds. */
 async function bugsFindings(wt: string, mainBranch: string): Promise<string[]> {
   const { head, base } = await headAndBase(wt, mainBranch, "BUGS.md");
+  // The closed-bug set is read from main's tip, not the merge-base and not the worktree: the fix
+  // that archived the bug lands while the filing run works, so the copy and the archive never
+  // meet inside the worktree (the same reason duplicatePlanFinding reads main's PLANS.md). A
+  // failed read falls back to the worktree's own copy.
+  const read = await fileContentAt(wt, mainBranch, BUGS_ARCHIVE).catch(() => "");
+  const archive = read || readDirTextOrEmpty(wt, BUGS_ARCHIVE);
   const findings = [
     base === undefined ? undefined : ungroundedRefusalFinding("BUGS.md", head, base),
     malformedNeedsReviewFinding("BUGS.md", head, base ?? ""),
+    refiledFixedBugFinding(head, base ?? "", archive),
   ];
   return findings.filter((f): f is string => f !== undefined);
 }
