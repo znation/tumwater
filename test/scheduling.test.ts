@@ -355,6 +355,21 @@ test("a director holding a kept merge pin is due on the min-run clock, never bef
   assert.deepEqual(isEligible(r, now, "abc", 1, { leftoverPending: false }), { run: true, reason: "inbox" });
 });
 
+test("a director whose own change still drains holds its inbox until the merge settles", () => {
+  // 2026-11-22: while the director's queued change waited for the merge slot, every inbox wake
+  // admitted a promptless recovery run that could only end `skipped` — ~180 no-op runs an hour.
+  const r = runner("director");
+  const now = Date.now();
+  assert.deepEqual(isEligible(r, now, "abc", 1, { ownPinDraining: true }), { run: false });
+  // A self-requeued inbox whose min clock has turned is held too: the pin, not the clock, decides.
+  r.state.nextRunAt = now - 1;
+  assert.deepEqual(isEligible(r, now, "abc", 1, { ownPinDraining: true, inboxSelfRequeued: true }), { run: false });
+  // Once the merge settles (the stash clears), the same inbox runs.
+  assert.deepEqual(isEligible(r, now, "abc", 1, { ownPinDraining: false }), { run: true, reason: "inbox" });
+  // The hold reaches only the director: a role's own queued prompt is unaffected.
+  assert.deepEqual(isEligible(runner("feature"), now, "abc", 1, { ownPinDraining: true }), { run: true, reason: "inbox" });
+});
+
 test("the director ignores the min gap and backoff: queued prompts run back to back", () => {
   const r = runner("director");
   const now = Date.now();

@@ -145,8 +145,9 @@ reads only the live merge pins.)
   conflict resolver, the post-resolve
   re-review) run in one dedicated `_merge` workspace, reserved outside the pool so a gate
   waiting for a workspace can never deadlock behind the merge lock.
-- **Gate then merge.** The drain runs one gate-then-merge task at a time — the first eligible
-  kept pin in runner order — so nothing parks a pinned change between its gate and its merge.
+- **Gate then merge.** The drain runs one gate-then-merge task at a time — the oldest eligible
+  kept pin, by its commit's date — so nothing parks a pinned change between its gate and its
+  merge, and no role's change waits behind newer ones from roles listed before it.
   A kept merge pin — a crash between a run's commit and its pin, or a pin-only writer — is
   gated and merged by the same one task on the next poll, with the pin kept on a retriable
   outcome for the next poll; a file an older build left in the merge-queue directory starts no
@@ -274,6 +275,8 @@ never has to wait a parked check out.
 - The director runs your prompts immediately, outside `maxConcurrent` and ahead of every role.
   With no prompt, a director holding a kept merge pin is also due on its own min-run clock (20 s
   by default) and wakes as `woke (leftover)`; that run re-pins the change and authors nothing.
+  While the director's own last change is still waiting to merge, a queued prompt waits for it:
+  the director takes one change at a time and starts the next prompt once that merge settles.
 - `tumwater prompt --role <id>` puts a prompt in one role's inbox for its next run instead of the
   director's, and wakes it. `--list` shows the inboxes grouped by role; per-role prompts
   wait behind a paused role like the director's wait behind a team pause.

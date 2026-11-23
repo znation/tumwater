@@ -13,7 +13,8 @@ import { refSha, setRef } from "../src/git/git.js";
 import { APPROVE, allTasks, makePipeline, pinChanges, pinDrained, pump, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { defaultConfig } from "../src/config/config.js";
-import { mainSha, makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, mainSha, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { execFileSync } from "node:child_process";
 
 // pinChanges seeds every role's merge pin without a queue file — the drain's kept-pin path —
 // and pinDrained (the ref files plus the tasks) stands in for the queue depth it replaces. A
@@ -96,6 +97,44 @@ test("a merged change's pin is deleted — the ref files settle drained", async 
   assert.equal(done(), false, "a kept pin is not drained even with no queue file");
   await pumpUntil(ctx, pipeline, done, "alpha's merge");
   assert.equal(await refSha(root, mergeRefName("alpha")), null, "a merged change deletes its pin");
+});
+
+/** Pin a change for `role` whose commit carries committer date `secs` (unix seconds) — the
+ * pin's age the drain orders by (pinOffMain stamps one fixed date on every pin). */
+async function pinAged(root: string, role: string, secs: number): Promise<string> {
+  sh(root, "git", "checkout", "--detach");
+  sh(root, "git", "reset", "--hard", "main");
+  fs.writeFileSync(path.join(root, `${role}.txt`), `work by ${role}\n`);
+  sh(root, "git", "add", "-A");
+  execFileSync("git", ["commit", "-m", `work by ${role}`], {
+    cwd: root,
+    env: { ...process.env, GIT_COMMITTER_DATE: `@${secs} +0000` },
+  });
+  const sha = headSha(root);
+  sh(root, "git", "checkout", "main");
+  await setRef(root, mergeRefName(role), sha);
+  return sha;
+}
+
+test("the drain merges the oldest pin first, not the first role in runner order", async () => {
+  // 2026-11-22: the drain took the first pinned runner in role order, so the director (last of
+  // 27 roles) lost every free slot to a newer pin from an earlier role and waited 3 h.
+  // Only the drain's pick is asserted: the task it starts is aborted and awaited right away, so
+  // the case never waits out a gate, a merge or a post-merge review under a loaded suite.
+  const root = makeRepo();
+  await pinAged(root, "alpha", 1_800_000_000); // first in runner order, pinned later
+  await pinAged(root, "beta", 1_750_000_000);
+  await pinAged(root, "omega", 1_700_000_000); // last in runner order, waiting longest
+  const shutdown = new AbortController();
+  const roles = ["alpha", "beta", "omega"];
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles, shutdown.signal), { signal: shutdown.signal });
+  try {
+    await drainMergeQueue(ctx, pipeline);
+    assert.deepEqual(pipeline.merge?.roles, ["omega"], "the oldest pin takes the free slot");
+  } finally {
+    shutdown.abort();
+    await Promise.allSettled(mergeTasks(pipeline).map((t) => t.promise));
+  }
 });
 
 test("every merged role queues a post-landing review, whatever its role", async () => {

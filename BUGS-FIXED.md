@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### The director spins a skipped run every 20 s while its own change waits for the merge slot, and the drain's role order makes that wait hours long (found by the operator 2026-11-22) — fixed 2026-11-23 by the operator
+
+**Symptom.** After the director queued a change (b6f4c07d at 20:36:44, two seconds before a restart), events.jsonl logged `wake reason=inbox` → `run_start` → `run_end skipped` (~60 ms, no model call) every 20 s for over 3 h — about 180 no-op runs an hour, 1,128 in a day, the same shape after each of the day's earlier director changes. The change itself sat behind seven newer ones: at each free slot (21:22, 22:36, 22:59, 23:18) the drain started improve, coverage, dedupe and steward instead.
+
+**Reproduce.** Deterministic, offline: pin a live change for `director` with `queuedSummary.sha` naming it and enqueue a director prompt — `pollRunnerReasons` admits the director with reason `inbox` on every poll. For the order: pin `alpha` (newer commit date) and `omega` (older) and call `drainMergeQueue` once — the task starts for `alpha`.
+
+**Cause.** Two halves. (1) A director with a live pin runs `recoveryOnly` (runner-run.ts): it declines the inbox prompt (BUGS.md 2026-11-11), recovery finds its own stashed pin `already_queued`, and with no prompt `recoverLeftoversForRun` ends the run `skipped`. The scheduler's inbox arm never looked at the pin — the 2026-11-04/11-09 fixes held only the `leftover` arm — so the still-queued prompt re-admitted the run on the 20 s min clock (`inboxSelfRequeued`). (2) `drainMerge` started the first pinned runner in runner order, so the director (last of 27) and steward lost every free slot to any newer pin from an earlier role.
+
+**Fix:** (1) the scheduling scope now names the director's draining pin (`directorPinOwedRun` → `drainingSha`), and skip.ts passes `ownPinDraining` when that pin is the director's stashed `queuedSummary` sha; `directorGate` then holds the inbox until the merge settles (the merge outcome clears the stash). A pin the stash does not name still gets its one recovery run. (2) `drainMerge` orders its pin candidates oldest commit date first (`pinCommitDates`, one `for-each-ref` only when two or more pins wait; ties keep runner order).
+
+**Notes for the fixer.** GitHub issue #2 (`ci` spinning on `relief_wait` with its prompt re-queued) is the same family on a role runner and is not fixed here: this change gates only the director's `already_queued` skip. Each merge still holds the slot 20–75 min while its resolver or review waits for a model permit; oldest-first makes the wait fair, not shorter.
+
+**Validation gap:** none — the existing scheduling-pass and drain harnesses reproduced both halves with no new fake; no test had driven the director's inbox arm while its own pin drained, or two pins whose ages disagreed with runner order (now test/orchestrator-scheduling.test.ts, test/scheduling.test.ts, test/merge-drain.test.ts).
+
 ### The gate's red-main exemption can fail to fire, so a change that adds no new failures is rejected while main is red (mirrors GitHub issue #5; found by the director role 2026-11-22) — fixed 2026-11-22 by the bugfix role
 
 With main red on one guard test (the reporter's `test_the record count does not grow`: the no-repro tag grew past its baseline, red on main itself per their `main_check` events), an operator watched role merges rejected citing that same test — the one main already fails — and 16 merge pins sat undrained until the fleet spun. The harness's own red-main note promises otherwise: `warnMainRedOnce`'s `main_red_hold` message (src/baseline/main-red.ts) ends "changes that add no new failures still merge", and INV-CZ1 (docs/invariants.md) says a red main excuses only its own failures. The note and the behavior disagree.

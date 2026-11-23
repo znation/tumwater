@@ -7,7 +7,7 @@
 import type { RoleRunner } from "../runner/runner.js";
 import { logEventBestEffort } from "../events/events.js";
 import { baseRoleOf, configuredInstances, runnerPaused } from "../roles/runner-ids.js";
-import { BUGFIX_ROLE, commitTier } from "../roles/roles.js";
+import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import { deferRunReason, isEligible, type DeferReason } from "./scheduling.js";
 import { inboxSize, deliverablePromptStamps } from "../inbox/inbox.js";
 import { freshlyWoken, type SkipReason } from "../runner/runner-state.js";
@@ -28,7 +28,7 @@ type SkipVerdict =
  * Mutates the shared scope — deferredDue, quotaAdmitted, once-mode settlement — and writes skip
  * reasons as its only side effects. */
 export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Promise<SkipVerdict> {
-  const { root, once, now, mainHead, planBacklogFull, pinnedDirector } = scope;
+  const { root, once, now, mainHead, planBacklogFull, pinnedDirector, directorDrainingPin } = scope;
   // The role's inbox size and operator demand, computed once per runner per poll: every
   // consumer (the holds, isEligible's inbox count, the maintenance admission) shares
   // this one directory listing + per-file stat read instead of each re-scanning the queue.
@@ -74,6 +74,14 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
         if (!t) return false;
         return deliverablePromptStamps(root, runner.role, Date.now()).every((stamp) => stamp <= t);
       })(),
+    // The director's own change still drains: its pin is the sha its queued run stashed
+    // (queuedSummary), so a run now is the promptless recovery run that can only end
+    // `skipped`. A pin the stash does not name (a crashed run's, or one whose merge failed)
+    // still gets its one recovery run, which re-pins it and stashes the sha.
+    ownPinDraining:
+      runner.role === DIRECTOR_ROLE &&
+      directorDrainingPin !== null &&
+      runner.state.queuedSummary?.sha === directorDrainingPin,
   });
   if (!run) return notDue(scope, runner, skip);
   if (admissionHolds(scope, runner)) return { skip: true };

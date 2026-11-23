@@ -4,6 +4,7 @@ import { withRunPermit } from "../concurrency/run-permit.js";
 import type { MergeEntry } from "./merge-queue.js";
 import { refAbsentFromFiles } from "../git/git.js";
 import { mergeRefName } from "../paths.js";
+import { pinCommitDates } from "./merge-pins.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { saveRunnerState } from "../runner/runner-state.js";
@@ -66,10 +67,11 @@ export async function drainMergeQueue(ctx: MergePipelineContext, p: MergePipelin
   await drainMerge(ctx, p);
 }
 
-/** The merge drain — the queue's one whole stage: start ONE gate-then-merge task for the first
- * eligible kept pin in runner order. A queue file in `.tumwater/merge-queue/` an older build
- * left starts nothing: the drain reads only the live merge pins. The checks the verify stage
- * used to own — the stale/dangling-pin drops and `startHeld` — run here in the serial drain, so
+/** The merge drain — the queue's one whole stage: start ONE gate-then-merge task for the oldest
+ * eligible kept pin (its commit's date; runner order breaks ties). A queue file in
+ * `.tumwater/merge-queue/` an older build left starts nothing: the drain reads only the live
+ * merge pins. The checks the verify stage used to own — the stale/dangling-pin drops and
+ * `startHeld` — run here in the serial drain, so
  * a pinned change is gated and merged by the one task (startMerge) and no verification starts
  * at all. A pin whose gate/merge the pipeline does not reach is left for the next poll; the
  * merge slot frees when its task settles, so the next poll starts the next pin. The drain is
@@ -86,12 +88,13 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
   // concurrent drain that started first. Each start re-checks just before the assignment (single
   // flight: one gate-then-merge task at a time, BUGS.md 2026-11-09).
   if (p.merge !== null) return;
-  // Scan the live runners and start the one task for the first kept pin whose sha the drain may
-  // retry itself (pinnedRetrySha allows). A queue file an older build left starts nothing: the
-  // drain reads only the live merge pins. pinnedRetrySha deletes a dangling or stale pin and
-  // refuses a pin at MERGE_CONFLICT_LIMIT, which the drain leaves untouched for its author's
-  // hand-back, exactly as recovery does. One task per poll.
-  for (const runner of ctx.runners) {
+  // Scan the pinned runners oldest pin first and start the one task for the first kept pin whose
+  // sha the drain may retry itself (pinnedRetrySha allows). A queue file an older build left
+  // starts nothing: the drain reads only the live merge pins. pinnedRetrySha deletes a dangling
+  // or stale pin and refuses a pin at MERGE_CONFLICT_LIMIT, which the drain leaves untouched for
+  // its author's hand-back, exactly as recovery does. One task per poll.
+  const pinned = pinCandidates(ctx);
+  for (const runner of pinned.length < 2 ? pinned : await oldestPinFirst(ctx.root, pinned)) {
     if (p.merge !== null) return; // one task at a time: the next pin waits in its ref
     // A withdrawn claim's pin is not merged here: its role's next run sets the work aside
     // before leftover recovery (runner-leftover.ts setAsideWithdrawnWork), because such a pin
@@ -99,11 +102,6 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
     // leaves this marker runs after the drain, so the pin check below also reads the runner's
     // live claim on the first poll after a withdrawal.
     if (runner.state.withdrawn !== undefined) continue;
-    // Skip a runner the ref files settle as having no pin, without yielding: an empty-queue
-    // poll must not add an async hop just to confirm, on most polls, that nothing is pinned
-    // (a concurrent parked task's permit window). A present or unsettled ref falls through to
-    // pinnedRetrySha, which resolves it through git.
-    if (refAbsentFromFiles(ctx.root, mergeRefName(runner.role))) continue;
     const sha = await pinnedRetrySha(ctx.root, runner.role, ctx.mainBranch, runner.state);
     if (sha === null) {
       // pinnedRetrySha dropped a stale or dangling pin, or found one at the conflict limit:
@@ -122,6 +120,25 @@ export async function drainMerge(ctx: MergePipelineContext, p: MergePipeline): P
     p.merge = startMerge(ctx, p, entry, null);
     return;
   }
+}
+
+/** The runners that may hold a pin, in runner order. A runner the ref files settle as having no
+ * pin is dropped without yielding: an empty-queue poll must not add an async hop just to confirm,
+ * on most polls, that nothing is pinned (a concurrent parked task's permit window). A present or
+ * unsettled ref stays, for pinnedRetrySha to resolve through git. */
+function pinCandidates(ctx: MergePipelineContext): RoleRunner[] {
+  return ctx.runners.filter((r) => !refAbsentFromFiles(ctx.root, mergeRefName(r.role)));
+}
+
+/** Two or more pin candidates, oldest pin first: one `for-each-ref` reads every pin's commit
+ * date (pinCommitDates). Runner order used to decide, so whichever role sat last in it (the
+ * director, steward) lost every free slot to a newer pin from an earlier role — the director's
+ * change waited 3 h behind seven later ones on 2026-11-22. Equal dates keep runner order (a stable
+ * sort), and a pin whose date cannot be read goes last. */
+async function oldestPinFirst(root: string, pinned: RoleRunner[]): Promise<RoleRunner[]> {
+  const dates = await pinCommitDates(root);
+  const age = (r: RoleRunner): number => dates.get(r.role) ?? Number.POSITIVE_INFINITY;
+  return [...pinned].sort((a, b) => age(a) - age(b));
 }
 
 /** Whether the pin's own run still owes its live claim and main no longer lists that entry.

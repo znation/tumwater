@@ -150,6 +150,9 @@ export interface SchedulingScope {
   modelCheckHeld: ReadonlySet<string>;
   /** The director holds a kept merge pin: owed an authoring run to re-pin it. */
   pinnedDirector: boolean;
+  /** The director's DRAINING pin's sha (live, ahead of main, under the conflict cap), or null.
+   * skip.ts holds the director's inbox while this is the director's own stashed change. */
+  directorDrainingPin: string | null;
   claimGroups: Map<string, ClaimGroup>;
   /** Each claim-taking base's entries its OWN queued merges already claim (keyed by base):
    * the keys the poll must not hand back to the authoring runner, and that stay held for the
@@ -445,22 +448,26 @@ function orderForAdmission(
  *     is mid-retrying): the drain settles it, so the director OWES NO run. This is the spin, gone;
  *   - kept — live at the cap: the drain refuses it (the author's conflict hand-back), so it
  *     OWES a run, which the pass's skip.ts guard then admits or suppresses by hand-back.
- * `pinnedDirector` is true for the stale and kept cases (a present pin that is not draining).
+ * `owedRun` (the scope's `pinnedDirector`) is true for the stale and kept cases (a present pin
+ * that is not draining); `drainingSha` names the draining pin, for skip.ts's inbox hold.
  *
  * The claim-reading `queuedMergeClaimKeys` is a separate reader and is deliberately NOT part of
  * this change: it sources instance-role claims from the pin's Claim trailer (its pin loop) and
  * the legacy queue file, and converting it to readMergePins would drop the `claim` field it
  * exists to serve. Its legacy queue-file loop is trimmed by part 6/6 (the deletion). */
-async function directorPinOwedRun(ctx: SchedulingPassCtx): Promise<boolean> {
+async function directorPinOwedRun(
+  ctx: SchedulingPassCtx,
+): Promise<{ owedRun: boolean; drainingSha: string | null }> {
   const { root, runners, mainBranch } = ctx;
   const sha = await mergePinSha(root, DIRECTOR_ROLE);
-  if (sha === null) return false; // no pin at all: the director owes no run
+  // No pin at all: the director owes no run.
+  if (sha === null) return { owedRun: false, drainingSha: null };
   const streak = runners.find((r) => r.role === DIRECTOR_ROLE)?.state.mergeConflicts;
   const attempts = conflictAttempts(streak, sha);
   const present = await commitExists(root, sha).catch(() => false);
   const stale = present && (await isMergedInto(root, sha, mainBranch));
   const draining = present && !stale && attempts < MERGE_CONFLICT_LIMIT;
-  return !draining;
+  return { owedRun: !draining, drainingSha: draining ? sha : null };
 }
 
 /** Compute the once-per-poll precompute the scheduling pass's per-runner loop reads. Has the
@@ -500,7 +507,7 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
   // a live pin under the conflict cap is DRAINING (the drain settles it, owes no run) — the
   // 2026-11-04/11-09 spin, gone; a stale pin or a kept pin at the cap owes the run, which the
   // pass's skip guard then splits by hand-back.
-  const pinnedDirector = await directorPinOwedRun(ctx);
+  const { owedRun: pinnedDirector, drainingSha: directorDrainingPin } = await directorPinOwedRun(ctx);
   const queuedMergeClaims = await queuedMergeClaimKeys(root, runners);
   const claimGroups = await collectClaimGroups(root, runners, pausedRoles, now, queuedMergeClaims);
   // The team gates' block predicate (the director exempt — an explicit human prompt
@@ -571,6 +578,7 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     workMergedSince,
     modelCheckHeld: ctx.modelCheckHeld ?? new Set<string>(),
     pinnedDirector,
+    directorDrainingPin,
     claimGroups,
     queuedMergeClaims,
     writing,

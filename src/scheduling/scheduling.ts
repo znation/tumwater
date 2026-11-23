@@ -50,6 +50,14 @@ interface EligibilityOptions {
    * poll cadence (BUGS.md hot loop). Such an inbox is due only on the min-run-interval clock,
    * like the leftover-pinned arm. Reaches only the director arm. */
   inboxSelfRequeued?: boolean;
+  /** The director's own queued change is still draining: its merge pin is live under the
+   * conflict cap and is the sha its last queued run stashed (skip.ts computes it). A run now
+   * would be the promptless recovery run (runner-run.ts `recoveryOnly`): it declines the inbox
+   * prompt, finds the pin `already_queued`, and ends `skipped` — so honoring the inbox only
+   * spins one no-op run per min-run interval until the merge settles (2026-11-22: ~180 an hour
+   * for 3 h behind the merge queue). The inbox is held instead; the merge outcome clears the
+   * stash and the prompt runs on the next poll. Reaches only the director arm. */
+  ownPinDraining?: boolean;
 }
 
 /** The decision one gate returns: run now, or hold with an optional reason/skip, or — for
@@ -81,6 +89,8 @@ function dueOnMinInterval(s: RunnerState, now: number, reason: string): Eligibil
  * runs as soon as the previous one finishes. Reaches either arm and always resolves. */
 function directorGate(s: RunnerState, now: number, inboxCount: number, opts: EligibilityOptions): Eligibility {
   if (inboxCount > 0) {
+    // The run could only skip while its own change drains (ownPinDraining): hold the inbox.
+    if (opts.ownPinDraining) return { run: false };
     // A prompt the director re-queued for itself at the end of the run that just ended (every
     // deliverable prompt stamped at or before lastRunEndedAt, inboxSelfRequeued) is not fresh
     // demand: honoring it immediately re-runs the same unfulfillable request back to back at

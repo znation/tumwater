@@ -264,6 +264,29 @@ test("a director whose kept pin sits at the conflict cap awaiting hand-back is n
   assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).get(runners[0]!), "leftover", "a handed-back lineage at the cap is discarded promptlessly");
 });
 
+test("a director with a queued prompt waits while its own stashed change drains, and runs once it settles", async () => {
+  const repo = await initializedRepo();
+  const runners = [fakeRunner("director", defaultConfig())];
+  const director = runners[0]!;
+  const roleProviders = new Map<string, string | undefined>();
+  enqueueRolePrompt(repo, "director", "file the issue");
+  // The director's last run queued this change: the pin is live ahead of main, under the cap,
+  // and its stash names the sha. A run now could only be the promptless recovery run that
+  // declines the prompt and ends `skipped` (2026-11-22: ~180 such runs an hour for 3 h).
+  const sha = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, "d.txt"), "d\n"), "director change");
+  await setRef(repo, mergeRefName("director"), sha);
+  director.state.queuedSummary = { sha, summary: "director change" };
+  assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).has(director), false, "own draining pin: inbox held");
+  // A pin the stash does not name (a crashed run's, or one whose failed merge cleared the stash)
+  // still gets its one recovery run, which re-pins it and stashes the sha.
+  director.state.queuedSummary = undefined;
+  assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).get(director), "inbox", "unstashed pin: the recovery run is admitted");
+  // The merge settles: the pin is gone and the prompt runs.
+  director.state.queuedSummary = { sha, summary: "director change" };
+  sh(repo, "git", "update-ref", "-d", mergeRefName("director"));
+  assert.equal((await pollRunnerReasons(schedulingCtx(repo, runners, roleProviders))).get(director), "inbox", "pin settled: the prompt runs");
+});
+
 /** A config whose feature role runs two instances, set through the schema field part 5a/7
  * added (`roles.<id>.instances`). */
 function twoFeatureInstances(): TumwaterConfig {

@@ -1,4 +1,4 @@
-import { refSha, refsUnder } from "../git/git.js";
+import { gitLines, refSha, refsUnder } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { commitRunOf, commitSubject } from "../run/commit-message.js";
 import { mergeRefName } from "../paths.js";
@@ -94,6 +94,25 @@ async function commitDateOrMessage(
     message: message === "" ? null : message,
     readable: true,
   };
+}
+
+/** Each live pin's committer date (epoch ms) keyed by role id, in ONE `for-each-ref` read over
+ * the merge-ref prefix — the same date readMergePins ages a waiting change by (a pin is set the
+ * instant its commit lands). The merge drain orders its candidates by it, oldest first. A pin
+ * whose date cannot be read is left out, and a failed read returns an empty map: callers treat a
+ * missing role as the newest. */
+export async function pinCommitDates(root: string): Promise<Map<string, number>> {
+  const format = `--format=%(refname)${SEP}%(committerdate:unix)`;
+  const out = await gitTry(root, "for-each-ref", format, MERGE_REF_PREFIX);
+  const dates = new Map<string, number>();
+  for (const line of gitLines(out)) {
+    const [ref = "", secs = ""] = line.split(SEP);
+    const n = Number(secs);
+    if (ref.startsWith(MERGE_REF_PREFIX) && secs !== "" && Number.isFinite(n)) {
+      dates.set(ref.slice(MERGE_REF_PREFIX.length), n * 1000);
+    }
+  }
+  return dates;
 }
 
 /** A role's merge pin sha, or null when the role holds no pin or the ref could not be read. The
