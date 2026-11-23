@@ -207,6 +207,22 @@ parser accepts"; `test/completion.test.ts` — "completion --config-keys prints 
 this repo's roles, or the catalog on a broken config"; `test/cli-config-commands.test.ts` — "set
 of an exponent spelling of a plain-integer key fails without writing".
 
+### INV-A11: every numeric bound the CLI help states is stated in docs/cli.md too
+
+**Guarantee.** The reference doc the README sends operators to and the built-in `tumwater help`
+are two surfaces for the same flag rules, so a bound the help states must also appear on a
+`docs/cli.md` line that documents that command: a reader who follows the reference literally is
+refused by a cap the reference never mentioned. The 7-day `--since`/`--until` windows
+(`LOGS_SINCE_MAX_MS`, `REPORT_SINCE_MAX_MS`) and the 90-day `pause --for` and `prompt --at`
+bounds are each enforced in one module and stated on both surfaces.
+
+**Binds.** `src/cli/cli-help-text.ts` (the help's stated bounds), `docs/cli.md` (the reference
+rows), `src/events/event-window.ts` (`LOGS_SINCE_MAX_MS`, `REPORT_SINCE_MAX_MS`),
+`src/cli/cli-args.ts` (`failOverDurationCap`).
+
+**Pinned by.** `test/cli-doc.test.ts` — "docs/cli.md names every numeric cap `tumwater help`
+states for a command" and "the cap scan sees the caps the help states".
+
 ## Reader and writer over a persisted or appended file
 
 A file that one process appends to or persists and another reads has two ends to agree on: the

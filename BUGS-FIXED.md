@@ -5,6 +5,46 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `tumwater logs --since` and `history --since` refuse any window over 7 days, but neither command's docs/cli.md entry names the cap (found by the qa role 2026-11-22) — fixed 2026-11-23 by the bugfix role
+
+**Symptom.** docs/cli.md presents the two trailing-window reads unbounded — its Watch-state row spells
+```
+tumwater logs --since <duration> [--until <duration>]
+```
+and says only that `--until` "ends the window that long ago … it requires `--since`, must be shorter than it" (line 61); its Watch-run-history row likewise lists `[--since <duration> [--until <duration>]]` with the same "requires `--since`, must be shorter than it" prose and no bound (line 59). An operator who follows that literally is refused: `tumwater logs --since 30d` exits 1 with `tumwater: logs --since is capped at 7d (got 30d)`, and `--until` is capped too (`logs --since 3d --until 8d` → `tumwater: logs --until is capped at 7d (got 8d)`), so the docs' own worked example space widens into refusals just past a week. the cap is documented for the sibling command and in the built-in help but not on these two rows: `grep -o "capped at 7d" docs/cli.md` counts 2 occurrences, both on line 70 (the `report --since` rows), and `grep -o 7d` counts 0 on lines 59 and 61; `tumwater help` does print the bound for both (`logs … --since shows the events of the past window (capped at 7d)`, `history … --since <duration> shows the window's runs instead of the last N (capped at 7d, like logs --since)`). So only an operator who reads `--help` learns the bound; the reference doc the README sends them to ("Every command and flag is in docs/cli.md") does not carry it.
+
+**Reproduce.** Offline, no model and no `gh`. `mktemp -d`, `git init -b main`, `node <dist>/src/cli.js init "x"`, then seed `.tumwater/log/events.jsonl` with one `run_end` per day for the 16 days back (`{"ts":<now − N×86400000>,"loop":"feature","type":"run_end","run":N,"result":"merged","summary":"dN"}`, N = 1..16) and `.tumwater/log/events.jsonl.1` with the same shape for N = 17..40 (observed 2026-11-22 on a worktree at main's tip, dist built from the tree):
+
+```
+$ tumwater logs --since 7d --count     6 × run finished (run_end)            exit 0
+$ tumwater logs --since 30d            tumwater: logs --since is capped at 7d (got 30d)   exit 1
+$ tumwater logs --since 3d --until 8d  tumwater: logs --until is capped at 7d (got 8d)    exit 1
+$ tumwater history --since 30d         tumwater: history --since is capped at 7d (got 30d) exit 1
+$ tumwater history --since 4d --until 8d  tumwater: history --until is capped at 7d (got 8d) exit 1
+$ tumwater report --since 30d --failures tumwater: report --since is capped at 7d (got 30d) exit 1
+```
+
+The bound is unit-scale too, not just a day spelling: `--since 168h` reads the window, `--since 169h` is refused. `--until` alone still fails its documented precondition first (`logs --until 2d`, `history --until 2d` and `report --until 2d` each exit 1 with `--until requires --since`), so the cap only bites a well-formed window. The cap is intentional, not a defect in the bound: it lives in one place (`LOGS_SINCE_MAX_MS` and `REPORT_SINCE_MAX_MS`, both `7 * DAY_MS`, src/events/event-window.ts:28 and :34, whose comments give the rationale — a longer window re-reads more log without adding signal because the log rotates at 16 MB) and is pinned by tests (`test/cli-logs-filtering.test.ts:92` asserts `/capped at 7d/`, `test/cli-history-filtering.test.ts:108` asserts the exact `history --since is capped at 7d (got 8d)`). Consistent with that rationale, the same seeded log shows a 30-day read could not be served from disk anyway: `tumwater logs --count` and `tumwater logs -n 1000 --count` printed only the 16 events in `events.jsonl`, never the 24 older ones in the rotated `events.jsonl.1`.
+
+**Cause.** The 7-day bound was added on the CLI's flag validation and the report rows' prose at the same time, but the logs and history rows of docs/cli.md were never given the matching clause: the doc file states the cap in exactly one place (line 70, the `report --since` and `report --failures --since` rows) and the logs and history rows keep their pre-cap wording. The help text — generated separately in src/cli/cli-help-text.ts — carries it for all three, so the gap is docs/cli.md alone.
+
+**Fix.** Two clauses, no code change: name the cap on each row the way line 70 already names it — the line-61 phrase becomes `tumwater logs --since <duration> [--until <duration>]` (`--since` shows a trailing window capped at 7d, like `report --since`; …), and the line-59 history row's `[--since <duration> [--until <duration>]]` prose gains the same "capped at 7d, like `logs --since`" clause the help text already uses for history. The invariants doc names no window bound today (`grep -n "since.*cap" docs/invariants.md` finds nothing), so nothing there needs amending; the two tests above already pin the enforced wording.
+
+**Notes for the fixer.** docs/cli.md's rows are single very long table lines — line 59 (history), line 61 (status/logs/brief/reviews) and line 70 (doctor/report) — so patch by phrase, not by line rewrite, and confirm the exact anchor strings first: `` tumwater logs --since <duration> [--until <duration>]`` `` occurs once, on line 61, and history's flag list `[--since <duration> [--until <duration>]]` and its prose `` `--until` ends the `--since` window that long ago`` `` each occur once, on line 59 (grep -on for each). Do not widen the bound: the report's cap, the dashboard feed and history clients (`src/ui/gui/gui-client-feed.ts`, `src/ui/gui/gui-client-history.ts`, which comment that they mirror `LOGS_SINCE_MAX_MS`) and the pinned test wording all read the same 7 days.
+
+**Landed.** Both clauses added as the entry planned (the history row gained "capped at 7d, like
+`logs --since`", the logs row "shows a trailing window capped at 7d, like `report --since`"), plus a
+guard the entry did not ask for: `test/cli-doc.test.ts` now compares every `capped at <bound>` the
+help states against the docs/cli.md lines that document that command, so the next bound stated only
+on one surface fails a test. The guard's first run named exactly these two rows. The reconstructed
+rule is recorded as INV-A11 in docs/invariants.md.
+
+**Validation gap:** unclear-invariant — nothing had to say what the two CLI doc surfaces were
+supposed to agree on: the existing docs guards matched command names and long flags, never a
+stated numeric bound, so the rule had to be reconstructed (a bound the help states must appear on
+the reference line documenting that command) and is recorded here as INV-A11 in
+docs/invariants.md.
+
 ### The selfcheck filing path dedupes against `## Open` and selfcheck's own commits only, so a bug already fixed and archived the same day is re-filed as open work (found by the bugfix role 2026-11-22) — fixed 2026-11-23 by the bugfix role
 
 **Symptom.** The red-check plumbing bug was filed, fixed, and archived, then filed again as open
