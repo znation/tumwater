@@ -15,6 +15,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { withLock, withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
+import { withMainTipWorktree } from "../baseline/main-red.js";
+import { checkFailureReasons } from "../build/build-check-report.js";
+import { runScopedBuildCheck } from "../build/build-check-scoped.js";
+import { loadConfigSafe } from "../config/config.js";
+import { branchHead, currentBranch, targetBranch } from "../git/git.js";
+import { TUMWATER_SOURCE } from "../events/events.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { commitOnlyArgs, git, gitTry } from "../git/git-run.js";
 import { stampedSubject } from "../run/commit-message.js";
@@ -92,6 +98,40 @@ export function closeQuietWaitsText(
   return { bugs: lines.join("\n"), archive: move.archive, titles: closing.map((r) => r.title) };
 }
 
+/** Why this instance last withheld a quiet-wait close, keyed by `<root>\0<base>\0<base tip>`. The
+ * verification is the whole gate check and the main watch polls this housekeeping pass every
+ * poll, so a withheld close would otherwise pay a full suite every few seconds while the entry
+ * sits open. A tip cannot turn green without moving, and an edit to either backlog file makes the
+ * primary dirty — which the dirty guard skips before any check — so one verdict per tip is
+ * enough; CLOSE_WITHHELD_MAX bounds a long-lived instance's map. */
+const withheldCloses = new Map<string, string>();
+const CLOSE_WITHHELD_MAX = 8;
+
+/** Why the record `files` (BUGS.md and BUGS-FIXED.md as the close would write them) must not land
+ * on `base`, or null when it may: the gate's declared check, run over a scratch clone of `base`'s
+ * tip carrying them, fails. The close is the harness's only commit to the base branch with no
+ * check of its own, so a record that trips the project's own ledger guards — the `no-repro`
+ * archive guards of GitHub issue #4, tripped by a real auto-close on 2026-11-22 — turned main
+ * red and froze every later merge behind it. The clone is `_gate-main`, re-pointed at the tip by
+ * withMainTipWorktree (which hard-resets and cleans it, so the tree under test is exactly the tip
+ * plus `files`), never the primary checkout: a withheld close leaves BUGS-FIXED.md uncreated.
+ * Only a `failed` verdict withholds — a skipped run (no toolchain, a timeout, an abort) or a repo
+ * declaring no check at all keeps the close, per INV-BI8's rule that a failed close must not
+ * stall the watch. A missing or unreadable base ref rejects; the caller turns that into a skip. */
+async function closeRecordCheckReason(
+  root: string,
+  base: string,
+  files: readonly (readonly [string, string])[],
+): Promise<string | null> {
+  const config = loadConfigSafe(root).config;
+  return withMainTipWorktree(root, base, async (mirror) => {
+    for (const [rel, content] of files) writeTextAtomic(path.join(mirror, rel), content);
+    const run = await runScopedBuildCheck(root, TUMWATER_SOURCE, "gate", mirror, config);
+    if (run?.outcome.status !== "failed") return null;
+    return checkFailureReasons(run.check, run.outcome)[0] ?? "the declared check failed";
+  });
+}
+
 /** What closeQuietBugWaitsOnMain did: the headings it closed, or why nothing was. */
 type QuietCloseOutcome =
   | { status: "nothing" }
@@ -103,8 +143,9 @@ type QuietCloseOutcome =
  * branch as one `tumwater(operator):` commit under the merge lock and the primary-worktree lock,
  * exactly as fileBugsOnMain does. The steady state — no quiet wait — reads only the stat-cached
  * open bugs and takes no lock. Skipped, writing nothing, when the primary checkout is off the base
- * branch, either file has uncommitted changes, or one cannot be read; a failed write or commit
- * restores both files. */
+ * branch, either file has uncommitted changes, one cannot be read, or the record would land on a
+ * base tip the project's own gate check refuses (closeRecordCheckReason); a failed write or
+ * commit restores both files. */
 export async function closeQuietBugWaitsOnMain(
   root: string,
   opts: { now?: number; lockTimeoutMs?: number } = {},
@@ -136,6 +177,26 @@ export async function closeQuietBugWaitsOnMain(
         // Re-judged under the locks from the files themselves: a merge may have moved main since.
         const closed = bugsMd === null ? null : closeQuietWaitsText(bugsMd, archiveMd, parseEntryDetails(bugsMd, "Open"), now);
         if (bugsMd === null || closed === null) return { status: "nothing" };
+        // The record is judged at the tip it would land on, over a clone, before a byte of it is
+        // written here — so a close the project's check refuses never reaches main at all.
+        const base = targetBranch(loadConfigSafe(root).config?.baseBranch, await currentBranch(root));
+        const key = `${root}\u0000${base}\u0000${(await branchHead(root, base)) ?? ""}`;
+        const remembered = withheldCloses.get(key);
+        if (remembered !== undefined) return { status: "skipped", reason: remembered };
+        let reason: string | null;
+        try {
+          reason = await closeRecordCheckReason(root, base, [
+            [spec.file, closed.bugs],
+            [spec.archive, closed.archive],
+          ]);
+        } catch (err) {
+          return { status: "skipped", reason: `the close could not be checked: ${errorFirstLine(err)}` };
+        }
+        if (reason !== null) {
+          if (withheldCloses.size >= CLOSE_WITHHELD_MAX) withheldCloses.clear();
+          withheldCloses.set(key, reason);
+          return { status: "skipped", reason };
+        }
         const restore = async (): Promise<void> => {
           await gitTry(root, "reset", "-q", "--", ...files);
           writeTextAtomic(path.join(root, spec.file), bugsMd);

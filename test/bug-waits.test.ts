@@ -17,7 +17,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { fixSymbols } from "../src/verdict/fix-claim.js";
 import { loadQuarantine, markQuarantineFiled, quarantineTests } from "../src/review/known-flakes.js";
 import { BUGFIX_WAIT_QUIET_DAYS } from "../src/roles/role-guidance.js";
-import { makeRepo, seedCommit, sh } from "./fixtures/repo-fixtures.js";
+import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -176,4 +176,46 @@ test("closeQuietBugWaitsOnMain commits the close on main, does nothing while eve
   assert.deepEqual(parseEntryDetails(fs.readFileSync(file, "utf8"), "Open").map((e) => e.title), ["Another bug (found by qa 2026-11-01)"]);
   const fixed = parseEntryDetails(fs.readFileSync(path.join(root, "BUGS-FIXED.md"), "utf8"), "Fixed");
   assert.match(fixed[0]?.title ?? "", /quarantined by tumwater 2026-10-24\) — closed 2026-11-03 by tumwater$/);
+});
+
+test("a close whose record the project's own check refuses is withheld: nothing written, no commit, one verdict per tip, and it lands once the tip goes green", async () => {
+  // The project's ledger guard reads the archive the close would write, so the declared check
+  // fails exactly when BUGS-FIXED.md is in the tree, and counts how often it ran.
+  const runs = path.join(tmpdir(), "close-check-runs");
+  const root = repoWithBugs(bugsWith("flaky one", "**Needs review 2026-10-26 by bugfix: the message names the case.**"));
+  seedCommit(
+    root,
+    "tumwater.json",
+    JSON.stringify({
+      provider: "local",
+      model: "tiny",
+      check: {
+        command: `echo run >> ${runs}; if [ -f BUGS-FIXED.md ]; then echo ✖ test_the_record_count_does_not_grow; exit 1; fi`,
+      },
+    }),
+    "guard check",
+  );
+  const redTip = Number(sh(root, "git", "rev-list", "--count", "HEAD"));
+  const bugsFile = path.join(root, "BUGS.md");
+  const bugsBefore = fs.readFileSync(bugsFile, "utf8");
+  const skipped = await closeQuietBugWaitsOnMain(root, { now: Date.parse("2026-11-03T12:00:00") });
+  assert.equal(skipped.status, "skipped");
+  assert.match(skipped.reason ?? "", /check failed .*test_the_record_count_does_not_grow/);
+  assert.equal(fs.readFileSync(bugsFile, "utf8"), bugsBefore, "the entry stays open in BUGS.md");
+  assert.ok(!fs.existsSync(path.join(root, "BUGS-FIXED.md")), "the archive is never created");
+  assert.equal(Number(sh(root, "git", "rev-list", "--count", "HEAD")), redTip, "no commit on the base branch");
+  assert.equal(sh(root, "git", "status", "--porcelain"), "", "the withheld close left the primary clean");
+  assert.equal(fs.readFileSync(runs, "utf8").trim().split("\n").length, 1, "the guard check ran once");
+  // A later poll of the same open entry at the same red tip does not pay for it again.
+  assert.deepEqual(await closeQuietBugWaitsOnMain(root, { now: Date.parse("2026-11-04T12:00:00") }), skipped);
+  assert.equal(fs.readFileSync(runs, "utf8").trim().split("\n").length, 1, "the withheld verdict was remembered");
+  // The same close lands when the tip it would land on is green: the config edit moved main.
+  seedCommit(root, "tumwater.json", JSON.stringify({ provider: "local", model: "tiny", check: { command: "echo ok" } }), "green check");
+  assert.equal((await closeQuietBugWaitsOnMain(root, { now: Date.parse("2026-11-04T12:00:00") })).status, "closed");
+  assert.equal(Number(sh(root, "git", "rev-list", "--count", "HEAD")), redTip + 2, "the close is one commit");
+  assert.deepEqual(
+    parseEntryDetails(fs.readFileSync(bugsFile, "utf8"), "Open").map((e) => e.title),
+    ["Another bug (found by qa 2026-11-01)"],
+  );
+  assert.equal(fs.readFileSync(runs, "utf8").trim().split("\n").length, 1, "the green check ran elsewhere");
 });

@@ -4386,12 +4386,23 @@ that names no code and a `no-repro` validation-gap line, in one `tumwater(operat
 younger wait, a director or plan-role Needs-review note, and a Refused note never close. A dirty
 BUGS.md or BUGS-FIXED.md, or a checkout off the base branch, closes nothing.
 
-**Binds.** `src/backlog/backlog-bug-waits.ts` (`closeQuietWaitsText`, `closeQuietBugWaitsOnMain`),
-`src/roles/role-guidance.ts` (`BUGFIX_WAIT_QUIET_DAYS`), `src/baseline/main-watch-quarantine.ts` (`settleQuarantine`).
+The record is checked before any of it is written: the gate's declared check runs in the
+`_gate-main` clone of the base tip carrying the two rendered files (`closeRecordCheckReason`), and
+a `failed` verdict withholds the close — `BUGS.md` untouched, `BUGS-FIXED.md` uncreated, no
+commit — with one `skipped` reason naming the failing check, so an auto-close can never be the
+commit that turns main red. A skipped run, a repo declaring no check, and an unreadable base ref
+keep the close (a failed close must not stall the watch); the withheld verdict is remembered per
+base tip, so a poll of the same entry at the same tip runs the check once.
+
+**Binds.** `src/backlog/backlog-bug-waits.ts` (`closeQuietWaitsText`, `closeQuietBugWaitsOnMain`,
+`closeRecordCheckReason`), `src/roles/role-guidance.ts` (`BUGFIX_WAIT_QUIET_DAYS`),
+`src/baseline/main-watch-quarantine.ts` (`settleQuarantine`).
 
 **Pinned by.** `test/bug-waits.test.ts` — "closeQuietWaitsText closes only a bugfix wait past the
-quiet days, into the archive with a Fix and a validation-gap line" and "closeQuietBugWaitsOnMain
-commits the close on main, does nothing while every wait is young, and skips a dirty BUGS.md".
+quiet days, into the archive with a Fix and a validation-gap line", "closeQuietBugWaitsOnMain
+commits the close on main, does nothing while every wait is young, and skips a dirty BUGS.md", and
+"a close whose record the project's own check refuses is withheld: nothing written, no commit, one
+verdict per tip, and it lands once the tip goes green".
 
 ## Review verdict and revision finality: a reply without a verdict never approves, a rejected change revises until one objection survives two revisions or the backstop, and a git that could not start never drops a revision
 
