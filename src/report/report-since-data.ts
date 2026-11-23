@@ -219,6 +219,7 @@ function sinceRoleMaps(
       | "notionalByRole"
       | "notionalByBackend"
       | "deferredByReason"
+      | "githubIssuesByOutcome"
     >
   > {
   // The --since render/JSON's Notional by role line is conditional on the window's own
@@ -230,6 +231,10 @@ function sinceRoleMaps(
   // carries no entries — the same team-only rule runsByModel follows. Only set when the
   // window actually deferred (zero means absent), so a deferral-free --since JSON omits it.
   const deferred = scopedByRole(acc.deferredByReason, bases);
+  // GitHub-issues outcomes are keyed by outcome, not role (these events' source is `tumwater`),
+  // so a role-scoped window carries no entries — the same team-only rule deferredByReason
+  // follows — and the window map is only set when nonzero, so an issue-free --since JSON omits it.
+  const issues = scopedByRole(acc.githubIssuesByOutcome, bases);
   return {
     runsByRole: scopedByRole(acc.runsByRole, bases),
     costByRole: scopedByRole(acc.costByRole, bases),
@@ -271,5 +276,6 @@ function sinceRoleMaps(
     costByModel: scopedByRole(acc.costByModel, bases),
     notionalByModel: scopedByRole(acc.notionalByModel, bases),
     ...nonemptyObj<SinceReport>("deferredByReason", deferred),
+    ...nonemptyObj<SinceReport>("githubIssuesByOutcome", issues),
   };
 }

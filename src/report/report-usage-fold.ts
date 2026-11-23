@@ -181,6 +181,16 @@ export interface UsageFold {
    * deferredReasonText applies in the feed — so the tally and the feed agree. Team-only: a
    * reason is not a role, so a role-scoped report carries an empty map. */
   deferredByReason: Record<string, number>;
+  /** The GitHub-issues mirror's outcomes keyed by outcome (`queued`, `closed`, `declined`,
+   * `lost`), so a window says what the team did about the issue tracker instead of leaving the
+   * operator to count log lines. `github_issue_queued` counts the team taking an issue up; the
+   * other three spellings count how it ended. `lost` is the word the CLI already prints for an
+   * upstream-closed row (`IssueState`'s third state, `tumwater issues --lost`), so one word
+   * names one outcome on both surfaces. The events carry no role — their `source` names the
+   * emitter (`tumwater`) — so this is a team attribution keyed by outcome, the stance
+   * `mergeFailedByReason` documents: a role-scoped report carries no map. A parallel tally,
+   * never subtracted from anything. */
+  githubIssuesByOutcome: Record<string, number>;
 }
 
 /** The empty commit-family counters every accumulator starts from: the total and per-base-role
@@ -262,6 +272,7 @@ export function zeroUsageFold(): Omit<
     costByModel: {},
     notionalByModel: {},
     deferredByReason: {},
+    githubIssuesByOutcome: {},
   };
 }
 
@@ -478,6 +489,34 @@ function foldDeferred(target: UsageFold, ev: HarnessEvent): void {
   addTo(target.deferredByReason, reason, 1);
 }
 
+/** The four GitHub-issues mirror events that name one issue's outcome, as a set so the fold's
+ * dispatch stays one line. `github_issues_unavailable` is deliberately absent: it records a
+ * failed scan, not an issue, so counting it would report tracker trouble as an outcome. */
+const ISSUE_OUTCOME_TYPES: ReadonlySet<HarnessEvent["type"]> = new Set([
+  "github_issue_queued",
+  "github_issue_closed",
+  "github_issue_declined",
+  "github_issue_upstream_closed",
+]);
+
+/** Fold one GitHub-issues mirror outcome: one issue per event, bucketed by that issue's outcome
+ * (team-only). The key is the outcome's own name, never the event's `source`, which says
+ * `tumwater` for all four — folding the source would invent a role that never ran. The
+ * upstream-closed arm spells the outcome `lost`, the word `tumwater issues --lost` already
+ * prints for such a row, so one word names one outcome on both surfaces. A lost issue emits
+ * `github_issue_upstream_closed` and never `github_issue_closed` (GitHub's own close fires no
+ * tumwater event, and a tumwater close that got there first leaves the issue in `closedRows`,
+ * which the loss filter excludes), so the four buckets count disjoint issues and the outcome
+ * line never double-counts one. */
+function foldGithubIssues(target: UsageFold, ev: HarnessEvent): void {
+  const outcome =
+    ev.type === "github_issue_queued" ? "queued"
+      : ev.type === "github_issue_declined" ? "declined"
+        : ev.type === "github_issue_upstream_closed" ? "lost"
+          : "closed";
+  addTo(target.githubIssuesByOutcome, outcome, 1);
+}
+
 /** Fold a merged commit: one commit split by base role and tier (Work ratio 4/4). */
 function foldMerged(target: UsageFold, ev: HarnessEvent): void {
   target.commits++;
@@ -569,7 +608,7 @@ function foldMergeOutcome(target: UsageFold, ev: HarnessEvent): void {
 
 /** Fold one event into a usage accumulator by dispatching to a per-family builder —
  * foldRunEnd, foldReviewRejected, foldReviewVerdict, foldRevision, foldPassingCheck,
- * foldRedCheck, foldImageReroute, foldDeferred, foldMerged,
+ * foldRedCheck, foldImageReroute, foldDeferred, foldGithubIssues, foldMerged,
  * foldRunStarted, foldProviderWait, foldSlotWait, foldCheckWait or foldMergeOutcome — each
  * named for the family it folds, so how a family folds is found by name. The dispatch holds
  * no accumulation of its own. All behavior lives in the builders: run_end events add a run
@@ -595,6 +634,7 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent, runModels?: 
   else if (isRedFullCheck(ev)) foldRedCheck(target, ev);
   else if (ev.type === "image_reroute") foldImageReroute(target, ev);
   else if (ev.type === "run_deferred") foldDeferred(target, ev);
+  else if (ISSUE_OUTCOME_TYPES.has(ev.type)) foldGithubIssues(target, ev);
   else if (ev.type === "merged") foldMerged(target, ev);
   else if (ev.type === "run_start") foldRunStarted(target, ev);
   else if (ev.type === "provider_wait") foldProviderWait(target, ev);

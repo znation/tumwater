@@ -96,6 +96,9 @@ interface DayFold {
    * costByModel. */
   notionalByModel: Record<string, number>;
   deferredByReason: Record<string, number>;
+  /** The GitHub-issues mirror's outcomes that day, keyed by outcome (queued / closed /
+   * declined / lost) — team-only, since an outcome has no role. */
+  githubIssuesByOutcome: Record<string, number>;
 }
 
 /** The event-log half of a windowed report, memoized per (root, fromKey). `offset` is how

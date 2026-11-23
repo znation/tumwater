@@ -361,6 +361,53 @@ test("team report tallies deferred maintenance runs by reason; scoped and deferr
   assert.ok(!("deferredByReason" in JSON.parse((await runCli(clean, "report", "--json", "--days", "3")).out).series[0]));
 });
 
+test("team report tallies the GitHub-issues mirror by outcome; scoped and issue-free reports omit it", async () => {
+  const root = makeRepo();
+  const issue = (ts: number, type: string, n: number) =>
+    JSON.stringify({ ts, source: "tumwater", type, repo: "o/r", issue: n });
+  writeEvents(root, [
+    issue(todayTs(5 * 60_000), "github_issue_queued", 7),
+    issue(todayTs(4 * 60_000), "github_issue_queued", 9),
+    issue(todayTs(3 * 60_000), "github_issue_queued", 11),
+    issue(todayTs(2 * 60_000), "github_issue_closed", 7),
+    issue(todayTs(1 * 60_000), "github_issue_closed", 9),
+    issue(todayTs(30_000), "github_issue_declined", 5),
+    // GitHub closed this one upstream: tumwater logs the loss, never a close, so it is counted
+    // once and only under the CLI's own word for such a row, `lost`.
+    issue(todayTs(20_000), "github_issue_upstream_closed", 8),
+  ]);
+  // The day report prints the tally after the merge block (count desc, outcome name asc), and
+  // --since carries the same window map.
+  const md = await runCli(root, "report", "--days", "3");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*GitHub issues by outcome:\*\* queued — 3 · closed — 2 · declined — 1 · lost — 1/);
+  const sinceMd = await runCli(root, "report", "--since", "2d");
+  assert.equal(sinceMd.code, 0);
+  assert.match(sinceMd.out, /\*\*GitHub issues by outcome:\*\* queued — 3 · closed — 2 · declined — 1 · lost — 1/);
+
+  // The day series and --since JSON carry the per-outcome map (zero-means-absent).
+  const json = JSON.parse((await runCli(root, "report", "--json", "--days", "3")).out);
+  assert.deepEqual(json.series[json.series.length - 1].githubIssuesByOutcome, { queued: 3, closed: 2, declined: 1, lost: 1 });
+  const sinceJson = JSON.parse((await runCli(root, "report", "--json", "--since", "2d")).out);
+  assert.deepEqual(sinceJson.githubIssuesByOutcome, { queued: 3, closed: 2, declined: 1, lost: 1 });
+
+  // An outcome has no role, so a role-scoped day and --since omit the line and the key.
+  const scoped = await runCli(root, "report", "--role", "feature", "--days", "3");
+  assert.ok(!scoped.out.includes("**GitHub issues by outcome:"), "a scoped day report omits it");
+  const scopedSince = await runCli(root, "report", "--role", "feature", "--since", "2d");
+  assert.ok(!scopedSince.out.includes("**GitHub issues by outcome:"), "a scoped --since omits it");
+  assert.ok(!("githubIssuesByOutcome" in JSON.parse((await runCli(root, "report", "--json", "--role", "feature", "--days", "3")).out).series[0]));
+  assert.ok(!("githubIssuesByOutcome" in JSON.parse((await runCli(root, "report", "--json", "--role", "feature", "--since", "2d")).out)));
+
+  // An issue-free window prints no line and omits the key, so every existing fixture's output
+  // is byte-unchanged.
+  const clean = makeRepo();
+  writeEvents(clean, [JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 })]); // retired-name-ok: legacy event field in a fixture
+  const cleanMd = await runCli(clean, "report", "--days", "3");
+  assert.ok(!cleanMd.out.includes("**GitHub issues by outcome:"), "no mirror event prints no line");
+  assert.ok(!("githubIssuesByOutcome" in JSON.parse((await runCli(clean, "report", "--json", "--days", "3")).out).series[0]));
+});
+
 test("report --json omits mergedByRole/mergeFailedByRole when no role has either; carries them when one does", async () => {
   const clean = makeRepo();
   const cleanParsed = JSON.parse((await runCli(clean, "report", "--json", "--days", "2")).out);

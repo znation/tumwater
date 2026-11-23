@@ -163,6 +163,25 @@ test("run_deferred buckets by reason, falling back to no-work", () => {
   assert.deepEqual(f.deferredByReason, { backlog: 1, "plans-full": 1, "no-work": 1 });
 });
 
+test("the GitHub-issues mirror events name each outcome once, keyed by outcome not source", () => {
+  const f = fresh();
+  foldUsageEvent(f, ev("github_issue_queued", { source: "tumwater", repo: "o/r", issue: 7 }));
+  foldUsageEvent(f, ev("github_issue_closed", { source: "tumwater", repo: "o/r", issue: 9 }));
+  foldUsageEvent(f, ev("github_issue_declined", { source: "tumwater", repo: "o/r", issue: 5 }));
+  foldUsageEvent(f, ev("github_issue_upstream_closed", { source: "tumwater", repo: "o/r", issue: 8 }));
+  // One bucket per outcome, the upstream close spelled `lost` — the word `issues --lost` prints.
+  assert.deepEqual(f.githubIssuesByOutcome, { queued: 1, closed: 1, declined: 1, lost: 1 });
+  // The events' source names the emitter, so it never lands as a role key.
+  assert.deepEqual(f.runsByRole, {});
+  // A repeat of one outcome counts again, and no other event type opens the map: a scan outage
+  // records tracker trouble, not an issue's outcome.
+  foldUsageEvent(f, ev("github_issue_queued", { source: "tumwater", repo: "o/r", issue: 11 }));
+  foldUsageEvent(f, ev("github_issues_unavailable", { source: "tumwater", repo: "o/r" }));
+  assert.deepEqual(f.githubIssuesByOutcome, { queued: 2, closed: 1, declined: 1, lost: 1 });
+  // A fold that saw no mirror event leaves the map empty (zero means absent upstream).
+  assert.deepEqual(fresh().githubIssuesByOutcome, {});
+});
+
 test("merged: one commit, split by base role and by tier", () => {
   const f = fresh();
   foldUsageEvent(f, ev("merged", { source: "feature-2" }));

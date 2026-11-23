@@ -1417,7 +1417,10 @@ window".
 `foldUsageEvent`, so a trailing window and a same-seed day slice agree. Merge-slot tokens and cost
 go into `mergeTokens` and `mergeCostUsd`, never into `tokensOut` or `costUsd` inside the fold, and
 each collector adds the merge share to its surfaced totals. A role-scoped window excludes the
-merge share.
+merge share. The GitHub-issues mirror's four outcome events fold into one team-only
+`githubIssuesByOutcome` map keyed by outcome (`queued`, `closed`, `declined`, `lost`), each event
+contributing exactly one issue to exactly one bucket, so the day series and the trailing window
+name the same outcomes and a lost issue is never counted as closed as well.
 
 **Binds.** `src/report/report-usage-fold.ts` (`foldUsageEvent`, `UsageFold`),
 `src/report/report-data.ts` (`collectReport`), `src/report/report-since-data.ts`
@@ -1427,7 +1430,10 @@ merge share.
 collectReport slice", "collectReport folds merge_done/merge_failed usage into the day and totals,
 with the merge share named", "collectReportSince folds merge_done/merge_failed usage into the
 window totals" and "collectReportSince scopes a trailing window to one role, excluding the merge
-share".
+share"; `test/report-usage-fold.test.ts` — "the GitHub-issues mirror events name each outcome
+once, keyed by outcome not source"; `test/report-data.test.ts` — "collectReport and
+collectReportSince tally the GitHub-issues mirror by outcome, zero meaning absent, team scope
+only".
 
 ## History rows: each merge verdict shows once, and missing evidence keeps the raw label
 

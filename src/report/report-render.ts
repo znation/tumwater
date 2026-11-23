@@ -446,6 +446,20 @@ function pushReportDeferralLines(lines: string[], data: ReportData): void {
   }
 }
 
+/** The team-only GitHub-issues outcome line, after the merge block so an operator reads what
+ * the team did with a change and then what it did with the tracker. */
+function pushReportGithubIssueLines(lines: string[], data: ReportData): void {
+  // The mirror's outcomes over the window — issues queued to the director, closed by their
+  // fix, declined, and lost upstream (the word `tumwater issues --lost` prints) — ranked count
+  // desc then outcome asc, the day twin of the --since line. Gated to the team report: an
+  // outcome has no role (these events' source is `tumwater`), so a role-scoped report omits it
+  // like it omits the deferral and merge-reason lines. Zero-means-absent: a window that never
+  // touched the tracker prints no line, so every issue-free report's output is unchanged.
+  if (data.role === undefined) {
+    pushPresentRankedLine(lines, "GitHub issues by outcome", rankedBy(data.series, "githubIssuesByOutcome"));
+  }
+}
+
 /** The Commits-by-role line plus the team-only merge/main-red/cameo block. */
 function pushReportMergeLines(lines: string[], data: ReportData): void {
   // Work ratio 4/4: the merged commits split by base role and by tier. The totals line's
@@ -552,6 +566,7 @@ export function renderReportMarkdown(data: ReportData): string {
   pushReportFrictionLines(lines, data);
   pushReportDeferralLines(lines, data);
   pushReportMergeLines(lines, data);
+  pushReportGithubIssueLines(lines, data);
   pushReportTail(lines, data);
   return lines.join("\n");
 }

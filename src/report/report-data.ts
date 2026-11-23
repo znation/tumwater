@@ -169,6 +169,11 @@ function applyTeamDay(day: ReportDay, fold: DayFold): void {
   // series carries the map; only set when a day actually deferred (zero means absent),
   // so a deferral-free day keeps its exact pre-feature shape.
   setMapIfNonempty(day, "deferredByReason", fold.deferredByReason);
+  // GitHub-issues outcomes are a team attribution (an outcome is not a role — these events'
+  // source is `tumwater`), so only the team series carries the map; only set when a day
+  // actually touched the mirror (zero means absent), so an issue-free day keeps its exact
+  // pre-feature shape.
+  setMapIfNonempty(day, "githubIssuesByOutcome", fold.githubIssuesByOutcome);
   day.mergeRuns = fold.mergeRuns;
   day.mergeTokens = fold.mergeTokens;
   day.mergeCostUsd = fold.mergeCostUsd;

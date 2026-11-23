@@ -39,6 +39,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   pushSinceFrictionLines(lines, data);
   pushSinceDeferralLines(lines, data);
   pushSinceCommitLines(lines, data);
+  pushSinceGithubIssueLines(lines, data);
   pushSinceCostLines(lines, data);
   pushSinceCoverageLines(lines, data);
   return lines.join("\n");
@@ -194,6 +195,19 @@ function pushSinceCommitLines(lines: string[], data: SinceReport): void {
     // rejection (fix the change) from a conflict/block (rebase) from a shutdown abort
     // (capacity). Ranked the same way (count desc then code asc), reason-free only.
     pushPresentRankedLine(lines, "Merge failures by reason", rankedRoleMap(data.mergeFailedByReason ?? {}));
+  }
+}
+
+/** The GitHub-issues outcome tally, gated to the team report — the --since twin of the day
+ * render's line after its merge block. */
+function pushSinceGithubIssueLines(lines: string[], data: SinceReport): void {
+  // What the team did about the issue tracker over the window: issues queued, closed by their
+  // fix, declined, and lost upstream (the word `tumwater issues --lost` prints). Ranked count
+  // desc then outcome asc, from the window map the collector folds — the same one fold and the
+  // day series read, so the two windows cannot disagree (INV-R5). Gated to the team report: an
+  // outcome has no role. Zero-means-absent: an issue-free window prints no line.
+  if (data.role === undefined) {
+    pushPresentRankedLine(lines, "GitHub issues by outcome", rankedRoleMap(data.githubIssuesByOutcome ?? {}));
   }
 }
 

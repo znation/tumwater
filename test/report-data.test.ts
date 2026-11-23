@@ -1662,6 +1662,70 @@ test("collectReport and collectReportSince tally run_deferred by reason, zero me
   assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(plain, 2 * 24 * HOUR)), /\*\*Deferred runs by reason:/);
 });
 
+test("collectReport and collectReportSince tally the GitHub-issues mirror by outcome, zero meaning absent, team scope only", () => {
+  const issue = (ts: number, type: string, issue: number) =>
+    JSON.stringify({ ts, source: "tumwater", type, repo: "o/r", issue });
+  const root = tmpdir();
+  writeEvents(root, [
+    issue(todayTs(), "github_issue_queued", 7),
+    issue(todayTs(5000), "github_issue_queued", 9),
+    issue(todayTs(4000), "github_issue_queued", 11),
+    issue(todayTs(3000), "github_issue_closed", 7),
+    issue(todayTs(2000), "github_issue_closed", 9),
+    issue(todayTs(1000), "github_issue_declined", 5),
+    // The one lost issue: an upstream close, which never emits github_issue_closed, so the
+    // window counts it once and only under `lost`.
+    issue(todayTs(500), "github_issue_upstream_closed", 8),
+    JSON.stringify({ ts: at(1), source: "tumwater", type: "github_issues_unavailable", repo: "o/r" }),
+    // One merge failure so the ordering criterion has both neighbours on the page.
+    JSON.stringify({ ts: todayTs(400), loop: "feature", type: "merge_failed", commit: "abc1234", summary: "x", result: "merge_conflict" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  const data = collectReport(root, 3);
+  assert.deepEqual(
+    data.series[2]?.githubIssuesByOutcome,
+    { queued: 3, closed: 2, declined: 1, lost: 1 },
+    "the day holding the mirror events carries all four outcomes",
+  );
+  assert.ok(!("githubIssuesByOutcome" in (data.series[0] ?? {})), "a day with no mirror event omits the field");
+  assert.ok(!("githubIssuesByOutcome" in (data.series[1] ?? {})), "the outage day alone names no outcome");
+
+  // INV-R5's agreement: the --since window's map equals the day series folded.
+  const since = collectReportSince(root, 3 * 24 * HOUR);
+  assert.deepEqual(since.githubIssuesByOutcome, { queued: 3, closed: 2, declined: 1, lost: 1 }, "--since carries the same window map");
+
+  // Both renders rank count desc, outcome name asc (declined before lost at a tie), and spell
+  // an upstream close the word `tumwater issues --lost` prints.
+  const line = /\*\*GitHub issues by outcome:\*\* queued — 3 · closed — 2 · declined — 1 · lost — 1/;
+  assert.match(renderReportMarkdown(data), line);
+  assert.match(renderSinceReportMarkdown(since), line);
+  // Positioned after the merge-failure lines in both renders, so an operator reads what the
+  // team did with a change before what it did with the tracker.
+  for (const md of [renderReportMarkdown(data), renderSinceReportMarkdown(since)]) {
+    const merge = md.indexOf("**Merge failures by reason:**");
+    const outcomes = md.indexOf("**GitHub issues by outcome:**");
+    assert.ok(merge >= 0 && outcomes >= 0, "both lines print in this fixture");
+    assert.ok(merge < outcomes, "the outcome line follows the merge-failure reason line");
+  }
+  assert.doesNotMatch(renderReportMarkdown(collectReport(root, 3, "feature")), /\*\*GitHub issues by outcome:/, "a scoped day report omits it");
+  assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(root, 3 * 24 * HOUR, "feature")), /\*\*GitHub issues by outcome:/, "a scoped --since report omits it");
+
+  // Team-only: an outcome has no role, so a role-scoped report carries nothing.
+  assert.ok(!("githubIssuesByOutcome" in collectReportSince(root, 3 * 24 * HOUR, "feature")), "scoped window omits the field");
+  for (const day of collectReport(root, 3, "feature").series) {
+    assert.ok(!("githubIssuesByOutcome" in day), "every scoped day omits the field");
+  }
+
+  // A window that never touched the tracker: the team day and --since omit the field and print
+  // no line, so every existing report fixture's output is unchanged.
+  const plain = tmpdir();
+  writeEvents(plain, [JSON.stringify({ ts: todayTs(), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 1 })]); // retired-name-ok: legacy event field in a fixture
+  assert.ok(!("githubIssuesByOutcome" in collectReport(plain, 2).series[0]!), "an issue-free team day omits the field");
+  assert.ok(!("githubIssuesByOutcome" in collectReportSince(plain, 2 * 24 * HOUR)), "an issue-free --since omits the field");
+  assert.doesNotMatch(renderReportMarkdown(collectReport(plain, 2)), /\*\*GitHub issues by outcome:/);
+  assert.doesNotMatch(renderSinceReportMarkdown(collectReportSince(plain, 2 * 24 * HOUR)), /\*\*GitHub issues by outcome:/);
+});
+
 test("collectReport and collectReportSince rank main's red by failing test, team scope only", () => {
   const root = tmpdir();
   writeEvents(root, [

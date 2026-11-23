@@ -140,6 +140,11 @@ export interface ReportDay {
    * why — "backlog", "no-work" or "plans-full"); team-only like runsByModel, because a
    * reason is not a role. Absent when the day had no deferral (zero means absent). */
   deferredByReason?: Record<string, number>;
+  /** The GitHub-issues mirror's outcomes this day, keyed by outcome ("queued", "closed",
+   * "declined" or "lost" — the word `tumwater issues --lost` prints for an upstream-closed
+   * row); team-only like deferredByReason, because an outcome has no role (the events'
+   * `source` names the emitter). Absent when the day had no such event (zero means absent). */
+  githubIssuesByOutcome?: Record<string, number>;
   /** fixed bugs' `Validation gap` tags recorded this day, from BUGS.md's ## Fixed entries;
    * team-only like its window tally, because a tag has no role (absent when the day has
    * none, zero means absent). */
@@ -328,6 +333,11 @@ export interface SinceReport {
    * same conditional the day collector applies to ReportDay.deferredByReason, so a --since
    * JSON carries it only when nonzero. A reason is not a role, so a scoped window omits it. */
   deferredByReason?: Record<string, number>;
+  /** The GitHub-issues mirror's outcomes over the window, keyed by outcome ("queued",
+   * "closed", "declined" or "lost"); absent when the window has none — the same conditional
+   * the day collector applies to ReportDay.githubIssuesByOutcome, so a --since JSON carries it
+   * only when nonzero. An outcome has no role, so a scoped window omits it. */
+  githubIssuesByOutcome?: Record<string, number>;
   /** True when the report provably reflects every event the window could have contained:
    * the day-keyed read proved the log reaches back before the cutoff's day, the log's oldest
    * retained event predates the cutoff instant (the same-day case a day key cannot decide),
