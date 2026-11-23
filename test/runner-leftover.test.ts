@@ -173,6 +173,82 @@ test("a commit held on the branch beside the role's own pin waits (relief_wait),
   assert.equal(eventsOfType(root, "merge_queued").length, 0, "nothing is re-queued");
 });
 
+// BUGS.md 2026-11-23 held relief commit: a held tail that is the pin plus the role's own later
+// commit is not a second change to wait out — it CONTAINS the pinned commit, so the pin moves up
+// to the tip and the drain gates and merges the joined lineage as one change.
+/** A repo where the role's own branch holds the pinned commit AND a later commit on top of it:
+ *  the pin is in the branch's history, so its tip contains it. */
+async function containedPinFixture(): Promise<{ root: string; wt: string; pin: string; tip: string }> {
+  const root = makeRepo();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  seedCommit(wt, "fix1.txt", "the first fix\n", "tumwater(improve): the healer's first fix");
+  const pin = headSha(wt);
+  await setRef(root, mergeRefName(ROLE), pin);
+  seedCommit(wt, "fix2.txt", "the second fix\n", "tumwater(improve): the healer's second fix");
+  return { root, wt, pin, tip: headSha(wt) };
+}
+
+test("a held tail that contains the role's own pin joins it instead of waiting beside it", async () => {
+  const { root, wt, pin, tip } = await containedPinFixture();
+  assert.ok(await isMergedInto(root, pin, tip), "the fixture holds the tip ABOVE the pinned commit");
+  const ctx = { ...makeCtx(root, wt), queuedSummary: { sha: pin, summary: "the healer's first fix" } };
+
+  const recovered = await recoverLeftover(ctx);
+
+  assert.equal(recovered?.kind, "pinned", "the joined tip is the waiting pin, not a held tail");
+  const entry = recovered?.kind === "pinned" ? recovered.entry : null;
+  assert.equal(entry?.sha, tip, "the recovered entry names the joined tip");
+  assert.equal(entry?.summary, "recovered leftover work from improve: the healer's second fix");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), tip, "the pin is re-pointed to the tip");
+  assert.equal(headSha(wt), tip, "recovery never resets the branch or the worktree");
+  assert.ok(!(await isMergedInto(root, tip, "main")), "nothing merged in-run — the drain owns the merge");
+  assert.deepEqual(queuedMerges(root), [], "the pin is the waiting state — no queue file");
+  assert.deepEqual(
+    eventsOfType(root, "merge_queued").map((e) => e.commit),
+    [tip],
+    "a new sha is a fresh enqueue, logged once",
+  );
+});
+
+test("a held tail is not joined while the role's change is in flight: the wait keeps the old pin", async () => {
+  const { root, wt, pin, tip } = await containedPinFixture();
+  // The merge slot is working this role's change right now (invariant 3: one in-flight change
+  // per role) — its sha must never be re-pointed under the slot.
+  writeMergeMarker(root, { role: ROLE, sha: pin, summary: "the healer's first fix", startedAt: Date.now(), stage: "merging" });
+  const ctx = { ...makeCtx(root, wt), queuedSummary: { sha: pin, summary: "the healer's first fix" } };
+
+  const recovered = await recoverLeftover(ctx);
+
+  assert.equal(recovered?.kind, "relief_wait", "an in-flight change keeps the held tail held");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), pin, "the in-flight pin keeps its sha");
+  assert.equal(headSha(wt), tip, "the held commit survives untouched");
+  assert.equal(eventsOfType(root, "merge_queued").length, 0, "nothing is re-queued");
+});
+
+test("a held tail that does NOT contain the pin still waits beside it: nothing is re-pointed", async () => {
+  // The rebase residue the join must never touch: the branch was rewritten onto main, so its
+  // tip carries the same work under a different sha and the pinned commit is no longer in its
+  // history. Adopting that tip would orphan the pinned commit, so this stays today's relief_wait.
+  const root = makeRepo();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  seedCommit(wt, "fix1.txt", "the first fix\n", "tumwater(improve): the healer's first fix");
+  const pin = headSha(wt);
+  await setRef(root, mergeRefName(ROLE), pin);
+  seedCommit(wt, "fix2.txt", "the second fix\n", "tumwater(improve): the healer's second fix");
+  sh(wt, "git", "reset", "--soft", "main");
+  sh(wt, "git", "commit", "-m", "tumwater(improve): both fixes, squashed onto main");
+  const tip = headSha(wt);
+  assert.ok(!(await isMergedInto(root, pin, tip)), "the fixture holds the tip BESIDE the pinned commit");
+  const ctx = { ...makeCtx(root, wt), queuedSummary: { sha: pin, summary: "the healer's first fix" } };
+
+  const recovered = await recoverLeftover(ctx);
+
+  assert.equal(recovered?.kind, "relief_wait", "a sibling tail is still held, not joined");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), pin, "the waiting pin keeps its sha");
+  assert.equal(headSha(wt), tip, "the held commit survives untouched");
+  assert.equal(eventsOfType(root, "merge_queued").length, 0, "nothing is re-queued");
+});
+
 test("a stash naming another sha does not claim the pin: it is recovered as leftover work", async () => {
   const { root, sha } = await pinnedFixture();
   const wt = await ensureWorktree(root, ROLE, "main");

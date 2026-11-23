@@ -3,7 +3,7 @@ import { commitRunOf, parseCommitMetadata, type CommitMetadata } from "../run/co
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { mergePinSha } from "../merge/merge-pins.js";
 import { queuedMerges, type MergeEntry } from "../merge/merge-queue.js";
-import { removeMergeChange } from "../merge/merge-slot.js";
+import { mergeChanges, readMergeMarker, removeMergeChange } from "../merge/merge-slot.js";
 import { mergeRefName, withdrawnRefName } from "../paths.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { stripEntryStamp } from "../backlog/backlog-md.js";
@@ -121,7 +121,9 @@ export interface LeftoverContext {
  *   its own stash names — AND its branch holds a second commit ahead of main staged unpinned by
  *   a prior relief run (plans/interlock-relief.md part 1/4; beside a live pin since 2026-11-16,
  *   read by `heldBesidePin`) — neither re-queued nor reset, left on the branch for the run after
- *   the waiting merge drains;
+ *   the waiting merge drains. A held tail that CONTAINS the pinned commit is the exception: it is
+ *   the pin plus the role's own later work, so it rejoins the pin (`pinned`, see
+ *   `joinHeldTailIntoPin`) instead of waiting beside it;
  * - `unpinned`: the commit sits on the branch ahead of main and adopting it into the merge
  *   ref failed — a merge without a pin loses the ref lifecycle the queue depends on, so the
  *   commit stays on the branch for the next run, like a fresh run's failed pin;
@@ -160,6 +162,46 @@ async function heldBesidePin(wt: string, mainBranch: string, pinSha: string): Pr
   if (ahead <= 0) return false;
   const tip = await headOf(wt, "HEAD").catch(() => null);
   return tip !== pinSha;
+}
+
+/** Can the held tail and the pin be joined, and at what sha? The tip qualifies when it CONTAINS
+ * the pinned commit — the tail is then the pin plus the role's own later commits, so merging the
+ * tip merges both — and the merge pipeline holds no live record for this role (invariant 3: a
+ * change already mid-merge must never have its sha re-pointed under the slot). A tip that does
+ * NOT contain the pin — a reset or rebase left the pinned commit a sibling of the tail — never
+ * joins: adopting it would orphan the pinned commit, the very loss `relief_wait` exists to
+ * prevent. An unreadable tip or containment read joins nothing, which keeps today's wait. The
+ * marker read is total (`readJsonFile` turns a torn file into null), so it needs no guard. */
+async function joinableHeldTail(ctx: LeftoverContext, pinSha: string): Promise<string | null> {
+  const marker = readMergeMarker(ctx.root);
+  if (marker && mergeChanges(marker).some((c) => c.role === ctx.role && c.status !== "done")) return null;
+  const tip = await headOf(ctx.wt, "HEAD").catch(() => null);
+  if (!tip || tip === pinSha) return null;
+  return (await isMergedInto(ctx.root, pinSha, tip).catch(() => false)) ? tip : null;
+}
+
+/** Re-point the role's waiting pin to its own branch tip, so the drain gates and merges the
+ * joined lineage as ONE change and the held tail stops being held (BUGS.md 2026-11-23 held
+ * relief commit). The ref moves first — the commit is only safe once a ref holds it — and a
+ * failed ref write leaves the old pin exactly where it was, so the caller falls back to
+ * `relief_wait`. The join names a NEW sha, so its `merge_queued` is a fresh enqueue, logged once
+ * like the `pinned` arm's. `mergeConflicts` is deliberately untouched: `relief_wait` is not a
+ * conflict, and inflating the streak could push the cap to discard the healer's work; a later
+ * merge outcome re-keys the streak to the sha it settled (applyMergeOutcome). */
+async function joinHeldTailIntoPin(ctx: LeftoverContext, pinSha: string): Promise<LeftoverRecovery | null> {
+  const tip = await joinableHeldTail(ctx, pinSha);
+  if (!tip) return null;
+  if (!(await setRef(ctx.root, mergeRefName(ctx.role), tip))) {
+    warnEventBestEffort(
+      ctx.root,
+      ctx.role,
+      `failed to re-point the waiting pin ${shortSha(pinSha)} to the branch tip ${shortSha(tip)} — the held commit waits beside it`,
+    );
+    return null;
+  }
+  const entry = recoveredMergeEntry(ctx.role, tip, await recoveredMetadata(ctx.root, tip), ctx.runNumber);
+  logEventBestEffort(ctx.root, { source: ctx.role, type: "merge_queued", commit: tip, summary: entry.summary });
+  return { kind: "pinned", entry };
 }
 
 /** Whether the role holds a kept merge pin — the ref `recoverLeftover` reads. Ref presence is the
@@ -239,7 +281,17 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
       // A run admitted while this pin waits holds its new commit on the branch (heldOnBranch,
       // run-stage.ts). The `already_queued` fall-through resets the branch to main before it
       // authors, which would lose that commit, so the run waits it out instead.
-      if (await heldBesidePin(ctx.wt, ctx.mainBranch, sha)) return { kind: "relief_wait", entry };
+      if (await heldBesidePin(ctx.wt, ctx.mainBranch, sha)) {
+        // The held tail may BE the pin plus this role's own later commits: fold it into the pin
+        // rather than hold both and end the run. The tip merges both commits, the role keeps its
+        // ONE merge ref, and nothing is discarded — so the healer's next fix reaches the gate
+        // instead of waiting beside a pin that cannot drain while main stays red, which ended
+        // every run of the blocked role before authoring (BUGS.md 2026-11-23 held relief
+        // commit). The tail that does not contain the pin still takes `relief_wait` below.
+        const joined = await joinHeldTailIntoPin(ctx, sha);
+        if (joined) return joined;
+        return { kind: "relief_wait", entry };
+      }
       return { kind: "already_queued", entry };
     }
   } else {
