@@ -13,7 +13,7 @@
  * Pure over its inputs (no I/O, no clock: `now` is passed in), so every branch is unit-tested
  * against a hand-built ledger. */
 
-import { plural } from "../text/phrases.js";
+import { plural, validPositionRange } from "../text/phrases.js";
 import { squash } from "../text/text.js";
 import { humanAgo } from "../text/datetime.js";
 import type { GithubIssueRow, GithubIssuesLedger } from "./github-issues-state.js";
@@ -170,6 +170,30 @@ export function stateIssueRows(rows: readonly IssueRow[], state: IssueState): Is
 export function issueRowAt(ledger: GithubIssuesLedger, position: number): IssueRow | null {
   if (position < 1) return null;
   return issueRows(ledger)[position - 1] ?? null;
+}
+
+/** The detail read's position rule, beside `issueRowAt`: the issue at position N of the whole
+ * list, or the sentence naming why there is none. A `null` ledger is the empty mirror — the same
+ * stance `noLedgerBody` (src/gui/gui-issues-commands.ts) takes for a mirror never read — so its
+ * miss names 0 issues and no valid range. The count always names the whole list, which holds the
+ * issues tumwater closed and the ones GitHub lost as well as the open ones the scan listed: the
+ * list positions all three, so position 3 may name a closed issue and the range must never claim
+ * the list holds only open ones. Both detail front ends state the miss through this one function:
+ * `tumwater issues --show <n>` (src/cli/cli-query-commands.ts `cmdIssuesShow`) and
+ * `GET /api/issues-show` (`handleIssuesShow`), so neither can number a detail read on a filtered
+ * list and name a different issue than the other does (INV-DE6). */
+export function issueAtPosition(
+  ledger: GithubIssuesLedger | null,
+  position: number,
+): { row: IssueRow } | { message: string } {
+  const row = ledger === null ? null : issueRowAt(ledger, position);
+  if (row !== null) return { row };
+  const count = ledger === null ? 0 : issueRows(ledger).length;
+  return {
+    message:
+      `no GitHub issue at position ${position} (github issues mirror holds ${plural(count, "issue")})` +
+      validPositionRange(count),
+  };
 }
 
 /** The header a command prints for a ledger: its repo, branch, scan time and `gh` gate state, its

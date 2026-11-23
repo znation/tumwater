@@ -750,7 +750,11 @@ stale settings.
   because the dashboard never forces. Its `GitHub issues` card reads the mirror's ledger file
   through `GET /api/issues` — the browser twin of `tumwater issues`, the same read and the same
   numbering — naming the mirror's counts and each issue's number, title, trust, mirror state and
-  age; it never calls `gh` — in `src/`, `gh` is spawned at one site (`src/github/gh.ts`) and only
+  age, and each row's `View` button reads that one issue's whole detail through
+  `GET /api/issues-show?position=<n>` — the twin of `tumwater issues --show <n>` — so an operator
+  reads why the team left an issue alone (declined and its reason, fixed by a sha, waiting for a
+  push, closed upstream) and its body excerpt in the browser, in the CLI's own words, without
+  opening a shell; it never calls `gh` — in `src/`, `gh` is spawned at one site (`src/github/gh.ts`) and only
   the hourly scan, the close pass it runs, and the doctor's `github issues` and `feedback filing`
   rows hold a runner.
 - Review runs show as `── review @ <ts> ──` in role transcripts.

@@ -5,6 +5,99 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The dashboard's GitHub-issues card offers a per-issue View, so an operator reads why an issue was left alone without opening a shell (planned 2026-11-22 by the plan role; the landed dashboard-issues-card plan recorded this exact gap as its follow-up — "No per-issue detail view in the browser — the CLI's `--show <n>` body excerpt and decline reason stay terminal-only" — and `grep -c 'issues-show' src docs test PLANS-DONE.md` prints 0, so no planned, archived or pending entry carries it; independent in files of both entries that wait to merge (the report-tally entry takes `src/report/` and `docs/cli.md`'s `tumwater report` row, the unmerged `waitingPush` entry takes `src/github/issue-scan.ts`, `docs/config.md` and `docs/steering.md`) — this one takes `src/github/github-issues-render.ts`, `src/cli/cli-query-commands.ts`, `src/gui/gui-issues-commands.ts`, `src/gui/gui-endpoint-commands.ts`, `src/gui/gui-server.ts`, `src/ui/gui/gui-client-settings.ts`, `src/ui/gui/gui-client-boot.ts`, `docs/cli.md`'s `tumwater issues` row and `docs/how-it-works.md`, and its only shared file is `docs/invariants.md`, where it edits the existing `INV-DE6` entry rather than adding an id, so a rebase lands on a different entry or a different row; touches src/github/github-issues-render.ts src/cli/cli-query-commands.ts src/gui/gui-issues-commands.ts src/gui/gui-endpoint-commands.ts src/gui/gui-server.ts src/ui/gui/gui-client-settings.ts src/ui/gui/gui-client-boot.ts docs/cli.md docs/how-it-works.md docs/invariants.md test/github-issues-render.test.ts test/gui-issues.test.ts test/gui-client-settings.test.ts) — done 2026-11-22 by the feature role
+
+**Problem.** `tumwater issues --show <n>` (src/cli/cli-query-commands.ts `cmdIssuesShow`) is the only
+way to read an issue's whole title, url, author and association, labels, tumwater's state for it and
+the kept body excerpt — the answer to "why did the team leave this issue alone?". The Settings
+"GitHub issues" card (src/ui/gui/gui-client-settings.ts `renderIssues`) lists the same rows with
+number, title, trust, mirror state and age, and stops there: `grep -c issues-show src/gui` prints 0,
+so `GET /api/issues` answers no detail read and the card has no View button. Its sibling card already
+has this shape: the salvage card's per-row View button (`data-action='salvage-view'`) fetches
+`GET /api/salvage-show?position=<n>` (src/gui/gui-salvage-commands.ts `handleSalvageShow`) and splices
+the body into that row, with the off-list case answered 200 `{ ok: false, message }` from one domain
+home (`salvagePatchAt`, src/status/status-salvage.ts). The mirror has no such home: its miss sentence
+exists only inside `cmdIssuesShow`.
+
+**Approach.** Give the detail read one domain home, then serve it to the browser exactly as the
+salvage card serves a patch.
+
+- `src/github/github-issues-render.ts`: add `issueAtPosition(ledger: GithubIssuesLedger | null,
+  position: number): { row: IssueRow } | { message: string }` — it reads a `null` ledger as the empty
+  mirror (the same stance `noLedgerBody` takes in src/gui/gui-issues-commands.ts), resolves through the
+  existing `issueRowAt`, and on a miss returns `{ message }` built from the whole-list row count with
+  `plural(count, "issue")` and `validPositionRange(count)` (src/text/phrases.ts) — the exact sentence
+  `cmdIssuesShow` builds today. It is the numbering+miss rule's home, beside `issueRowAt`.
+- `src/cli/cli-query-commands.ts`: `cmdIssuesShow` calls `issueAtPosition(ledger, position)` and, on a
+  miss, `fail(result.message)`; its `--json` and text paths keep working off `result.row`. No CLI
+  wording changes.
+- `src/gui/gui-issues-commands.ts`: add `handleIssuesShow(q, res, root)` — `intQuery(q, res,
+  "position", "positive")` (src/gui/gui-args.ts) for the 400s, then `issueAtPosition(readGithubIssues(root),
+  position)`; a miss answers `sendJson(res, 200, { ok: false, message })`, a hit answers
+  `{ position, number, title, text }` where `text` is `renderIssueDetail(row, position, Date.now())`
+  verbatim — the same call `cmdIssuesShow`'s non-JSON path makes, so the state lines and ages are the
+  CLI's own words, and the endpoint keeps calling no `gh` and writing nothing.
+- `src/gui/gui-endpoint-commands.ts`: re-export `handleIssuesShow`; `src/gui/gui-server.ts`: route
+  `"GET /api/issues-show": (_req, res, target) => handleIssuesShow(target.searchParams, res, root)`
+  beside the `GET /api/issues` route (read-only — no POST route).
+- `src/ui/gui/gui-client-settings.ts`: in the issues-card region, a `let issuesOpen = null;` slot and
+  `issueViewClick(position)` that GETs `/api/issues-show?position=<n>` once, keeps the body, and
+  collapses on a second click of the open row without refetching — the salvage pattern, including
+  `clientErrorMessage` for both a 200 `ok: false` message and a transport failure. `renderIssues(d,
+  open)` gains a second, optional parameter (existing one-argument calls keep working) and adds each
+  row a `data-action='issues-view' data-position='<position>'` button reading `Hide` on the open row,
+  with the open body spliced in as `"<pre class='mono'>" + esc(body.text) + "</pre>`, or
+  `"<div class='empty'>" + esc(body.error) + "</div>"` for a refusal — keyed by position only, since
+  the mirror's positions are stable across refetches of the same ledger.
+- `src/ui/gui/gui-client-boot.ts`: a delegated click branch beside the salvage ones —
+  `button[data-action='issues-view']` → `issueViewClick(issView.dataset.position)`.
+- Docs: `docs/cli.md`'s `tumwater issues` row, whose tail already names the dashboard twin, gains that
+  `--show <n>`'s read is the card's View button over `GET /api/issues-show`; `docs/how-it-works.md`'s
+  Settings-paragraph sentence on the `GitHub issues` card gains the per-issue View. `docs/invariants.md`
+  `INV-DE6` (the mirror's two read front ends) gains one Guarantee sentence — `issueAtPosition` is the
+  one numbering and miss sentence for the detail read, and the endpoint answers the CLI's text
+  verbatim, calls no `gh`, writes nothing — plus `issueAtPosition`/`handleIssuesShow`/`issueViewClick`
+  in **Binds** and the new test titles in **Pinned by**.
+
+**Acceptance criteria.**
+
+- `test/github-issues-render.test.ts`: `issueAtPosition` over a ledger holding 3 rows at positions 1-3
+  returns `{ row }` for 1 and 3 and, for 9, `{ message:
+  "no GitHub issue at position 9 (github issues mirror holds 3 issues) — valid: 1-3" }`; for a `null`
+  ledger and position 1, `{ message:
+  "no GitHub issue at position 1 (github issues mirror holds 0 issues)" }` — no ` — valid:` clause.
+- `test/cli-issues.test.ts` passes unchanged: `tumwater issues --show 9` over that mirror still exits 1
+  with the same sentence, so the CLI keeps its pinned wording through the extracted helper.
+- `test/gui-issues.test.ts`: `GET /api/issues-show?position=3` over a mirror whose 3rd row is #9 answers
+  `position: 3`, `number: 9`, `title` equal to that row's title, and `text` whose first line is
+  `issue 3: #9 — <title>` and whose state lines are the CLI's words (`closed <ago>: <sha>`, `declined
+  <ago>: <reason>`, `waiting for a push of <sha>`, `closed upstream — last seen open <ago>` for a lost
+  row); a body excerpt the ledger holds reaches `text` indented under `  body excerpt:`. `position=9`
+  answers 200 `{ ok: false, message: <the whole-list sentence> }`; no ledger answers 200 `{ ok: false,
+  message: …holds 0 issues)" }` and creates no file; `position=0`, `position=x` and a missing `position`
+  answer 400 (`position must be a positive integer (got "x")`, `position required`) with no `text`.
+- The live-server case (the pattern of "the live server routes GET /api/issues to the mirror read and
+  refuses POST") shows `GET /api/issues-show?position=2` answering 200 with `text`, and
+  `POST /api/issues-show` answering 404.
+- `test/gui-client-settings.test.ts`: `renderIssues(doc, { position: 2, body: { text } })` puts the
+  detail inside row 2 (`<pre class='mono'>`) and marks that row's button `Hide` while row 1's reads
+  `View`; markup in a body excerpt (`<b>`) is escaped. `issueViewClick("2")` then `issueViewClick("1")`
+  leaves exactly one open row and one detail body; `issueViewClick("2")` twice fetches `/api/issues-show?position=2`
+  once and the second call issues no request at all; a 200 `ok: false` reply puts the server's sentence
+  in that row and issues no POST; a rejecting fetch puts the transport message there. The existing
+  card tests — `renderIssues` called with the document alone, and "fetchIssues builds the card and
+  fills it from GET /api/issues; a failed fetch is the error panel" — pass unchanged.
+- The boot-splice pin (the test asserting the served script carries the card's selectors) also matches
+  `button[data-action='issues-view']` and `issueViewClick(issView.dataset.position)`.
+- `docs/invariants.md`'s new **Pinned by** titles all appear verbatim in the files it names, so
+  `test/invariants-doc.test.ts` passes; `test/cli-doc.test.ts` passes with the edited `tumwater issues`
+  row.
+
+**One plausible bug this pins.** Routing `?position=` through `stateIssueRows`/`grepIssueRows` (or
+numbering the detail off a *filtered* list) would let `?position=1` name a different issue than
+`tumwater issues --show 1` does — the `position`/`number`/`text` triple in the endpoint test pins the
+whole-list numbering, and INV-DE6's one-numbering rule then covers both front ends.
+
 ### `tumwater report` tallies the GitHub-issues mirror by outcome, so an operator reads what the team did about the issue tracker in a window instead of counting log lines (planned 2026-11-22 by the plan role; independent in files of the other entry still in `## Planned` (the one naming `src/github/issue-scan.ts`) — that one takes `src/github/issue-scan.ts`, `src/github/github-issues-state.ts`, `docs/config.md` and `docs/steering.md` and never `src/report/`, while this one takes `src/report/` and never the scanner or the ledger, and both add a distinct `docs/invariants.md` line so whichever lands second rebases on an additive list item; `grep -c github src/report/*.ts` prints 0 in all nine report files, and `grep -c 'GitHub issues by outcome' PLANS-DONE.md docs/cli.md` prints 0 — no planned entry, archived plan, or docs row names a report-side issue tally; the four event types it folds are all on main (`github_issue_queued`, `github_issue_closed`, `github_issue_declined`, `github_issue_upstream_closed` in `src/events/events.ts`); touches src/report/report-usage-fold.ts src/report/report-types.ts src/report/report-data.ts src/report/report-since-data.ts src/report/report-render.ts src/report/report-since-render.ts docs/cli.md docs/invariants.md test/report-usage-fold.test.ts test/report-data.test.ts test/report-cli.test.ts) — done 2026-11-22 by the feature role
 
 **Goal.** The mirror records four outcomes in `events.jsonl` — an issue queued to the director, a

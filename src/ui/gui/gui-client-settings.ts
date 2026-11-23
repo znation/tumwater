@@ -499,8 +499,14 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // spellings (closed <ago> for a row tumwater closed, last seen open <ago> for one GitHub lost
   // upstream, updated <ago> for a live one). A gh that is not ok gets its own gate line, the same
   // reading the CLI prints. No clock of its own: checkedAt and each row's updatedAt are the only
-  // times, and the ages ride the client's fmtAgo like the salvage card's "saved <ago>".
+  // times, and the ages ride the client's fmtAgo like the salvage card's "saved <ago>". Each row
+  // carries a View button, the twin of tumwater issues --show <n>: issuesOpen holds the one open
+  // row's position and its already-built body, and renderIssues splices that body into the row
+  // whose position still matches it. The mirror's positions are the whole list's and cannot shift
+  // between reads of the same ledger, so position alone keys the slot — unlike the salvage card,
+  // which renumbers when a patch is dropped.
   let lastIssues = null;
+  let issuesOpen = null;
   function issuesHeaderSpan(d) {
     if (!d.read) return "";
     const closed = d.closedCount || 0;
@@ -524,14 +530,19 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     if (r.wasClosed === true) return "closed " + fmtAgo(at);
     return "updated " + fmtAgo(at);
   }
-  function renderIssues(d) {
-    const rows = (d.issues || []).map((r) =>
-      "<div class='settings-row'><strong>" + r.position + ". #" + r.number + " " +
-      (r.url ? "<a rel='noopener' target='_blank' href='" + esc(r.url) + "'>" + esc(r.title) + "</a>"
-        : esc(r.title)) + "</strong>" +
-      "<span>" + (r.mirrored ? "mirrored" : "not mirrored") + "</span>" +
-      (r.trusted ? "<span>trusted</span>" : "<span class='pill t-amber'>untrusted</span>") +
-      "<span>" + issueAgeSpan(r) + "</span></div>").join("");
+  function renderIssues(d, open) {
+    const rows = (d.issues || []).map((r) => {
+      const isOpen = issuesSlotOpen(open, r.position);
+      return "<div class='settings-row'><strong>" + r.position + ". #" + r.number + " " +
+        (r.url ? "<a rel='noopener' target='_blank' href='" + esc(r.url) + "'>" + esc(r.title) + "</a>"
+          : esc(r.title)) + "</strong>" +
+        "<span>" + (r.mirrored ? "mirrored" : "not mirrored") + "</span>" +
+        (r.trusted ? "<span>trusted</span>" : "<span class='pill t-amber'>untrusted</span>") +
+        "<span>" + issueAgeSpan(r) + "</span>" +
+        "<button type='button' class='btn btn-sm' data-action='issues-view' data-position='" + r.position + "'>" +
+        (isOpen ? "Hide" : "View") + "</button>" +
+        (isOpen ? issuesViewHtml(open.body) : "") + "</div>";
+    }).join("");
     // The gh gate line, in the CLI's reading of the stored state: "gh <state>" plus the ledger's
     // reason when it carries one. The card keeps this copy because renderIssues writes terminal
     // text and ghUnreadableSentence (src/github/gh.ts) is not reachable from the bundle.
@@ -544,7 +555,49 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "</span></div>" + gate + body;
   }
   function paintIssues() {
-    if (lastIssues) $("issuescard").innerHTML = renderIssues(lastIssues);
+    if (lastIssues) $("issuescard").innerHTML = renderIssues(lastIssues, issuesOpen);
+  }
+  // Whether the open slot belongs to this row: the position alone, because the mirror numbers its
+  // rows over the whole list and a refetch of the same ledger never renumbers them.
+  function issuesSlotOpen(open, position) {
+    return open !== null && open !== undefined && open.position === position;
+  }
+  // The open row's detail, built once when the read comes back: the CLI's whole detail text —
+  // title, url, author and association, labels, update time, tumwater's state lines and the body
+  // excerpt — in the shared <pre class='mono'> the log drawer already uses for a body, escaped, so
+  // markup inside a title or an excerpt reaches the DOM as text. A read the server refused (a
+  // position off the list, a mirror never read) is the server's own sentence in an empty panel.
+  function issuesViewHtml(body) {
+    if (body.error) return "<div class='empty'>" + esc(body.error) + "</div>";
+    return "<pre class='mono'>" + esc(body.text) + "</pre>";
+  }
+  // The row's View button: the browser twin of tumwater issues --show <n> — a read-only GET
+  // /api/issues-show?position=<n> whose reply fills that row's slot. One row is open at a time
+  // (opening another closes the open one, and a second click on the open row collapses it without
+  // refetching), and the fetched text is kept, so a repaint of the card never refetches it. A read
+  // the endpoint refused keeps the row open with the server's message; the card is read-only, so
+  // reading a detail never posts anything.
+  async function issueViewClick(position) {
+    const n = Number(position);
+    if (issuesOpen !== null && issuesOpen.position === n) {
+      issuesOpen = null;
+      paintIssues();
+      return;
+    }
+    try {
+      const d = await getJson("/api/issues-show?position=" + encodeURIComponent(String(n)));
+      // A read the endpoint refused (a position off the list, no ledger at all) answers 200
+      // { ok: false, message } — the shape the salvage show endpoint answers for the same case —
+      // so that sentence reaches the slot as the error line, and a transport failure lands in the
+      // catch. clientErrorMessage is the one read every message gets here, so the wording cannot
+      // drift between the two paths.
+      issuesOpen = d && d.ok === false
+        ? { position: n, body: { error: clientErrorMessage(d) } }
+        : { position: n, body: d };
+    } catch (err) {
+      issuesOpen = { position: n, body: { error: clientErrorMessage(err) } };
+    }
+    paintIssues();
   }
   async function fetchIssues() {
     buildSettingsView();

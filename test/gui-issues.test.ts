@@ -1,15 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { handleIssuesList } from "../src/gui/gui-endpoint-commands.js";
+import { handleIssuesList, handleIssuesShow } from "../src/gui/gui-endpoint-commands.js";
 import { githubIssuesPath } from "../src/paths.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { startLocalGui } from "./fixtures/gui-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
-import { captureJson } from "./fakes/fake-res.js";
+import { captureJson, type Captured } from "./fakes/fake-res.js";
 
-// The dashboard's GitHub-issues mirror endpoint (src/gui/gui-issues-commands.ts): the browser
-// twin of `tumwater issues`, driven the way test/gui-salvage.test.ts drives the salvage handlers
+// The dashboard's GitHub-issues mirror endpoints (src/gui/gui-issues-commands.ts): the browser
+// twins of `tumwater issues` and `tumwater issues --show <n>`, driven the way
+// test/gui-salvage.test.ts drives the salvage handlers
 // — the real read over a ledger written at the path src/github/github-issues-state.ts reads,
 // captured through the shared fake request/response, no socket and no `gh` call
 // (plans/github-issues.md invariant 2).
@@ -22,6 +23,16 @@ const CHECKED_ISO = "2026-11-20T12:00:00.000Z";
 const CHECKED_AT = Date.parse(CHECKED_ISO);
 const CLOSE_ISO = "2026-11-19T09:00:00.000Z";
 const CLOSE_AT = Date.parse(CLOSE_ISO);
+
+interface ShowBody {
+  ok?: boolean;
+  message?: string;
+  error?: string;
+  position?: number;
+  number?: number;
+  title?: string;
+  text?: string;
+}
 
 interface Body {
   read?: boolean;
@@ -115,6 +126,12 @@ async function list(query: string, root: string): Promise<Body> {
   const q = new URLSearchParams(query.replace(/^\?/, ""));
   const { data } = await captureJson((res) => handleIssuesList(q, res, root));
   return data as Body;
+}
+
+async function show(query: string, root: string): Promise<{ captured: Captured; data: ShowBody }> {
+  const q = new URLSearchParams(query.replace(/^\?/, ""));
+  const { captured, data } = await captureJson((res) => handleIssuesShow(q, res, root));
+  return { captured, data: data as ShowBody };
 }
 
 test("GET /api/issues answers the whole mirror with its ledger counts and ascending positions", async () => {
@@ -300,6 +317,134 @@ test("GET /api/issues counts the ledger's upstream-close records without listing
   assert.deepEqual(closed.issues!.map((r) => r.number), []);
 });
 
+test("GET /api/issues-show?position=<n> answers that issue's whole detail, closed rows included", async () => {
+  const repo = seedLedger(makeRepo());
+  const { captured, data } = await show("?position=3", repo);
+  assert.equal(captured.status, 200);
+  assert.equal(data.ok, undefined, "a hit answers the row, not an ok flag");
+  // Position 3 of the whole list is the closed row #2, not an open one — the same numbering the
+  // list answers with, so a View click on any listed row reads that row.
+  assert.equal(data.position, 3);
+  assert.equal(data.number, 2);
+  assert.equal(data.title, "Second");
+  // The text is renderIssueDetail's output: the header line, the ledger facts, and the close the
+  // CLI states — the client renders it verbatim, so no wording is invented browser-side.
+  assert.ok(data.text!.startsWith("issue 3: #2 — Second\n"), data.text!);
+  assert.match(data.text!, /^  closed \d+[smhd] ago: abc1234$/m, "the CLI's close line reaches the browser");
+  assert.match(data.text!, /^  updated: /m);
+});
+
+test("GET /api/issues-show carries the body excerpt inside the text, unsquashed", async () => {
+  const repo = makeRepo();
+  writeFileDeep(
+    githubIssuesPath(repo),
+    JSON.stringify({
+      repo: "znation/proj",
+      branch: "main",
+      checkedAt: CHECKED_AT,
+      gh: "ok",
+      open: [row(4, "Fourth", { bodyExcerpt: "the lock file survives\nand the next run refuses" })],
+    }),
+  );
+  const { data } = await show("?position=1", repo);
+  assert.ok(data.text!.includes("body excerpt:"), "the excerpt heading is the CLI's");
+  assert.ok(
+    data.text!.includes("    the lock file survives\n    and the next run refuses"),
+    "the excerpt lines keep the CLI's indent and line breaks",
+  );
+});
+
+test("GET /api/issues-show states every tumwater state line in the CLI's own words", async () => {
+  const repo = makeRepo();
+  writeFileDeep(
+    githubIssuesPath(repo),
+    JSON.stringify({
+      repo: "znation/proj",
+      branch: "main",
+      checkedAt: CHECKED_AT,
+      gh: "ok",
+      open: [
+        row(4, "Fourth"),
+        row(7, "Seventh"),
+        // Position 3: the open row that carries every state the ledger can hold for one issue.
+        row(9, "Ninth"),
+      ],
+      closed: { "9": { at: CLOSE_AT, shas: ["abc1234"] } },
+      declined: { "9": { at: CLOSE_AT, updatedAt: CLOSE_ISO, reason: "already covered by INV-T5" } },
+      fixedIn: { "9": { sha: "deadbee", at: CLOSE_AT } },
+      waitingPush: { "9": ["cafe123"] },
+      queued: { "9": { at: CLOSE_AT, updatedAt: CLOSE_ISO } },
+      upstreamClosed: [row(6, "Sixth", { updatedAt: CLOSE_ISO, closedAt: CLOSE_AT })],
+    }),
+  );
+  const { data } = await show("?position=3", repo);
+  assert.equal(data.position, 3);
+  assert.equal(data.number, 9);
+  assert.equal(data.title, "Ninth");
+  assert.ok(data.text!.startsWith("issue 3: #9 — Ninth\n"), data.text!);
+  // Each line is renderIssueDetail's, in its order: a close tumwater made, the decline with its
+  // reason, the fix sha, the push wait, the queue age. A paraphrase here would be a second wording.
+  assert.match(data.text!, /^  closed \d+[smhd] ago: abc1234$/m);
+  assert.match(data.text!, /^  fixed by deadbee$/m);
+  assert.match(data.text!, /^  waiting for a push of cafe123$/m);
+  assert.match(data.text!, /^  queued \d+[smhd] ago$/m);
+  assert.match(data.text!, /^  declined \d+[smhd] ago: already covered by INV-T5$/m);
+  // The lost row at position 4 states the loss in its own line, never a close tumwater made.
+  const lost = await show("?position=4", repo);
+  assert.equal(lost.data.number, 6);
+  assert.match(lost.data.text!, /^  closed upstream — last seen open \d+[smhd] ago$/m);
+  assert.ok(!/^  closed \d/m.test(lost.data.text!), lost.data.text!);
+});
+
+test("GET /api/issues-show past the end answers the CLI's miss sentence, not an empty panel", async () => {
+  const repo = seedLedger(makeRepo());
+  const { captured, data } = await show("?position=9", repo);
+  assert.equal(captured.status, 200, "a miss is a readable answer, the shape the salvage show answers");
+  assert.equal(data.ok, false);
+  // Three issues in this mirror: two open and one closed. Byte-for-byte the sentence `tumwater
+  // issues --show 9` fails with (INV-DE6), so the card can show it unchanged.
+  assert.equal(data.message, "no GitHub issue at position 9 (github issues mirror holds 3 issues) — valid: 1-3");
+  assert.equal(data.text, undefined, "a miss carries no detail text");
+  const far = await show("?position=100", repo);
+  assert.equal(far.data.ok, false, "a position well past the end is a miss too");
+});
+
+test("GET /api/issues-show of a mirror never read misses without creating a ledger", async () => {
+  const repo = makeRepo();
+  const { captured, data } = await show("?position=1", repo);
+  assert.equal(captured.status, 200);
+  assert.equal(data.ok, false);
+  assert.equal(data.message, "no GitHub issue at position 1 (github issues mirror holds 0 issues)");
+  assert.equal(fs.existsSync(githubIssuesPath(repo)), false, "a detail read never writes the ledger");
+});
+
+test("GET /api/issues-show refuses a missing or malformed position with the shared 400 wording", async () => {
+  const repo = seedLedger(makeRepo());
+  const missing = await show("", repo);
+  assert.equal(missing.captured.status, 400);
+  assert.deepEqual(JSON.parse(missing.captured.body), { error: "position required" });
+  const bad = await show("?position=abc", repo);
+  assert.equal(bad.captured.status, 400);
+  assert.deepEqual(JSON.parse(bad.captured.body), {
+    error: 'position must be a positive integer (got "abc")',
+  });
+  const zeroQuery = await show("?position=0", repo);
+  assert.equal(zeroQuery.captured.status, 400, "position 0 is refused by the shared positive-integer rule, not read as a list position");
+  assert.deepEqual(JSON.parse(zeroQuery.captured.body), {
+    error: "position must be a positive integer (got \"0\")",
+  });
+});
+
+test("GET /api/issues-show reads only the ledger: a filtered list never shifts the position", async () => {
+  const repo = seedLedger(makeRepo());
+  // The card may have fetched ?state=open, which lists only positions 1-2, yet a View click on the
+  // closed row still carries position 3 and reads it — one numbering, no filter in the detail read.
+  const d = await list("?state=open", repo);
+  assert.deepEqual(d.issues!.map((r) => r.position), [1, 2]);
+  const { data } = await show("?position=3", repo);
+  assert.equal(data.number, 2, "the closed row is addressable at its whole-list position");
+});
+
 test("the live server routes GET /api/issues to the mirror read and refuses POST", async () => {
   const repo = seedLedger(tmpdir());
   const { server, base } = await startLocalGui(repo);
@@ -313,6 +458,18 @@ test("the live server routes GET /api/issues to the mirror read and refuses POST
     assert.equal(bad.status, 400);
     const post = await fetch(base + "/api/issues", { method: "POST" });
     assert.equal(post.status, 404, "the mirror read is read-only: no POST route exists");
+    // The detail read is routed beside it: the same ledger, the whole-list numbering, and the
+    // same read-only stance.
+    const shown = await fetch(base + "/api/issues-show?position=3");
+    assert.equal(shown.status, 200);
+    const s = (await shown.json()) as ShowBody;
+    assert.equal(s.number, 2, "GET /api/issues-show is routed to the same detail read");
+    assert.ok(s.text!.startsWith("issue 3: #2 — Second\n"), s.text!);
+    const miss = await fetch(base + "/api/issues-show?position=9");
+    assert.equal(miss.status, 200);
+    assert.equal(((await miss.json()) as ShowBody).ok, false);
+    const postShow = await fetch(base + "/api/issues-show?position=1", { method: "POST" });
+    assert.equal(postShow.status, 404, "the detail read is read-only too: no POST route exists");
   } finally {
     server.close();
   }

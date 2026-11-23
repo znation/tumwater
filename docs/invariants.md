@@ -5846,19 +5846,33 @@ state filter, so `?state=open|closed|lost` divides the rows exactly as `--open`/
 does, the endpoint accepting exactly `ISSUE_STATES` — the one list the `IssueState` type is derived
 from, so a state can reach one front end's filter and never be refused by the other — and any other
 value is a 400 (`state must be one of open, closed, lost (got "…")`) rather than a list. `q` runs through
-`grepIssueRows`, the `--grep` predicate. The endpoint reads strictly the ledger file
+`grepIssueRows`, the `--grep` predicate. The detail read is the same pair over one rule:
+`tumwater issues --show <n>` (`cmdIssuesShow`) and `GET /api/issues-show?position=<n>`
+(`handleIssuesShow`) both number the position with `issueAtPosition`, so position N names the same
+issue on both surfaces whatever filter the list request carried — a detail read takes no filter at
+all — and a position the list does not hold gets that one function's sentence, byte-identical
+between the CLI's `fail` and the endpoint's 200 `{ ok: false, message }` (a malformed or missing
+`position` is instead `intQuery`'s shared 400, the same wording the salvage read answers with). The
+detail body is `renderIssueDetail`'s output verbatim in the endpoint's `text` field, so every state
+line, age and the body excerpt are the CLI's words and the card renders them without paraphrasing.
+The endpoints read strictly the ledger file
 (`readGithubIssues`) and never `gh` — plans/github-issues.md invariant 2 keeps `gh` inside the scan
-and the doctor's check — and it writes nothing: with no ledger it answers `read: false,
+and the doctor's check — and they write nothing: with no ledger the list answers `read: false,
 empty: true` with zero counts and no `repo`/`branch` (resolving a remote is the CLI's
-`issuesTarget`, not the endpoint's) and creates no file, so the card's
+`issuesTarget`, not the endpoint's) and the detail answers that sentence for 0 issues, both creating
+no file, so the card's
 `the GitHub issues mirror has not been read yet` can never be reached by an empty mirror and the
 two states cannot be conflated.
 
-**Binds.** `src/gui/gui-issues-commands.ts` (`handleIssuesList`, `noLedgerBody`),
-`src/gui/gui-server.ts` (the `GET /api/issues` route), `src/gui/gui-endpoint-commands.ts` (its
+**Binds.** `src/gui/gui-issues-commands.ts` (`handleIssuesList`, `handleIssuesShow`, `noLedgerBody`),
+`src/gui/gui-server.ts` (the `GET /api/issues` and `GET /api/issues-show` routes),
+`src/gui/gui-endpoint-commands.ts` (their
 re-export), `src/github/github-issues-render.ts` (`issueRows`, `issuesHeader`, `stateIssueRows`,
-`grepIssueRows`, `issuesJson`), `src/ui/gui/gui-client-settings.ts` (`renderIssues`, `paintIssues`,
-`fetchIssues`), `src/ui/gui/gui-client-boot.ts` (the Settings-open fetch sequence).
+`grepIssueRows`, `issuesJson`, `issueAtPosition`, `renderIssueDetail`),
+`src/cli/cli-query-commands.ts` (`cmdIssuesShow`),
+`src/ui/gui/gui-client-settings.ts` (`renderIssues`, `paintIssues`,
+`fetchIssues`, `issueViewClick`), `src/ui/gui/gui-client-boot.ts` (the Settings-open fetch sequence
+and the `button[data-action='issues-view']` delegate).
 
 **Pinned by.** `test/gui-issues.test.ts` — "GET /api/issues answers the whole mirror with its ledger
 counts and ascending positions", "GET /api/issues with no ledger answers read:false and creates
@@ -5873,6 +5887,21 @@ the mirror read and refuses POST"; `test/gui-client-settings.test.ts` — "rende
 mirror's counts in tumwater issues' words and numbers every row", "renderIssues keeps the header
 counts at the whole mirror whatever rows arrived, and says an empty mirror in words" and
 "fetchIssues builds the card and fills it from GET /api/issues; a failed fetch is the error panel".
+The detail pair is pinned by `test/github-issues-render.test.ts` — "issueAtPosition answers the
+issue the whole list numbers at that position", "issueAtPosition's miss names the whole list count
+and its valid range on both front ends" and "issueAtPosition of a mirror never read is the empty
+mirror's miss, creating nothing"; `test/gui-issues.test.ts` —
+"GET /api/issues-show?position=<n> answers that issue's whole detail, closed rows included",
+"GET /api/issues-show carries the body excerpt inside the text, unsquashed", "GET /api/issues-show
+past the end answers the CLI's miss sentence, not an empty panel", "GET /api/issues-show of a
+mirror never read misses without creating a ledger", "GET /api/issues-show refuses a missing or
+malformed position with the shared 400 wording", "GET /api/issues-show reads only the ledger: a
+filtered list never shifts the position" and "the live server routes GET /api/issues to the mirror
+read and refuses POST"; `test/gui-client-settings.test.ts` — "renderIssues states the mirror's
+counts in tumwater issues' words and numbers every row", "renderIssues splices the open body only
+into the row its position still matches", "issueViewClick fetches the row's detail once, opens only
+that row, and a second click closes it without refetching" and "an issues View read the endpoint
+refused shows that sentence in the row and leaves the card intact".
 
 ## The GitHub issues mirror: an issue GitHub closed upstream has one record
 

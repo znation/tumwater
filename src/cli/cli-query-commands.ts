@@ -24,7 +24,7 @@ import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleCha
 import { readGithubIssues, type GithubIssuesLedger } from "../github/github-issues-state.js";
 import {
   grepIssueRows,
-  issueRowAt,
+  issueAtPosition,
   issueRows,
   issuesHeader,
   issuesJson,
@@ -456,18 +456,13 @@ async function cmdIssuesShow(root: string, args: string[]): Promise<void> {
   rejectUnknownArgs("issues", rest, []);
   if (position === null) fail("--show needs a position (usage: tumwater issues --show <n>)");
   refuseTeamWorkspace(root);
-  const ledger = readGithubIssues(root);
   // A project with no ledger answers the same way the quarantine detail view answers an absent
-  // quarantine file: the position is past the end of a mirror holding 0 issues.
-  const rows = ledger === null ? [] : issueRows(ledger);
-  const row = ledger === null ? null : issueRowAt(ledger, position);
-  if (row === null) {
-    // The count names the whole list, which holds the issues tumwater closed as well as the open
-    // ones the scan listed — the list positions both kinds, so `--show 3` may name a closed issue
-    // and this range must not claim the list holds only open ones.
-    const range = validPositionRange(rows.length);
-    fail(`no GitHub issue at position ${position} (github issues mirror holds ${plural(rows.length, "issue")})${range}`);
-  }
+  // quarantine file: the position is past the end of a mirror holding 0 issues. The whole
+  // numbering+miss rule lives in the render module (issueAtPosition), because the dashboard's
+  // GET /api/issues-show states the same case in the same words (INV-DE6).
+  const at = issueAtPosition(readGithubIssues(root), position);
+  if ("message" in at) fail(at.message);
+  const row = at.row;
   // The row already carries its position (issueRows numbers it), so --json serves it as-is.
   if (json) sayJson({ ...row });
   else say(renderIssueDetail(row, position, Date.now()));

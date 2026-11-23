@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   grepIssueRows,
+  issueAtPosition,
   issueRowAt,
   issueRows,
   issuesHeader,
@@ -338,4 +339,46 @@ test("the detail of a lost issue names the loss and its last-seen instant, with 
   assert.ok(detail.includes("  closed upstream — last seen open 3d ago"), detail);
   assert.ok(!/^  closed \d/m.test(detail), "a lost issue states no close tumwater cannot back");
   assert.ok(!detail.includes("queued") && !detail.includes("waiting for a push"), "and no other state line");
+});
+
+test("issueAtPosition answers the issue the whole list numbers at that position", () => {
+  // The rule both detail front ends share: position N of the whole list, closed and lost rows
+  // included, whatever filter the caller's list happened to carry.
+  const l = ledger({
+    closedRows: [{ ...ledger().open[0]!, number: 9, title: "Closed nine" }],
+    upstreamClosed: [{ ...ledger().open[0]!, number: 8, title: "Lost eight" }],
+  });
+  const hit = issueAtPosition(l, 3);
+  assert.ok("row" in hit);
+  assert.deepEqual([hit.row.position, hit.row.number], [3, 9], "position 3 is the closed row, not an open one");
+  const lost = issueAtPosition(l, 4);
+  assert.ok("row" in lost);
+  assert.equal(lost.row.number, 8, "a lost issue is addressed past the closed rows");
+});
+
+test("issueAtPosition's miss names the whole list count and its valid range on both front ends", () => {
+  // The same sentence the CLI fails with and the dashboard endpoint answers with (INV-DE6): it
+  // counts the whole mirror — the closed and lost rows as well as the open ones the scan listed —
+  // and names the range, so a miss can never be read as a filtered list's positions.
+  const l = ledger({
+    closedRows: [{ ...ledger().open[0]!, number: 9, title: "Closed nine" }],
+    upstreamClosed: [{ ...ledger().open[0]!, number: 8, title: "Lost eight" }],
+  });
+  const miss = issueAtPosition(l, 5);
+  assert.ok("message" in miss);
+  assert.equal(
+    miss.message,
+    "no GitHub issue at position 5 (github issues mirror holds 4 issues) — valid: 1-4",
+  );
+  // Below the list: position 0 and a negative position are misses, and a miss never carries a row.
+  assert.ok("message" in issueAtPosition(l, 0));
+  assert.ok("message" in issueAtPosition(l, -1));
+});
+
+test("issueAtPosition of a mirror never read is the empty mirror's miss, creating nothing", () => {
+  // A null ledger is what readGithubIssues returns when no ledger file exists — the same stance
+  // the list endpoint takes for it. The miss names 0 issues and states no range.
+  const miss = issueAtPosition(null, 1);
+  assert.ok("message" in miss);
+  assert.equal(miss.message, "no GitHub issue at position 1 (github issues mirror holds 0 issues)");
 });

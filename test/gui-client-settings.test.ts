@@ -33,8 +33,9 @@ interface SettingsFns {
   salvageViewClick(position: string): Promise<void>;
   paintSalvage(): void;
   renderRetirable(d: unknown, armed: (role: string) => boolean): string;
-  renderIssues(d: unknown): string;
+  renderIssues(d: unknown, open?: unknown): string;
   fetchIssues(): Promise<void>;
+  issueViewClick(position: string): Promise<void>;
   paintIssues(): void;
   fetchRetirable(): Promise<void>;
   enableRole(role: string): Promise<void>;
@@ -54,7 +55,7 @@ interface SettingsFns {
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "err-message", "settings-view", "format"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderSalvage", "fetchSalvage", "salvageApplyClick", "salvageDropClick", "salvageViewClick", "paintSalvage", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "renderIssues", "fetchIssues", "paintIssues", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderSalvage", "fetchSalvage", "salvageApplyClick", "salvageDropClick", "salvageViewClick", "paintSalvage", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "renderIssues", "fetchIssues", "issueViewClick", "paintIssues", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -313,6 +314,9 @@ test("the settings region is spliced into the served script, and the boot routes
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='salvage-drop'\]/);
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='salvage-view'\]/);
   assert.match(GUI_CLIENT_BOOT_JS, /salvageViewClick\(salView\.dataset\.position\)/);
+  // The issues card's per-row View button is delegated the same way, addressed by position.
+  assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='issues-view'\]/);
+  assert.match(GUI_CLIENT_BOOT_JS, /issueViewClick\(issView\.dataset\.position\)/);
   assert.match(GUI_CLIENT_BOOT_JS, /data-action='doctor-rerun'/);
   // …and the boot carries the Clear click selector beside the Save submit wiring.
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='unset'\]/);
@@ -1069,9 +1073,12 @@ test("renderIssues states the mirror's counts in tumwater issues' words and numb
   assert.match(html, /<span>mirrored<\/span><span>trusted<\/span>/);
   assert.match(html, /<span>not mirrored<\/span><span class='pill t-amber'>untrusted<\/span>/);
   // The age segment: `updated <ago>` for a live row, `closed <ago>` for the row tumwater closed.
-  assert.match(html, /<span>updated 3h ago<\/span><\/div>/);
-  assert.match(html, /<span>updated 2d ago<\/span><\/div>/);
-  assert.match(html, /<span>closed 30m ago<\/span><\/div>/);
+  // Each row ends with its own View button, addressed by its whole-list position — the twin of
+  // tumwater issues --show <n> — and every listed row gets one, closed and lost rows included.
+  assert.match(html, /<span>updated 3h ago<\/span><button type='button' class='btn btn-sm' data-action='issues-view' data-position='1'>View<\/button><\/div>/);
+  assert.match(html, /<span>updated 2d ago<\/span><button type='button' class='btn btn-sm' data-action='issues-view' data-position='2'>View<\/button><\/div>/);
+  assert.match(html, /<span>closed 30m ago<\/span><button type='button' class='btn btn-sm' data-action='issues-view' data-position='3'>View<\/button><\/div>/);
+  assert.equal((html.match(/data-action='issues-view'/g) || []).length, 3, "one View button per listed row, none for the header");
   // An ok gate state paints no gate line.
   assert.doesNotMatch(html, /gh /);
 });
@@ -1115,6 +1122,7 @@ test("renderIssues prints a not-ok gh gate line with the ledger's reason, and th
   assert.match(undated, /<span>closed unknown<\/span>/);
   // An issue GitHub lost is never phrased as a close tumwater made.
   assert.match(undated, /<span>last seen unknown<\/span>/);
+  assert.equal((undated.match(/data-action='issues-view'/g) || []).length, 3, "a lost row gets its View button too");
   const lost = renderIssues({
     ...ISSUES_DOC(now),
     upstreamClosedCount: 1,
@@ -1123,6 +1131,103 @@ test("renderIssues prints a not-ok gh gate line with the ledger's reason, and th
   assert.match(lost, /: 2 open, 1 closed by tumwater, 1 closed upstream, checked 3h ago<\/span>/);
   assert.match(lost, /<span>last seen open 2d ago<\/span>/);
   assert.doesNotMatch(lost, /closed 2d ago/, "a lost issue is never printed as closed by tumwater");
+});
+
+test("issueViewClick fetches the row's detail once, opens only that row, and a second click closes it without refetching", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard", "retirecard", "briefcard", "issuescard"]) els[id] = { innerHTML: "", dataset: {} };
+  const now = Date.now();
+  const fetched: string[] = [];
+  const { fetchIssues, issueViewClick } = settingsScope({
+    $: (id: string) => els[id],
+    getJson: async (path: string) => {
+      fetched.push(path);
+      if (path === "/api/issues") return ISSUES_DOC(now);
+      // The show endpoint's reply for the position asked for, built from ISSUES_DOC's rows: the
+      // position in the query decides which issue comes back, so a swapped field would land the
+      // wrong detail under the row.
+      const n = Number(new URL("http://x" + path).searchParams.get("position"));
+      return n === 2
+        ? { position: 2, number: 7, title: "Seventh", text: "issue 2: #7 — Seventh\n  url: \n  updated: x\n  declined 2d ago: not mirrored" }
+        : { position: 1, number: 4, title: "Fourth", text: "issue 1: #4 — Fourth & <b>bold</b>\n  body excerpt:\n    the lock file survives\n    <script>gone</script>" };
+    },
+  });
+  await fetchIssues();
+  // Row 2's View: a read-only GET on that position, and the CLI's detail text reaches the card.
+  await issueViewClick("2");
+  assert.deepEqual(fetched.slice(1), ["/api/issues-show?position=2"]);
+  assert.match(els["issuescard"]!.innerHTML, /<pre class='mono'>issue 2: #7 — Seventh[\s\S]*declined 2d ago: not mirrored<\/pre>/);
+  // The open row's View button is a collapse; the other rows' are still View.
+  assert.match(els["issuescard"]!.innerHTML, /data-action='issues-view' data-position='2'>Hide<\/button>/);
+  assert.match(els["issuescard"]!.innerHTML, /data-action='issues-view' data-position='1'>View<\/button>/);
+  // A second click on the open row collapses it, asking the server nothing.
+  await issueViewClick("2");
+  assert.deepEqual(fetched.slice(1), ["/api/issues-show?position=2"], "collapsing never refetches");
+  assert.doesNotMatch(els["issuescard"]!.innerHTML, /<pre class='mono'>issue 2/);
+  // Opening row 1 closes row 2, and the detail text is escaped — the <script> in its excerpt stays
+  // text, and so does the markup in the title the server names.
+  await issueViewClick("1");
+  assert.deepEqual(fetched.slice(1), ["/api/issues-show?position=2", "/api/issues-show?position=1"]);
+  const card = els["issuescard"]!.innerHTML;
+  assert.equal(card.match(/<pre class='mono'>issue /g)!.length, 1, "one row is open at a time");
+  assert.match(card, /Fourth &amp; &lt;b&gt;bold&lt;\/b&gt;/);
+  assert.match(card, /&lt;script&gt;gone&lt;\/script&gt;/);
+  assert.doesNotMatch(card, /<script>/, "an issue's text never reaches the DOM as markup");
+});
+
+test("an issues View read the endpoint refused shows that sentence in the row and leaves the card intact", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard", "retirecard", "briefcard", "issuescard"]) els[id] = { innerHTML: "", dataset: {} };
+  const { fetchIssues, issueViewClick } = settingsScope({
+    $: (id: string) => els[id],
+    getJson: async (path: string) => {
+      if (path === "/api/issues") return ISSUES_DOC(Date.now());
+      // The endpoint answers a position the fresh ledger does not hold 200 { ok: false, message }.
+      return { ok: false, message: "no GitHub issue at position 3 (github issues mirror holds 2 issues) — valid: 1-2" };
+    },
+  });
+  await fetchIssues();
+  // A row the card listed but the fresh ledger no longer holds at that position (the mirror scan
+  // ran again between the two reads): the detail read misses, and its sentence lands in that row.
+  await issueViewClick("3");
+  const card = els["issuescard"]!.innerHTML;
+  assert.match(card, /<div class='empty'>no GitHub issue at position 3 \(github issues mirror holds 2 issues\) — valid: 1-2<\/div>/);
+  assert.doesNotMatch(card, /<pre class='mono'>/, "a refused read paints no detail body");
+  assert.match(card, /data-action='issues-view' data-position='3'>Hide<\/button>/, "the open row still offers its collapse");
+  // The card stays listed and every row keeps its View button, so a miss is readable, not a break.
+  assert.equal((card.match(/data-action='issues-view'/g) || []).length, 3);
+});
+
+test("issueViewClick shows the transport error in the row when the detail read rejects", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard", "retirecard", "briefcard", "issuescard"]) els[id] = { innerHTML: "", dataset: {} };
+  const { fetchIssues, issueViewClick } = settingsScope({
+    $: (id: string) => els[id],
+    getJson: async (path: string) => {
+      if (path === "/api/issues") return ISSUES_DOC(Date.now());
+      throw { message: "GET /api/issues-show failed: HTTP 500 — broken ledger" };
+    },
+  });
+  await fetchIssues();
+  await issueViewClick("1");
+  assert.match(els["issuescard"]!.innerHTML, /<div class='empty'>GET \/api\/issues-show failed: HTTP 500 — broken ledger<\/div>/);
+});
+
+test("renderIssues splices the open body only into the row its position still matches", () => {
+  const { renderIssues } = settingsScope();
+  const now = Date.now();
+  // The mirror's positions are the whole list's, so a refetch of the same ledger keeps them; the
+  // slot keyed on position 3 lands under that row and nowhere else.
+  const open = { position: 3, body: { position: 3, number: 2, title: "Second", text: "issue 3: #2 — Second\n  closed 30m ago: abc1234" } };
+  const html = renderIssues(ISSUES_DOC(now), open);
+  assert.match(html, /<pre class='mono'>issue 3: #2 — Second[\s\S]*closed 30m ago: abc1234<\/pre><\/div>/);
+  assert.equal(html.match(/<pre class='mono'>/g)!.length, 1, "the body is spliced into one row");
+  assert.match(html, /data-action='issues-view' data-position='3'>Hide<\/button><pre/);
+  assert.match(html, /data-action='issues-view' data-position='1'>View<\/button><\/div>/);
+  // A slot whose position no longer arrives (the mirror was re-scanned and the issue was dropped)
+  // paints no body at all, rather than leaving an orphan panel under another row.
+  const gone = renderIssues({ ...ISSUES_DOC(now), issues: ISSUES_DOC(now).issues.slice(0, 2) }, open);
+  assert.doesNotMatch(gone, /<pre class='mono'>/);
 });
 
 test("fetchIssues builds the card and fills it from GET /api/issues; a failed fetch is the error panel", async () => {

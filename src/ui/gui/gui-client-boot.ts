@@ -108,6 +108,11 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (retire) { ev.preventDefault(); confirmRetire(retire.dataset.role); }
     const enable = clickClosest(ev, "button[data-action='enable']");
     if (enable) { ev.preventDefault(); enableRole(enable.dataset.role); }
+    // The GitHub-issues card's per-row View/Hide button, the twin of tumwater issues --show <n>:
+    // it addresses the row by its whole-list position, and issueViewClick opens that row's body
+    // slot (or collapses it when it is already the open one). Read-only: a GET, never a post.
+    const issView = clickClosest(ev, "button[data-action='issues-view']");
+    if (issView) { ev.preventDefault(); issueViewClick(issView.dataset.position); }
     const salApply = clickClosest(ev, "button[data-action='salvage-apply']");
     if (salApply) { ev.preventDefault(); salvageApplyClick(salApply.dataset.position); }
     const salDrop = clickClosest(ev, "button[data-action='salvage-drop']");

@@ -1,7 +1,9 @@
 /**
- * The dashboard's GitHub-issues mirror endpoint (barrelled into
- * src/gui/gui-endpoint-commands.ts, which routes to it from src/gui/gui-server.ts):
- * GET /api/issues answers the mirror ledger — the browser twin of `tumwater issues`. The
+ * The dashboard's GitHub-issues mirror endpoints (barrelled into
+ * src/gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts):
+ * GET /api/issues answers the mirror ledger — the browser twin of `tumwater issues` — and
+ * GET /api/issues-show?position=<n> answers one issue's whole detail, the twin of
+ * `tumwater issues --show <n>`. The
  * dashboard's Settings "GitHub issues" card renders it, so an operator watching the team can see
  * which issues the mirror listed, which it mirrored, and what tumwater did about each without
  * leaving the browser. Like the CLI read it is strictly local: it reads
@@ -16,15 +18,18 @@ import {
   grepIssueRows,
   ISSUE_STATES,
   isIssueState,
+  issueAtPosition,
   issueRows,
   issuesHeader,
   issuesJson,
+  renderIssueDetail,
   stateIssueRows,
 } from "../github/github-issues-render.js";
 import type { IssueState } from "../github/github-issues-render.js";
 import { readGithubIssues } from "../github/github-issues-state.js";
 import { oneOfMessage } from "../text/suggest.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
+import { intQuery } from "./gui-args.js";
 import type http from "node:http";
 
 /** The document GET /api/issues answers when the mirror has never been read (or its file is
@@ -87,5 +92,34 @@ export function handleIssuesList(q: URLSearchParams, res: http.ServerResponse, r
     upstreamClosedCount: header.upstreamClosedCount,
     empty: false,
     ...(state !== null ? { state } : {}),
+  });
+}
+
+/** Handle GET /api/issues-show?position=<n>: the Nth issue of the whole mirror list, the browser
+ * twin of `tumwater issues --show <n>` and the read the Settings card's per-row View button calls.
+ * The position is `intQuery`'s positive-integer rule, so a missing or malformed one is the shared
+ * 400 (`position required`, `position must be a positive integer (got "x")`). The numbering and
+ * the miss sentence come from the render module's `issueAtPosition`, the same rule `cmdIssuesShow`
+ * states, so position N names the same issue on both surfaces whatever filters the list request
+ * happened to carry (INV-DE6). A position the list does not hold answers 200 `{ ok: false,
+ * message }` — the shape the salvage show endpoint answers for the same case — so the card shows
+ * that sentence in the row rather than an empty panel. A hit answers `{ position, number, title,
+ * text }`, where `text` is `renderIssueDetail`'s output verbatim: the state lines and ages are the
+ * CLI's own words, not a browser-side paraphrase, and the whole body excerpt reaches the browser
+ * inside it. Like the list endpoint this reads only the ledger file — no `gh` call, no write, and
+ * no file created when the mirror has never been read. */
+export function handleIssuesShow(q: URLSearchParams, res: http.ServerResponse, root: string): void {
+  const position = intQuery(q, res, "position", "positive");
+  if (position === null) return;
+  const at = issueAtPosition(readGithubIssues(root), position);
+  if ("message" in at) {
+    sendJson(res, 200, { ok: false, message: at.message });
+    return;
+  }
+  sendJson(res, 200, {
+    position,
+    number: at.row.number,
+    title: at.row.title,
+    text: renderIssueDetail(at.row, position, Date.now()),
   });
 }
