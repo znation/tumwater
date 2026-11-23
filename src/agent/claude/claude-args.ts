@@ -16,7 +16,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { appendPassthroughArgs } from "../agent-args.js";
+import { appendPassthroughArgs, EFFORT_BY_THINKING } from "../agent-args.js";
 import { writeGuardSettings } from "./claude-write-guard.js";
 
 /** Flags the harness passes itself. A passthrough arg equal to one of these is appended AFTER
@@ -49,19 +49,6 @@ export const HARNESS_CLAUDE_FLAGS: ReadonlySet<string> = new Set([
   "--append-system-prompt-file",
   "--max-budget-usd",
 ]);
-
-/** claude's effort levels are pi's thinking levels with `off`/`minimal` clamped to `low`:
- * claude has no lower setting, and doctor notes the clamp (plans/agent-backends.md "Config").
- * `off` and `minimal` are the only remapped entries; the rest are 1:1. */
-const EFFORT_BY_THINKING: Record<string, string> = {
-  off: "low",
-  minimal: "low",
-  low: "low",
-  medium: "medium",
-  high: "high",
-  xhigh: "xhigh",
-  max: "max",
-};
 
 /** The claude argv builder's inputs. `model` is the concrete resolved id (a tier map is
  * resolved before the seam, exactly as piArgs's config view is). Exactly one of `sessionId`
@@ -107,6 +94,9 @@ export function claudeArgs(opts: ClaudeArgOptions): { args: string[]; stdin: str
   }
   const args = ["-p", "--output-format", "stream-json", "--verbose", "--model", opts.model];
   if (opts.thinking !== undefined) {
+    // claude's effort levels are pi's thinking levels with `off`/`minimal` clamped to `low` — the
+    // shared EFFORT_BY_THINKING map in agent-args.ts, which codex reads the same way. claude has
+    // no lower setting, and doctor notes the clamp (plans/agent-backends.md "Config").
     // Own-property test, not a bare index: a level like `constructor` or `toString` would
     // otherwise inherit a function from Object.prototype and bypass the rejection below.
     if (!Object.hasOwn(EFFORT_BY_THINKING, opts.thinking)) {

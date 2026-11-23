@@ -21,7 +21,7 @@
  * Operators keep `-c`, `--enable` and `--disable` for their own settings — those keys are
  * screened separately (HARNESS_CODEX_CONFIG_KEYS). */
 
-import { appendPassthroughArgs } from "../agent-args.js";
+import { appendPassthroughArgs, EFFORT_BY_THINKING } from "../agent-args.js";
 
 export const HARNESS_CODEX_FLAGS: ReadonlySet<string> = new Set([
   // Output and model: tumwater forces JSON output, the resolved model, and a normal color for
@@ -90,21 +90,6 @@ export function isHarnessCodexConfigKey(key: string): boolean {
   if (HARNESS_CODEX_CONFIG_KEYS.has(key)) return true;
   return HARNESS_CODEX_CONFIG_KEY_PREFIXES.some((p) => key === p || key.startsWith(`${p}.`));
 }
-
-/** Thinking → `model_reasoning_effort`. `off` and `minimal` clamp to `low` (Codex has no lower
- * setting; doctor notes the clamp), `low` through `max` map 1:1. `ultra` is not a value Codex
- * can receive — tumwater never sends it (it delegates to sub-agents). This is claude's
- * EFFORT_BY_THINKING rule moved to codex, where the level the model's catalog lists also gates
- * the result (part 5/9's `codexEffort`). */
-export const EFFORT_BY_THINKING: Record<string, string> = {
-  off: "low",
-  minimal: "low",
-  low: "low",
-  medium: "medium",
-  high: "high",
-  xhigh: "xhigh",
-  max: "max",
-};
 
 /** The effort values tumwater will ever send as `model_reasoning_effort`: the set
  * EFFORT_BY_THINKING can produce. `ultra` (which some models add for sub-agent delegation) is

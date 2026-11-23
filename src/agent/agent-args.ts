@@ -28,3 +28,23 @@ export function appendPassthroughArgs(
     args.push(arg);
   }
 }
+
+/** pi's thinking levels mapped to the effort word the claude and codex argv builders send
+ * (`--effort`, `model_reasoning_effort`): `off` and `minimal` clamp to `low`, the two backends'
+ * lowest setting, and `low` through `max` map 1:1. Both backends clamp the same way, so the map
+ * lives here, beside `appendPassthroughArgs`, where neither builder owns it; doctor notes the
+ * clamp (plans/agent-backends.md "Config") and the codex catalog gates the result
+ * (`codexEffort` in codex-args.ts). Its readers are `claudeArgs` (claude-args.ts), which rejects
+ * an unlisted level, `codexEffort` (codex-args.ts), which returns undefined for one, and the
+ * doctor's codex catalog row (doctor-codex-checks.ts), which asks only whether a configured
+ * level maps at all.
+ * `ultra` is deliberately absent — tumwater never sends it. */
+export const EFFORT_BY_THINKING: Record<string, string> = {
+  off: "low",
+  minimal: "low",
+  low: "low",
+  medium: "medium",
+  high: "high",
+  xhigh: "xhigh",
+  max: "max",
+};
