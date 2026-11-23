@@ -5,7 +5,7 @@
  * travels with the per-role display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, buildBadge, chainBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, pauseBadge, pauseCountdown, permitsBadge, checksBadge, runWindowBadge, workspacesBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
+import { budgetBadge, buildBadge, chainBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, qaBadge, qaBadgeTone, pauseBadge, pauseCountdown, permitsBadge, checksBadge, runWindowBadge, workspacesBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
 import type { SubscriptionWindowBlock } from "../src/agent/subscription-account.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
@@ -330,6 +330,30 @@ test("remoteCiTone is the one result-to-tone map", () => {
   assert.equal(remoteCiTone({ result: "pending", sha: "a", checkedAt: 0 }), "blue");
   assert.equal(remoteCiTone({ result: "unavailable", checkedAt: 0 }), undefined, "unavailable: no tone, like no record");
   assert.equal(remoteCiTone(undefined), undefined);
+});
+
+test("qaBadge phrases each verdict and omits none", () => {
+  // A same-instant age renders `0s ago`; fixed pairs keep the phrase stable across clocks.
+  assert.equal(qaBadge(undefined, 0), "", "no coverage ledger: no badge");
+  assert.equal(
+    qaBadge({ flow: "login flow", lastRunAt: 0, stale: false }, 0),
+    " · QA: fresh — login flow 0s ago",
+  );
+  assert.equal(
+    qaBadge({ flow: "login flow", lastRunAt: 0, stale: true }, 0),
+    " · QA: stale — login flow 0s ago",
+  );
+  // A four-day-old exercise reads 4d, the reading the header test matches.
+  assert.equal(
+    qaBadge({ flow: "gui", lastRunAt: 0, stale: true }, 4 * 86_400_000),
+    " · QA: stale — gui 4d ago",
+  );
+});
+
+test("qaBadgeTone is the one stale-to-tone map", () => {
+  assert.equal(qaBadgeTone({ flow: "gui", lastRunAt: 0, stale: true }), "yellow");
+  assert.equal(qaBadgeTone({ flow: "gui", lastRunAt: 0, stale: false }), "blue");
+  assert.equal(qaBadgeTone(undefined), undefined, "no ledger: no tone, like no badge");
 });
 
 test("permitsBadge shows the team line slots and stays byte-identical without a pool", () => {

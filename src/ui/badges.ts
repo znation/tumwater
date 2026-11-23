@@ -384,6 +384,32 @@ export function remoteCiTone(remote: StatusSnapshot["remoteCi"]): "green" | "red
   return "blue";
 }
 
+/** The qa coverage badge — the status header's always-visible twin of the `qa coverage` doctor
+ * row: the answer to "is the qa observer still recording flow exercises?" at a glance, without
+ * running doctor. `fresh` names the newest exercised flow and its age; `stale` (no flow exercised
+ * in over three days) reads the same way so the change in state is visible in the word, not the
+ * shape. Empty when no ledger exists — a project that never ran qa — so the header stays
+ * byte-identical. The stale decision is `qaCoverageStalled`'s (through the snapshot's
+ * qaCoverageForPoll), the same predicate the doctor row reads, so the badge and the row can never
+ * disagree. humanAgo gives the shared past-direction phrase the parity badges use. */
+export function qaBadge(coverage: StatusSnapshot["qaCoverage"], now: number): string {
+  if (!coverage) return "";
+  const age = humanAgo(coverage.lastRunAt, now);
+  // The label is the `QA` acronym, not a title-cased `Qa`: the browser sidebar's badgeLabel
+  // upcases only its first character, so a lowercase `qa:` there would render as `Qa: …`.
+  if (coverage.stale) return ` · QA: stale — ${coverage.flow} ${age}`;
+  return ` · QA: fresh — ${coverage.flow} ${age}`;
+}
+
+/** The one stale→tone map for the qa coverage badge, shared by the CLI header and the browser
+ * sidebar row so a stale badge is yellow (the header's held-state colour, the way diskBadge
+ * signals a hold) and a fresh one is blue, and an absent one renders with no tone (and, per the
+ * badge, no text at all). */
+export function qaBadgeTone(coverage: StatusSnapshot["qaCoverage"]): "yellow" | "blue" | undefined {
+  if (!coverage) return undefined;
+  return coverage.stale ? "yellow" : "blue";
+}
+
 /** The header's `run --for` window fragment: ` · stops in <duration>` while the deadline is
  * ahead, ` · stopping` once it has passed (the drain), empty for an unwindowed team. */
 export function runWindowBadge(stopsAt: number | undefined, now: number): string {

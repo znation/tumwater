@@ -21,7 +21,7 @@ import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { requestWake } from "../src/operator/operator-intent.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
-import { configPath, orchestratorStatePath, pausedPath, piLogPath, postReviewPath, remoteCiPath, roleNotesPath, salvageDir, salvagePendingDir } from "../src/paths.js";
+import { configPath, orchestratorStatePath, pausedPath, piLogPath, postReviewPath, qaCoveragePath, remoteCiPath, roleNotesPath, salvageDir, salvagePendingDir } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
@@ -687,6 +687,38 @@ test("status payload ships the remote-CI badge beside the ci parity badge, absen
   payload = (await statusPayload(repo, now)) as typeof payload;
   assert.equal(payload.remoteCiBadge, "", "unavailable: empty badge");
   assert.equal(payload.remoteCiTone, undefined, "unavailable: no tone, like no record");
+});
+
+// The qa flow-coverage ledger's glance surface: the payload carries the preformatted badge/tone the
+// dashboard row and the status header share, plus the raw block, so both surfaces say the same
+// thing. Without a ledger the badge is empty, no tone is carried, and the raw key is absent — the
+// panel renders exactly as before the badge existed.
+test("status payload ships the QA badge beside the remote-CI badge, absent without a ledger", async () => {
+  interface QaPayload {
+    qaCoverageBadge: string;
+    qaCoverageTone?: string;
+    qaCoverage?: { flow: string; lastRunAt: number; stale: boolean };
+  }
+  const repo = makeRepo();
+  await initProject(repo, "qa coverage payload test");
+  const DAY = 24 * 60 * 60_000;
+  const now = Date.now();
+  let payload = (await statusPayload(repo, now)) as QaPayload;
+  assert.equal(payload.qaCoverageBadge, "", "no ledger: empty badge");
+  assert.equal(payload.qaCoverageTone, undefined, "no ledger: no tone");
+  assert.equal(payload.qaCoverage, undefined, "no ledger: no raw block");
+
+  writeJsonFile(qaCoveragePath(repo), { flows: { "login flow": { lastRunAt: now - 4 * DAY, result: "passed" } } });
+  payload = (await statusPayload(repo, now)) as QaPayload;
+  assert.equal(payload.qaCoverageBadge, " · QA: stale — login flow 4d ago");
+  assert.equal(payload.qaCoverageTone, "yellow");
+  assert.deepEqual(payload.qaCoverage, { flow: "login flow", lastRunAt: now - 4 * DAY, stale: true });
+
+  writeJsonFile(qaCoveragePath(repo), { flows: { "login flow": { lastRunAt: now - 60_000, result: "passed" } } });
+  payload = (await statusPayload(repo, now)) as QaPayload;
+  assert.equal(payload.qaCoverageBadge, " · QA: fresh — login flow 1m ago");
+  assert.equal(payload.qaCoverageTone, "blue");
+  assert.deepEqual(payload.qaCoverage, { flow: "login flow", lastRunAt: now - 60_000, stale: false });
 });
 
 // The pinned clock reaches the alerts too: teamAlerts' pause countdown must read the

@@ -13,7 +13,7 @@ import { piModelsPath } from "../pi/pi-models.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import type { StatusSnapshot } from "../status/status-types.js";
 import { buildLabel } from "../build/build-info.js";
-import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, permitsBadge, checksBadge, quietBadge, restartHoldText, runWindowBadge, workspacesBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, qaBadge, qaBadgeTone, permitsBadge, checksBadge, quietBadge, restartHoldText, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { teamAlerts } from "./team-alerts.js";
@@ -329,6 +329,11 @@ function mergeAndCheckFields(root: string, snap: StatusSnapshot, now: number) {
     // re-derive (or drift from) it. Empty string/no tone without a record or for an
     // `unavailable` one, so the panel renders exactly as before.
     remoteCiBadge: remoteCiBadge(snap.remoteCi, now),
+    // The qa coverage badge and its tone, preformatted through badges.ts's qaBadge/qaBadgeTone —
+    // the same string and stale→tone the status header renders — so the page's sidebar row
+    // carries the qa observer's glance verdict verbatim and cannot re-derive (or drift from) it.
+    // Empty string/no tone without a coverage ledger, so the panel renders exactly as before.
+    qaCoverageBadge: qaBadge(snap.qaCoverage, now),
     // The raw machine-readable twin of the blue `no-check` info alert (present only when no
     // deterministic check is declared, so `tumwater status --json` scripts can read the same
     // state before the dashboard renders it as an alert). Omitted (absent) when a check is
@@ -372,6 +377,12 @@ function mergeAndCheckFields(root: string, snap: StatusSnapshot, now: number) {
     ...(snap.configProblem ? { configProblem: snap.configProblem } : {}),
     ciParityTone: ciParityTone(snap.ciParity),
     remoteCiTone: remoteCiTone(snap.remoteCi),
+    qaCoverageTone: qaBadgeTone(snap.qaCoverage),
+    // The raw machine-readable twin of the qa coverage badge (present only while a coverage
+    // ledger exists), so `tumwater status --json` scripts read the flow, its stamp and the stall
+    // verdict rather than parsing the badge. Omitted (absent) without a ledger, the same
+    // omit-undefined idiom as ciParity.
+    ...(snap.qaCoverage ? { qaCoverage: snap.qaCoverage } : {}),
     // The check's counts fragment, preformatted through badges.ts's mainCountsFragment so
     // the page renders the pass/skip/fail breakdown verbatim and cannot re-derive (and
     // drift from) it — the sidebar's "Main green · …" row reads this field, not the raw

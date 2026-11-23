@@ -5,12 +5,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ciParityForPoll, configForStatus, configStateForStatus, liveMergeMarker, remoteCiForPoll } from "../src/status/status-polls.js";
+import { ciParityForPoll, configForStatus, configStateForStatus, liveMergeMarker, qaCoverageForPoll, remoteCiForPoll } from "../src/status/status-polls.js";
 import { mainCheckForPoll } from "../src/status/status-main-check.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { recordParity } from "../src/observer/ci-parity.js";
 import { recordRemoteCi } from "../src/observer/remote-ci.js";
-import { configPath, remoteCiPath } from "../src/paths.js";
+import { QA_COVERAGE_STALE_MS, recordFlow } from "../src/observer/qa-coverage.js";
+import { checkQaCoverage } from "../src/doctor/doctor-project-checks.js";
+import { configPath, qaCoveragePath, remoteCiPath } from "../src/paths.js";
 import { commitIn, makeRepo, mainSha, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import type { MergeChange, MergeInFlight } from "../src/merge/merge-slot.js";
@@ -118,6 +120,82 @@ test("remoteCiForPoll reads each result, reads none without a record, and serves
   const afterWrite = remoteCiForPoll(root);
   assert.notDeepEqual(afterWrite, first, "a write invalidates the cache and the next poll re-reads");
   assert.equal(afterWrite?.result, "failed");
+});
+
+// The qa flow-coverage ledger's glance reader (src/observer/qa-coverage.ts, read through
+// qaCoverageForPoll): the badge's twin of the doctor `qa coverage` row. The reader caches the
+// LEDGER and re-derives the verdict from the poll's clock, so the badge follows the time while the
+// file stands still, and it answers through the one qaCoverageStalled predicate the row reads.
+test("qaCoverageForPoll reads the newest flow, reads none without a ledger, and caches the ledger but not the verdict", (t) => {
+  const NOW = 1_800_000_000_000;
+  const MIN = 60_000;
+  const DAY = 24 * 60 * MIN;
+  const root = makeRepo();
+  assert.equal(qaCoverageForPoll(root, NOW), undefined, "no ledger: no badge data");
+
+  // The newest exercise wins whatever its insertion position, and the verdict rides with it.
+  recordFlow(root, "status", "passed", undefined, NOW - 5 * DAY);
+  recordFlow(root, "logs", "passed", undefined, NOW - 4 * DAY);
+  assert.deepEqual(
+    qaCoverageForPoll(root, NOW),
+    { flow: "logs", lastRunAt: NOW - 4 * DAY, stale: true },
+    "a ledger whose newest exercise is past the window reads stale",
+  );
+
+  // The cache (the acceptance criterion: one stat per poll while unchanged, a re-read after a
+  // rewrite). Counting the file's reads — not just comparing values — is what pins it: a poll that
+  // bypassed the cache would still return the same record and pass a bare equality assertion.
+  const ledger = qaCoveragePath(root);
+  const originalReadFileSync = fs.readFileSync.bind(fs);
+  let reads = 0;
+  t.mock.method(fs, "readFileSync", ((...args: unknown[]) => {
+    if (args[0] === ledger) reads++;
+    return originalReadFileSync(...(args as [string | URL, "utf8"]));
+  }) as typeof fs.readFileSync);
+  let freshVerdict: ReturnType<typeof qaCoverageForPoll>;
+  try {
+    assert.deepEqual(qaCoverageForPoll(root, NOW), { flow: "logs", lastRunAt: NOW - 4 * DAY, stale: true });
+    // The cache holds the ledger, never the verdict: the same unchanged file reads fresh for a
+    // `now` inside the window and stale for a `now` past it.
+    freshVerdict = qaCoverageForPoll(root, NOW - 4 * DAY + QA_COVERAGE_STALE_MS);
+    assert.equal(freshVerdict?.stale, false, "inside the window: fresh");
+    assert.equal(qaCoverageForPoll(root, NOW)?.stale, true, "past the window: stale");
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.equal(reads, 0, "an unchanged ledger must not be re-read on the next poll");
+
+  // A rewrite changes the file's size (a longer flow name), so the invalidation is deterministic
+  // regardless of the filesystem's mtime granularity.
+  recordFlow(root, "reset-counters", "passed", undefined, NOW - 60_000);
+  const afterWrite = qaCoverageForPoll(root, NOW);
+  assert.deepEqual(afterWrite, { flow: "reset-counters", lastRunAt: NOW - 60_000, stale: false });
+  assert.equal(freshVerdict?.flow, "logs", "the earlier read kept the pre-rewrite flow");
+
+  // A ledger holding only malformed entries reads as empty — no flow to name, so no badge — the
+  // same reading readQaCoverage gives the doctor row.
+  const torn = makeRepo();
+  fs.mkdirSync(`${torn}/.tumwater/state`, { recursive: true });
+  fs.writeFileSync(qaCoveragePath(torn), JSON.stringify({ flows: { status: { lastRunAt: "soon", result: "passed" } } }));
+  assert.equal(qaCoverageForPoll(torn, NOW), undefined, "malformed entries: no badge");
+  fs.writeFileSync(qaCoveragePath(torn), "not json at all");
+  assert.equal(qaCoverageForPoll(torn, NOW), undefined, "a torn file: no badge, no throw");
+});
+
+test("qaCoverageForPoll and the doctor qa coverage row cannot disagree on one written ledger", () => {
+  const NOW = 1_800_000_000_000;
+  const DAY = 24 * 60 * 60_000;
+  const root = makeRepo();
+  recordFlow(root, "status", "passed", undefined, NOW - 4 * DAY);
+
+  // Four days old: the row warns and the poll reader calls it stale.
+  assert.equal(checkQaCoverage(root, NOW).level, "warn", "the doctor row warns past the window");
+  assert.equal(qaCoverageForPoll(root, NOW)?.stale, true, "the badge reads the same stall");
+
+  // Inside the window of that same untouched entry: the row is ok and the badge is fresh.
+  const inside = NOW - 4 * DAY + QA_COVERAGE_STALE_MS;
+  assert.equal(checkQaCoverage(root, inside).level, "ok", "the doctor row stands down inside the window");
+  assert.equal(qaCoverageForPoll(root, inside)?.stale, false, "the badge stands down with it");
 });
 
 test("mainCheckForPoll carries red detail from the main_culprit verdict matching the checked tip", () => {

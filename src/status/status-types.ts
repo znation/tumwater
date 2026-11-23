@@ -17,7 +17,7 @@ import type {
 import type { SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import type { MergeInFlight } from "../merge/merge-slot.js";
 import type { MainCheckStatus } from "./status-main-check.js";
-import type { CiParityStatus, RemoteCiStatus } from "./status-polls.js";
+import type { CiParityStatus, QaCoverageStatus, RemoteCiStatus } from "./status-polls.js";
 import type { StatusRoleRow } from "./status-roles.js";
 import type { RoleNoteOverCap } from "./status-role-notes.js";
 import type { SalvagePatch } from "./status-salvage.js";
@@ -339,6 +339,14 @@ export interface StatusSnapshot {
    * surfaces stay byte-identical and the doctor `remote CI` row is the exact surface for
    * that state. */
   remoteCi?: RemoteCiStatus;
+  /** The `qa` observer's flow-coverage ledger's glance verdict (src/observer/qa-coverage.ts, read
+   * through status-polls.ts's qaCoverageForPoll): the newest flow the qa role exercised, when it
+   * ran, and whether no flow has been exercised inside the three-day stall window — the badge's
+   * answer to "is the team's flow-level observer still recording?". Absent when no ledger exists
+   * (a project that never ran qa, or one whose ledger holds no well-formed entry), so the surfaces
+   * render exactly as before the badge existed. `stale` is the one `qaCoverageStalled` predicate's
+   * verdict at poll time — the same decision the doctor `qa coverage` row reads. */
+  qaCoverage?: QaCoverageStatus;
   /** True when no deterministic build check is declared — `detectBuildCheck(root, config)`
    * returned null (no `check.command` and no qualifying npm `package.json` on the walked-up
    * root) — the doctor `check` row's undeclared state (src/doctor/doctor-project-checks.ts's

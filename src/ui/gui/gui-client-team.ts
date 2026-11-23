@@ -124,6 +124,20 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
           "ci role recorded it with gh: passed when the push's runs are green, failed when one " +
           "concluded failure, running while any of them is still in flight.");
       }
+      // The qa coverage row (the qa observer's flow-coverage glance verdict): the payload's
+      // preformatted qaCoverageBadge/qaCoverageTone, upcased for the row's label style — the same
+      // answer the status header carries, so the two surfaces cannot drift — toned by the shared
+      // qaBadgeTone map. The sidebar palette in gui-styles.ts has no .t-yellow (it defines
+      // .t-amber, the colour the disk row uses for its held state), so the header's yellow stale
+      // tone is translated to amber here. Absent without a coverage ledger (the badge is empty),
+      // so the panel stays byte-identical.
+      if (d.qaCoverageBadge) {
+        rows += row(d.qaCoverageTone === "yellow" ? "amber" : d.qaCoverageTone, icon("check"),
+          esc(badgeLabel(d.qaCoverageBadge)),
+          "The newest flow the qa observer exercised and how long ago: fresh inside the three-day " +
+          "window the doctor 'qa coverage' row warns past, stale when no flow has been exercised in " +
+          "over three days, so the qa role is disabled, paused, or unable to record.");
+      }
       // The disk floor (plans/disk-floor.md, part 4/4): the sidebar row renders the payload's
       // preformatted diskBadge (upcased for the row's label style) — the same facts the
       // status header carries, so the two surfaces cannot drift — and names the free space,

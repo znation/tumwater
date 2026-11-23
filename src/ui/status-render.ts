@@ -7,7 +7,7 @@ import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, contextShareLabel, usd } from "../text/format.js";
 import { DAY_MS, formatTime, humanAgo, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
-import { bootstrapBadge, buildBadge, budgetBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, ciParityBadge, ciParityTone, remoteCiBadge, remoteCiTone, qaBadge, qaBadgeTone, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, roleRowCells, onErrorStreak, sortRolesByState } from "./status-model.js";
 import { runProgress } from "./run-progress-model.js";
 import { eventTypeLabel } from "../events/event-labels.js";
@@ -326,6 +326,12 @@ function headerHealthSpans(snap: StatusSnapshot, now: number): StatusSpan[] {
     // without a remote verdict stays byte-identical. remoteCiTone is the one
     // result→tone map.
     ...badgeSpans(remoteCiBadge(snap.remoteCi, now), remoteCiTone(snap.remoteCi)),
+    // The qa coverage badge (the `qa` observer's flow-coverage ledger's glance verdict) rides
+    // immediately after the remote-CI badge: `· QA: fresh|stale — <flow> <age> ago` from the
+    // ledger the qa role records as it exercises flows. Empty without a ledger, so a header
+    // that never ran qa stays byte-identical. qaBadgeTone is the one stale→tone map, and the
+    // verdict is qaCoverageStalled's — the same predicate the doctor `qa coverage` row reads.
+    ...badgeSpans(qaBadge(snap.qaCoverage, now), qaBadgeTone(snap.qaCoverage)),
   ];
 }
 

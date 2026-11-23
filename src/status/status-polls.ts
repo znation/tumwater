@@ -6,7 +6,7 @@ import { configPath } from "../paths.js";
 import { readSlotsState } from "../git/slots-state.js";
 import { freshRunnerState, type RunnerState } from "../runner/runner-state.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
-import { remoteCiPath, slotsStatePath, statePath } from "../paths.js";
+import { qaCoveragePath, remoteCiPath, slotsStatePath, statePath } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import {
   countMaintenanceWindow,
@@ -16,6 +16,7 @@ import {
 import { commitTier } from "../roles/roles.js";
 import { currentCiParityState, parityIsCurrent, readCiParity } from "../observer/ci-parity.js";
 import { readRemoteCi, type RemoteCiEntry } from "../observer/remote-ci.js";
+import { newestExercise, qaCoverageStalled, readQaCoverage, type QaCoverage } from "../observer/qa-coverage.js";
 
 /** The per-poll cached readers behind status/status-data.ts's snapshot(): one poll's view of the
  * inputs that cost real reads — the last-known-good config (stat-keyed, so a broken tumwater.json
@@ -96,6 +97,53 @@ export function remoteCiForPoll(root: string): RemoteCiStatus | undefined {
     (e) => (e === null ? null : { ...e }), // A copy: callers may treat the result as their own.
   );
   return entry ? { result: entry.result, ...(entry.sha ? { sha: entry.sha } : {}), checkedAt: entry.checkedAt } : undefined;
+}
+
+/** The qaCoverage field's shape (StatusSnapshot's contract): the `qa` observer's flow-coverage
+ * ledger's glance verdict — the answer to "is the team's flow-level observer still recording
+ * exercises?" without opening doctor. `flow` is the newest exercised flow, `lastRunAt` its stamp
+ * (so each renderer formats the age from its own clock, as the other glance fields do), and
+ * `stale` is `qaCoverageStalled`'s verdict at poll time. Absent — the field is optional — when no
+ * ledger exists (a project that never ran qa, or one whose ledger holds no well-formed entry), so
+ * the surfaces render exactly as before the badge existed. */
+export interface QaCoverageStatus {
+  flow: string;
+  lastRunAt: number;
+  stale: boolean;
+}
+
+// Stat-keyed cache (stat-cache.cachedByStat) for the qa flow-coverage ledger, keyed by the ledger
+// path: the status snapshot's qaCoverageForPoll polls it every second while the ledger changes only
+// when a qa run records a flow, so an unchanged file costs one stat per poll instead of a re-read
+// plus JSON.parse — the same stat-keyed contract the remote-CI ledger's reader above uses. A
+// missing file never reaches the loader at all: cachedByStat drops its entry when the file has no
+// stat. Bounded inside cachedByStat so many short-lived roots in tests cannot grow it unbounded.
+// readQaCoverage itself stays uncached — it also serves the doctor `qa coverage` row and the qa
+// prompt's coverage block, which must see the pre-write ledger in the same process.
+const qaCoverageLedgerCache = new Map<string, StatKeyedValue<QaCoverage>>();
+
+/** The qa flow-coverage ledger's glance verdict for one status poll, or undefined when there is no
+ * record yet. A pure read — no git, no spawn, no write: the ledger only (readQaCoverage through the
+ * stat-keyed cache above), so a per-second poll costs one stat while the ledger is unchanged and
+ * re-reads it once after a write. A missing or malformed ledger reads as undefined — no badge,
+ * never a throw — the same omission policy as remoteCiForPoll. The cache holds the LEDGER, never
+ * the verdict: `stale` and the age must follow the poll's clock while the file stands still, which
+ * is why the verdict is derived from the cached ledger with `now` on every call. The verdict comes
+ * from the one home of the decision (newestExercise plus qaCoverageStalled), the same pair the
+ * doctor `qa coverage` row reads, so the badge and the row cannot disagree. */
+export function qaCoverageForPoll(root: string, now: number): QaCoverageStatus | undefined {
+  const file = qaCoveragePath(root);
+  const coverage = cachedByStat(
+    qaCoverageLedgerCache,
+    file,
+    file,
+    () => readQaCoverage(root),
+    (cov) => ({ ...cov }), // A copy: callers may treat the result as their own.
+  );
+  if (!coverage) return undefined;
+  const newest = newestExercise(coverage);
+  if (newest === null) return undefined; // No well-formed entry: no badge, like a missing file.
+  return { flow: newest.flow, lastRunAt: newest.lastRunAt, stale: qaCoverageStalled(coverage, now) };
 }
 
 /** The 4/5 cross-check against the queue: the marker as observers may display it, or

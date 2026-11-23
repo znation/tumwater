@@ -265,6 +265,27 @@ test("the status header carries a ci badge only while a parity record exists", (
   assert.match(stale, /· CI: stale — covered abcdef0 /);
 });
 
+// The qa coverage badge (src/observer/qa-coverage.ts, read through status-polls.ts's
+// qaCoverageForPoll): the always-visible twin of the `qa coverage` doctor row, riding the header
+// right after the remote-CI badge. It appears only while a coverage ledger exists — a project that
+// never ran qa keeps the header byte-identical.
+test("the status header carries a QA badge only while a coverage ledger exists", () => {
+  const none = headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
+  assert.doesNotMatch(none, /· QA /, "no coverage ledger: no QA badge");
+
+  const now = Date.now();
+  const MIN = 60_000;
+  const DAY = 24 * 60 * MIN;
+
+  const fresh = snapshotWith([{ role: "clean" }]);
+  fresh.qaCoverage = { flow: "login flow", lastRunAt: now - 30 * MIN, stale: false };
+  assert.match(headerOf(renderStatus(tmpdir(), fresh)), /· QA: fresh — login flow /);
+
+  const stalled = snapshotWith([{ role: "clean" }]);
+  stalled.qaCoverage = { flow: "login flow", lastRunAt: now - 4 * DAY, stale: true };
+  assert.match(headerOf(renderStatus(tmpdir(), stalled)), /· QA: stale — login flow 4d ago$/);
+});
+
 // The disk floor (plans/disk-floor.md, part 4/4): the header carries the published free space,
 // the hold verdict — an operator sees why the team stopped without
 // reading events. No disk block keeps the header byte-identical.

@@ -5219,19 +5219,25 @@ field and `recordParity` has a single call site in `resolveRunVerdict`.
 
 **Guarantee.** `qaCoverageStalled` (src/observer/qa-coverage.ts) is the single predicate deciding when
 the `qa` observer's flow coverage has gone quiet, read by the doctor `qa coverage` warn
-(`checkQaCoverage`), so the row and the ledger cannot disagree on when a quiet qa is a problem. It is true only for a non-empty well-formed
+(`checkQaCoverage`) and by the status surfaces' poll reader (`qaCoverageForPoll`, feeding the
+`QA: fresh`/`QA: stale` badge that `qaBadge` renders and `qaBadgeTone` colours), so the row, the
+badge and the ledger cannot disagree on when a quiet qa is a problem. It is true only for a non-empty well-formed
 ledger whose newest exercise is older than `QA_COVERAGE_STALE_MS`; an empty ledger — a missing
 file, or a project that never ran qa — is not a stall, mirroring `ciParityStalled`'s rule for a
 missing parity record.
 
 **Binds.** `src/observer/qa-coverage.ts` (`newestExercise`, `qaCoverageStalled`,
-`QA_COVERAGE_STALE_MS`), `src/doctor/doctor-project-checks.ts` (`checkQaCoverage`).
+`QA_COVERAGE_STALE_MS`), `src/doctor/doctor-project-checks.ts` (`checkQaCoverage`),
+`src/status/status-polls.ts` (`qaCoverageForPoll`), `src/ui/badges.ts` (`qaBadge`, `qaBadgeTone`).
 
 **Pinned by.** `test/qa-coverage.test.ts` — the `newestExercise` cases (empty ledger null, greatest
 `lastRunAt` wins whatever its insertion position, a tie keeps the first entry that reached it) and
 the `qaCoverageStalled` cases (empty false, boundary
 false, one past true, mixed fresh+old false, malformed-only reads empty); `test/doctor-checks.test.ts`
-— "checkQaCoverage reads ok for a missing or fresh ledger and warns once stale past the window".
+— "checkQaCoverage reads ok for a missing or fresh ledger and warns once stale past the window";
+`test/status-polls.test.ts` — "qaCoverageForPoll reads the newest flow, reads none without a
+ledger, and caches the ledger but not the verdict"; `test/status-header.test.ts` — "the status
+header carries a QA badge only while a coverage ledger exists".
 
 ### INV-BW4: a failed remote-ci write warns and the run keeps its outcome; a cut-off run records nothing; both dismissal paths record
 

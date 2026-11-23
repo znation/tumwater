@@ -320,7 +320,8 @@ never has to wait a parked check out.
   The `qa` observer keeps its own flow-coverage
   ledger the same way, and a coverage ledger whose newest exercise is over three days old raises the
   doctor `qa coverage` warn through the one `qaCoverageStalled`
-  predicate. The `feedback` observer's per-install filing ledger gets the same operator read: the
+  predicate — the same predicate drives a `QA: fresh` / `QA: stale` badge on the `tumwater status`
+  header and the dashboard's team panel, while the doctor row stays the exact surface. The `feedback` observer's per-install filing ledger gets the same operator read: the
   issues it filed are visible in `tumwater role feedback` and the dashboards' role detail.
 - A main watch runs the full check on main's tip in the background (one run
   at a time, covering every commit since the last watched head; the full check runs at most once per

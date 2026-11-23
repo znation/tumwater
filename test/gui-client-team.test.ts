@@ -1508,3 +1508,71 @@ test("the team panel carries the remote-CI row after the ci parity row, absent w
   assert.doesNotMatch(panels.statuschips!, /Github:/, "no record: no remote-CI row");
   assert.match(panels.statuschips!, /CI: covered abcdef0 1m ago/, "the ci parity row is untouched");
 });
+
+// The qa coverage row: the dashboard's team panel carries the qa observer's flow-coverage glance
+// verdict after the remote-CI row — the payload's preformatted qaCoverageBadge/qaCoverageTone,
+// upcased for the row's label style, toned by the shared qaBadgeTone map (the header's yellow
+// stale tone translated to amber, the sidebar palette having no .t-yellow) — so the panel cannot
+// drift from the status header. Without a ledger the badge is empty and the panel stays
+// byte-identical.
+test("the team panel carries the QA row after the remote-CI row, amber when stale, absent without a ledger", () => {
+  const panels: Record<string, string> = {};
+  const { renderSidebar } = clientScope<{ renderSidebar: (d: unknown) => void }>(
+    ["restart-button", "sidebar"],
+    ["renderSidebar"],
+    {
+      offline: false,
+      $: () => ({ textContent: "" }),
+      plural: (n: number, word: string) => `${n} ${n === 1 ? word : word + "s"}`,
+      capitalize: (s: string) => s.charAt(0).toUpperCase() + s.slice(1),
+      icon: iconStub,
+      shortSha: (s: string) => String(s).slice(0, 8),
+      localizeInstants: (s: string) => s,
+      fmtAgo: () => "1m ago",
+      mergeTitle: () => "",
+      paintPanel: (id: string, html: string) => { panels[id] = html; },
+      renderBudgetBadge: () => {},
+      renderPauseBadge: () => {},
+      renderStopControl: () => {},
+    },
+  );
+  const d = {
+    running: true,
+    pid: 1,
+    ciParityBadge: " · CI: covered abcdef0 1m ago",
+    ciParityTone: "blue",
+    remoteCiBadge: " · github: failed at 3e450b0 1m ago",
+    remoteCiTone: "red",
+    qaCoverageBadge: " · QA: stale — login flow 4d ago",
+    qaCoverageTone: "yellow",
+  };
+  renderSidebar(d);
+  const html = panels.statuschips!;
+  // badgeLabel upcases only the first char: the QA badge's label is the already-capital "QA"
+  // acronym (so it stays "QA: …"), and the header's yellow stale tone is translated to the
+  // sidebar's amber.
+  assert.match(html, /QA: stale — login flow 4d ago/, "the row carries the badge's wording, upcased");
+  // The exact row markup pins the tone: the header's yellow stale tone becomes the sidebar's
+  // amber (gui-styles.ts has no .t-yellow), the way the disk row's held state does.
+  assert.match(html, /<div class='row t-amber'[^>]*><i:check>QA: stale/, "the stale row rides in amber");
+  assert.ok(
+    html.indexOf("QA: stale") > html.indexOf("Github: failed at 3e450b0"),
+    "the row rides after the remote-CI row",
+  );
+
+  // A fresh record rides blue — the tone the header gives it, unchanged by the translation.
+  renderSidebar({ ...d, qaCoverageBadge: " · QA: fresh — login flow 1m ago", qaCoverageTone: "blue" });
+  assert.match(
+    panels.statuschips!,
+    /<div class='row t-blue'[^>]*><i:check>QA: fresh — login flow 1m ago/,
+    "a fresh row is blue",
+  );
+
+  // No ledger: no QA row — the panel is byte-identical to before the badge existed.
+  const bare: Record<string, unknown> = { ...d };
+  delete bare.qaCoverageBadge;
+  delete bare.qaCoverageTone;
+  renderSidebar(bare);
+  assert.doesNotMatch(panels.statuschips!, /QA:/, "no ledger: no QA row");
+  assert.match(panels.statuschips!, /Github: failed at 3e450b0 1m ago/, "the remote-CI row is untouched");
+});

@@ -8,6 +8,7 @@ import {
   maintenanceQuotaForPoll,
   ciParityForPoll,
   remoteCiForPoll,
+  qaCoverageForPoll,
   slotsForPoll,
 } from "./status-polls.js";
 import {
@@ -205,6 +206,7 @@ function snapshotHealthFields(
     mainCheck: mainCheckForPoll(root, cfg),
     ciParity: ciParityForPoll(root, cfg),
     remoteCi: remoteCiForPoll(root),
+    qaCoverage: qaCoverageForPoll(root, now),
     noDeclaredCheck: buildCheckForPoll(root, cfg) === null ? true : undefined,
     ...(configProblem ? { configProblem } : {}),
     noBrief: brief.missing ? true : undefined,
