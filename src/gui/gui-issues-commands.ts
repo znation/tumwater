@@ -14,6 +14,8 @@
  */
 import {
   grepIssueRows,
+  ISSUE_STATES,
+  isIssueState,
   issueRows,
   issuesHeader,
   issuesJson,
@@ -21,7 +23,7 @@ import {
 } from "../github/github-issues-render.js";
 import type { IssueState } from "../github/github-issues-render.js";
 import { readGithubIssues } from "../github/github-issues-state.js";
-import { gotSuffix } from "../text/text.js";
+import { oneOfMessage } from "../text/suggest.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
 import type http from "node:http";
 
@@ -50,9 +52,11 @@ function noLedgerBody(state: IssueState | null): Record<string, unknown> {
  * exactly when there is no ledger to read.
  *
  * Two optional query parameters narrow the `issues` list only, each through the same function the
- * CLI's flag uses: `state=open|closed` through `stateIssueRows` (the `--open`/`--closed` twin —
- * any other value answers 400 `state must be open or closed (got "<raw>")` with no list sent),
- * and `q` through `grepIssueRows` (the `--grep` twin, a raw substring of the number or title).
+ * CLI's flag uses: `state=open|closed|lost` through `stateIssueRows` (the `--open`/`--closed`/
+ * `--lost` twin — the accepted values are `ISSUE_STATES`, so no state can reach the CLI's
+ * filter and be refused here; any other value answers 400 `state must be one of open, closed,
+ * lost (got "<raw>")` with no list sent), and `q` through `grepIssueRows` (the `--grep` twin, a raw
+ * substring of the number or title).
  * Both filters run in the CLI's order, and every kept row still carries its whole-list
  * `position`, so `?state=closed` still numbers a closed issue by its position in the full list.
  * The endpoint never writes: it creates no ledger and touches no state. */
@@ -60,8 +64,8 @@ export function handleIssuesList(q: URLSearchParams, res: http.ServerResponse, r
   const rawState = q.get("state");
   let state: IssueState | null = null;
   if (rawState !== null) {
-    if (rawState !== "open" && rawState !== "closed") {
-      badRequest(res, `state must be open or closed${gotSuffix(rawState)}`);
+    if (!isIssueState(rawState)) {
+      badRequest(res, `state ${oneOfMessage(ISSUE_STATES)(rawState)}`);
       return;
     }
     state = rawState;

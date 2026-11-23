@@ -129,8 +129,22 @@ export function grepIssueRows(rows: readonly IssueRow[], pattern: string): Issue
   return rows.filter((r) => String(r.number).includes(pattern) || r.title.toLowerCase().includes(needle));
 }
 
-/** The state `tumwater issues --open`/`--closed`/`--lost` narrow the read to. */
-export type IssueState = "open" | "closed" | "lost";
+/** Every state the mirror read knows, in the order `issueRows` lists their rows: the issues still
+ * open, the ones tumwater closed, then the ones GitHub closed upstream. The type and the accepted
+ * list both come from this one array, so a state cannot reach one front end's filter and be
+ * refused by the other — the mistake that left `GET /api/issues` answering 400 for `?state=lost`
+ * long after `tumwater issues --lost` accepted it. */
+export const ISSUE_STATES = ["open", "closed", "lost"] as const;
+
+/** The state `tumwater issues --open`/`--closed`/`--lost` narrow the read to, and the value the
+ * dashboard's `GET /api/issues?state=` query takes — derived from `ISSUE_STATES`. */
+export type IssueState = typeof ISSUE_STATES[number];
+
+/** Is `raw` one of the states `stateIssueRows` can filter to — the guard both front ends check a
+ * requested state against before they ask `stateIssueRows` for it. */
+export function isIssueState(raw: string): raw is IssueState {
+  return (ISSUE_STATES as readonly string[]).includes(raw);
+}
 
 /** The rows of one state only: `"lost"` keeps the rows `issueRows` marked `upstreamClosed` (the
  * ledger's `upstreamClosed` list), `"closed"` keeps the rows it marked `wasClosed` (the ledger's

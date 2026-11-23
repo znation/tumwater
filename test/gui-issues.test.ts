@@ -88,6 +88,29 @@ function seedLedger(repo: string): string {
   return repo;
 }
 
+/** The same mirror plus one upstream-close record, so `?state=lost` has a row of its own to keep:
+ * open #4 and #7, the closed row #2, and #6 which a listing came back without. `issueRows` numbers
+ * open rows first, then closed, then lost, so #6 is position 4 of the whole list. */
+function seedLostLedger(repo: string): string {
+  writeFileDeep(
+    githubIssuesPath(repo),
+    JSON.stringify({
+      repo: "znation/proj",
+      branch: "main",
+      checkedAt: CHECKED_AT,
+      gh: "ok",
+      open: [
+        row(4, "Fourth"),
+        row(7, "Seventh", { trusted: false, mirrored: false }),
+      ],
+      closedRows: [row(2, "Second", { updatedAt: CLOSE_ISO })],
+      closed: { "2": { at: CLOSE_AT, shas: ["abc1234"] } },
+      upstreamClosed: [row(6, "Sixth", { updatedAt: CLOSE_ISO, closedAt: CLOSE_AT })],
+    }),
+  );
+  return repo;
+}
+
 async function list(query: string, root: string): Promise<Body> {
   const q = new URLSearchParams(query.replace(/^\?/, ""));
   const { data } = await captureJson((res) => handleIssuesList(q, res, root));
@@ -168,13 +191,36 @@ test("GET /api/issues?state=open drops the closed row and keeps the whole-mirror
   assert.equal(d.closedCount, 1);
 });
 
+test("GET /api/issues?state=lost keeps only the upstream-closed row at its whole-list position", async () => {
+  const repo = seedLostLedger(makeRepo());
+  const d = await list("?state=lost", repo);
+  assert.equal(d.state, "lost");
+  // The lost row is numbered after the open and closed rows, exactly as the CLI's --lost does.
+  assert.deepEqual(d.issues!.map((r) => [r.position, r.number]), [[4, 6]]);
+  assert.equal(d.issues![0]!.upstreamClosed, true, "the kept row is marked as lost upstream");
+  // INV-DE3: the counts are the ledger's, so a lost-filtered reply states the whole mirror.
+  assert.equal(d.openCount, 2);
+  assert.equal(d.closedCount, 1);
+  assert.equal(d.upstreamClosedCount, 1);
+  assert.equal(d.read, true);
+  assert.equal(d.empty, false);
+});
+
+test("GET /api/issues?state=lost composes with q= the way the CLI's --lost --grep does", async () => {
+  const repo = seedLostLedger(makeRepo());
+  // "seven" matches open #7, which the lost filter must drop even though it matches the pattern.
+  const d = await list("?state=lost&q=seven", repo);
+  assert.equal(d.state, "lost");
+  assert.deepEqual(d.issues!.map((r) => [r.position, r.number]), []);
+});
+
 test("GET /api/issues?state=<other> answers 400 with the got-clause and no issues list", async () => {
   const repo = seedLedger(makeRepo());
   const q = new URLSearchParams({ state: "both" });
   const { captured, data } = await captureJson((res) => handleIssuesList(q, res, repo));
   assert.equal(captured.status, 400);
   assert.deepEqual(JSON.parse(captured.body), {
-    error: 'state must be open or closed (got "both")',
+    error: 'state must be one of open, closed, lost (got "both")',
   });
   assert.equal((data as Body).issues, undefined, "a refused state sends no list at all");
 });

@@ -5836,8 +5836,10 @@ same issue on both surfaces and a kept row keeps its whole-list position; `issue
 source of the header's counts, so a filtered endpoint reply still states the whole mirror's
 `openCount`, `closedCount` and `upstreamClosedCount` exactly as INV-DE3 pins for the terminal frame —
 the endpoint takes them from the header, never from its kept rows; and `stateIssueRows` is the only
-state filter, so `?state=open|closed` divides the rows exactly as `--open`/`--closed` does and any
-other value is a 400 (`state must be open or closed (got "…")`) rather than a list. `q` runs through
+state filter, so `?state=open|closed|lost` divides the rows exactly as `--open`/`--closed`/`--lost`
+does, the endpoint accepting exactly `ISSUE_STATES` — the one list the `IssueState` type is derived
+from, so a state can reach one front end's filter and never be refused by the other — and any other
+value is a 400 (`state must be one of open, closed, lost (got "…")`) rather than a list. `q` runs through
 `grepIssueRows`, the `--grep` predicate. The endpoint reads strictly the ledger file
 (`readGithubIssues`) and never `gh` — plans/github-issues.md invariant 2 keeps `gh` inside the scan
 and the doctor's check — and it writes nothing: with no ledger it answers `read: false,
@@ -5856,6 +5858,8 @@ re-export), `src/github/github-issues-render.ts` (`issueRows`, `issuesHeader`, `
 counts and ascending positions", "GET /api/issues with no ledger answers read:false and creates
 nothing", "GET /api/issues?state=closed keeps only the closed row and echoes the state, counts
 unchanged", "GET /api/issues?state=open drops the closed row and keeps the whole-mirror counts",
+"GET /api/issues?state=lost keeps only the upstream-closed row at its whole-list position",
+"GET /api/issues?state=lost composes with q= the way the CLI's --lost --grep does",
 "GET /api/issues?state=<other> answers 400 with the got-clause and no issues list",
 "GET /api/issues?q= keeps the matching rows at their whole-list positions", "GET /api/issues?q= and
 state= together narrow the list and echo the state" and "the live server routes GET /api/issues to
