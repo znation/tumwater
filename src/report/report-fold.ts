@@ -18,88 +18,16 @@ import { isPassingMainCheck, isRedMain } from "../baseline/main-guardrails.js";
 import { addTo, distinctOrdered, memoSetLru } from "../collections.js";
 import { asList } from "../text/text.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
-import { foldUsageEvent, zeroCommitCounts, zeroMergeCounts, zeroUsageFold } from "./report-usage-fold.js";
+import {
+  foldUsageEvent,
+  type DayFold,
+  zeroCommitCounts,
+  zeroMergeCounts,
+  zeroUsageFold,
+} from "./report-usage-fold.js";
 // Re-exported for the day/window total builders, which start from the same empty commit and
 // merge counter groups: their one home is now beside the fold that writes them.
 export { zeroCommitCounts, zeroMergeCounts };
-/** One day's worth of folded events, the event-log half of a ReportDay: everything
- * foldUsageEvent accumulates for a single local day (runs are not tracked — the series
- * derives them from runsByRole). Cached across calls by foldWindowEvents so an appended
- * log line is folded once, not once per report request. */
-interface DayFold {
-  tokensOut: number;
-  commits: number;
-  commitsByRole: Record<string, number>;
-  workCommits: number;
-  maintenanceCommits: number;
-  costUsd: number;
-  notionalCostUsd: number;
-  runsByRole: Record<string, number>;
-  rejectionsByRole: Record<string, number>;
-  /** The day's `review_rejected` events whose `afterMerge` is true, per role id — the subset
-   * of rejectionsByRole whose rejection reached an already-merged commit. */
-  postMergeRejectionsByRole: Record<string, number>;
-  revisionsByRole: Record<string, number>;
-  refusalsByRole: Record<string, number>;
-  /** Wall-clock ms of each passing full-suite build_check that day, unsorted. */
-  checkDurationsMs: number[];
-  /** Count of failed full-suite build_check events that day (isRedFullCheck). */
-  checkFailures: number;
-  /** Enqueue-to-outcome ms of each merge_done that carries queuedMs, unsorted. */
-  mergeWaitsMs: number[];
-  /** Verification-start-to-outcome ms of each that-day merge_done that carries positive
-   * durationMs (writeMergeOutcome), unsorted — how long the merge slot itself held each
-   * change it landed. */
-  mergeDurationsMs: number[];
-  /** ms of each that-day run_end that carried a positive durationMs, unsorted. */
-  runDurationsMs: number[];
-  /** ms of each that-day provider_wait event that carries positive waitedMs, unsorted. */
-  providerWaitsMs: number[];
-  /** ms of each that-day slot_wait event that carries positive waitedMs, unsorted. */
-  slotWaitsMs: number[];
-  /** ms of each that-day check_wait event that carries positive waitedMs, unsorted. */
-  checkWaitsMs: number[];
-  /** ms of each reviewer run that reached a verdict that day (a `review_verdict` approval or
-   * a `review_rejected` that carried a positive durationMs), unsorted. */
-  reviewDurationsMs: number[];
-  failedRunsByRole: Record<string, number>;
-  imageReroutesByRole: Record<string, number>;
-  /** run_end `compactions` summed per role id — how many times each role's session was
-   * rewritten out from under it that day. */
-  compactionsByRole: Record<string, number>;
-  /** run_end `checkpointCompactions` summed per role id — the checkpoint-driven share of the
-   * compactions above, pi backend only. */
-  checkpointCompactionsByRole: Record<string, number>;
-  tokensByRole: Record<string, number>;
-  promptTokensByRole: Record<string, number>;
-  cacheReadTokensByRole: Record<string, number>;
-  costByRole: Record<string, number>;
-  notionalByRole: Record<string, number>;
-  mergeRuns: number;
-  mergeTokens: number;
-  mergeCostUsd: number;
-  mergeFailed?: number; // of those runs, the merge_failed events (absent when none)
-  mergedByRole: Record<string, number>;
-  mergeFailedByRole: Record<string, number>;
-  mergeFailedByReason: Record<string, number>;
-  costByProvider: Record<string, number>;
-  notionalByProvider: Record<string, number>;
-  notionalByBackend: Record<string, number>;
-  runsByModel: Record<string, number>;
-  /** run_end output tokens per model selector (the window's runModels pairing) — the token
-   * twin of runsByModel, team-only. */
-  tokensByModel: Record<string, number>;
-  /** run_end real cost per model selector (the same runModels pairing) — the spend twin of
-   * tokensByModel, team-only. */
-  costByModel: Record<string, number>;
-  /** run_end notional cost per model selector (the same runModels pairing), team-only like
-   * costByModel. */
-  notionalByModel: Record<string, number>;
-  deferredByReason: Record<string, number>;
-  /** The GitHub-issues mirror's outcomes that day, keyed by outcome (queued / closed /
-   * declined / lost) — team-only, since an outcome has no role. */
-  githubIssuesByOutcome: Record<string, number>;
-}
 
 /** The event-log half of a windowed report, memoized per (root, fromKey). `offset` is how
  * many live-log bytes the folds already cover; the log is append-only (events.ts appends

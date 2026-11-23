@@ -36,6 +36,7 @@ import {
   zeroMergeCounts,
 } from "./report-fold.js";
 import { mainRedCulpritsByDay, mainRedFailingTestsByDay, mainRedMinutesByDay } from "./report-main-red.js";
+import type { DayFold } from "./report-usage-fold.js";
 import type { DayTotals, ReportData, ReportDay } from "./report-types.js";
 
 /** A `ReportDay`'s per-day lower-median fields — the eight `…MedianMs` cells in
@@ -75,11 +76,10 @@ function setMapIfNonempty(day: ReportDay, key: DayMapKey, map: Record<string, nu
   }
 }
 
-/** The fold entry `foldWindowEvents` returns, and one day slot of its per-day map — both
- * module-private in src/report/report-fold.ts, so the phase builders below alias them here
- * rather than editing report-fold.ts's surface. */
+/** The fold entry `foldWindowEvents` returns — module-private in src/report/report-fold.ts, so
+ * the phase builders below alias it here rather than editing report-fold.ts's surface. Its
+ * per-day map's slots are the exported `DayFold` shape (src/report/report-usage-fold.ts). */
 type ReportFoldEntry = ReturnType<typeof foldWindowEvents>;
-type DayFold = NonNullable<ReturnType<ReportFoldEntry["days"]["get"]>>;
 
 /** Zero-fill the per-day series across `days` calendar days ending `now` and index it by
  * date, so the fold's day keys can address their slots and the out-of-window keys drop out. */

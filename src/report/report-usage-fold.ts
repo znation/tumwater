@@ -193,6 +193,18 @@ export interface UsageFold {
   githubIssuesByOutcome: Record<string, number>;
 }
 
+/** One day's worth of folded events — the event-log half of a ReportDay: every field
+ * `foldUsageEvent` accumulates for a single local day, stated as `UsageFold` plus the two
+ * day-slot rules instead of a second field list a new counter had to be added to by hand: no
+ * `runs` (the per-day series derives it by summing `runsByRole`), and the merge trio required
+ * rather than optional as in `UsageFold` — a day slot is seeded from `zeroUsageFold()`, so it
+ * always carries the zeros, where a bare window accumulator may carry no merge fields at all.
+ * `mergeFailed` stays optional (absent until the first `merge_failed`). `zeroUsageFold()` below
+ * returns this shape minus that one optional field, so the per-day slot and the trailing-window
+ * accumulator cannot drift. `src/report/report-fold.ts` keeps the day-keyed cache of these. */
+export type DayFold = Omit<UsageFold, "runs"> &
+  Required<Pick<UsageFold, "mergeRuns" | "mergeTokens" | "mergeCostUsd">>;
+
 /** The empty commit-family counters every accumulator starts from: the total and per-base-role
  * merged-commit count plus the work/maintenance split (Work ratio 4/4). Four shapes carry them —
  * DayFold, UsageFold, the ReportDay series slots, and the window totals — so the empty quartet
@@ -224,14 +236,7 @@ export function zeroMergeCounts(): {
  * The two optional window-total fields are left out on purpose: `runs` (the day slot keeps
  * none — the series derives runs from runsByRole) and `mergeFailed` (absent until the first
  * merge_failed, on every target). A target that counts runs adds `runs: 0` itself. */
-export function zeroUsageFold(): Omit<
-  UsageFold,
-  "runs" | "mergeFailed" | "mergeRuns" | "mergeTokens" | "mergeCostUsd"
-> & {
-  mergeRuns: number;
-  mergeTokens: number;
-  mergeCostUsd: number;
-} {
+export function zeroUsageFold(): Omit<DayFold, "mergeFailed"> {
   return {
     ...zeroCommitCounts(),
     ...zeroMergeCounts(),

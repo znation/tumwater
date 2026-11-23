@@ -1423,7 +1423,8 @@ merge share. The GitHub-issues mirror's four outcome events fold into one team-o
 contributing exactly one issue to exactly one bucket, so the day series and the trailing window
 name the same outcomes and a lost issue is never counted as closed as well.
 
-**Binds.** `src/report/report-usage-fold.ts` (`foldUsageEvent`, `UsageFold`),
+**Binds.** `src/report/report-usage-fold.ts` (`foldUsageEvent`, `UsageFold`, `DayFold` — the
+per-day slot shape the memoized window fold caches),
 `src/report/report-data.ts` (`collectReport`), `src/report/report-since-data.ts`
 (`collectReportSince`).
 
