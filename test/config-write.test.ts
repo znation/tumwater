@@ -901,6 +901,23 @@ test("re-supplying replaceConfigText the same content (whitespace-only apart) re
   assert.equal(fs.readFileSync(file, "utf8"), before, "the file stays byte-identical");
 });
 
+test("replaceConfigText names the JSONC spelling in a rejected whole-file write", () => {
+  // `tumwater config edit` hands this text to the same parser loadConfig uses, so a rejected
+  // candidate has to point at the spelling as precisely as a load failure does — the operator is
+  // holding the text that contains it.
+  const dir = tmpdir();
+  saveConfig(dir, { ...defaultConfig(), maxConcurrent: 3 });
+  const file = path.join(dir, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+  const comment = replaceConfigText(dir, '{\n  // raise concurrency\n  "maxConcurrent": 5\n}');
+  assert.equal(comment.ok, false);
+  if (!comment.ok) assert.match(comment.error, /strict JSON allows no comments: one starts at line 2 column 3/);
+  const comma = replaceConfigText(dir, '{\n  "maxConcurrent": 5,\n}');
+  assert.equal(comma.ok, false);
+  if (!comma.ok) assert.match(comma.error, /strict JSON allows no trailing comma before the closing \} at line 3 column 1/);
+  assert.equal(fs.readFileSync(file, "utf8"), before, "the file stays byte-identical after each");
+});
+
 test("replaceConfigText refuses malformed JSON, a non-object, and an invalid value, each leaving the bytes identical", () => {
   const dir = tmpdir();
   saveConfig(dir, { ...defaultConfig(), maxConcurrent: 3 });

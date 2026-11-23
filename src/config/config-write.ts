@@ -14,6 +14,7 @@ import { isDeepStrictEqual } from "node:util";
 import { readTextOrNull } from "../files/files.js";
 import { modelTierMap, type TumwaterConfig } from "./config-schema.js";
 import { isJsonObject, objectOrEmpty } from "../files/json-object.js";
+import { jsonSlipSuffix } from "../files/json-syntax.js";
 import { isExponentSpelling, errorMessage, gotSuffix } from "../text/text.js";
 import { show } from "./config-field-checks.js";
 import { canonicalConfigKey } from "./config-aliases.js";
@@ -745,7 +746,7 @@ export function replaceConfigText(
       try {
         raw = JSON.parse(text);
       } catch (err) {
-        return fail(`${CONFIG_BASENAME} is not valid JSON: ${errorMessage(err)}`);
+        return fail(`${CONFIG_BASENAME} is not valid JSON: ${errorMessage(err)}${jsonSlipSuffix(text)}`);
       }
       if (!isJsonObject(raw)) return fail(`${CONFIG_BASENAME} must hold a JSON object`);
       // Collapse legacy/new pi spellings so an editor that wrote both forms never lands them;

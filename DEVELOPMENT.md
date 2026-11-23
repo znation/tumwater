@@ -403,7 +403,8 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/events/`: the append-only event log — its writers, the tail and windowed readers,
   event formatting, and the day-window derivation.
 - `src/failure/`: the failure digest — collection, clustering, time-and-spend, and rendering.
-- `src/files/`: filesystem helpers — tolerant JSON reads, stat caching, size-based tailing,
+- `src/files/`: filesystem helpers — tolerant JSON reads, the JSON-vs-JSONC syntax scan a
+  refused config file is reported from, stat caching, size-based tailing,
   and the serialized file queue.
 - `src/init/`: `tumwater init` and its bundled template catalog.
 - `src/process/`: process spawning and supervision — the supervisor, process groups, the

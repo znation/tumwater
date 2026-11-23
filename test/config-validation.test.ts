@@ -724,6 +724,36 @@ test("loadConfig rejects malformed JSON and invalid values with actionable messa
   assert.throws(() => loadConfig(dir), /maxConcurrent must be an integer of at least 1 \(got 0\)/);
 });
 
+test("loadConfig names the JSONC spelling a hand-edited tumwater.json carries", () => {
+  // A JSON.parse SyntaxError alone reports a position and no reason, so an operator who typed a
+  // comment or a trailing comma — the two conveniences every other JSON-ish editor allows — has to
+  // find the spelling by hand. The clause names the rule and points at it, while the parser's own
+  // report stays in front of it.
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "tumwater.json"), '{\n  // pause qa for now\n  "model": "opus"\n}');
+  assert.throws(
+    () => loadConfig(dir),
+    /tumwater\.json is not valid JSON: .* — strict JSON allows no comments: one starts at line 2 column 3/,
+  );
+
+  fs.writeFileSync(path.join(dir, "tumwater.json"), '{\n  "maxConcurrent": 2,\n}');
+  assert.throws(
+    () => loadConfig(dir),
+    /strict JSON allows no trailing comma before the closing \} at line 3 column 1/,
+  );
+
+  // The clause never invents: a broken file holding neither convenience keeps the bare report.
+  fs.writeFileSync(path.join(dir, "tumwater.json"), "{ not json");
+  let bare = "";
+  try {
+    loadConfig(dir);
+  } catch (err) {
+    bare = err instanceof Error ? err.message : String(err);
+  }
+  assert.match(bare, /tumwater\.json is not valid JSON/);
+  assert.ok(!bare.includes("strict JSON allows"), bare);
+});
+
 test("loadConfigSafe returns the config when valid and the error message otherwise", () => {
   const dir = tmpdir();
   // No file: defaults, no error.

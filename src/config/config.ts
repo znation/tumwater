@@ -7,6 +7,7 @@ import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { isJsonObject } from "../files/json-object.js";
+import { jsonSlipSuffix } from "../files/json-syntax.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { normalizeConfigKeys } from "./config-aliases.js";
 import { validateConfig } from "./config-validation.js";
@@ -14,7 +15,9 @@ import { validateConfig } from "./config-validation.js";
 /** Read and parse one of the config JSON files, phrasing a parse failure as
  * `<basename> is not valid JSON: <reason>` — the one wording every consumer of these files
  * surfaces (loadConfig throws it, config-example.ts's exampleConfigProblem returns it,
- * seedConfig/exampleDrift fall back on it). `problem` is set exactly when parsing failed;
+ * seedConfig/exampleDrift fall back on it). A hand-edited file that used a JSONC convenience
+ * gets one extra clause naming it (json-syntax.ts's jsonSlipSuffix), because the parser's own
+ * report never says which spelling it refused. `problem` is set exactly when parsing failed;
  * `raw` is the parsed value otherwise (never null on failure paths, so callers need no
  * separate existence check). Old key names (config-aliases.ts) come back renamed, with `renamed`
  * listing each `<from> → <to>` applied. */
@@ -23,10 +26,15 @@ export function parseJsonConfig(
   basename: string,
 ): { raw?: unknown; renamed?: string[]; problem?: string } {
   let parsed: unknown;
+  // The text is read INSIDE the try: a file deleted between a caller's existence stat and this
+  // read must come back as a `problem` (the poll's broken-file path), not throw past the parser.
+  // An unreadable file leaves `text` empty, and jsonSlipSuffix("") adds nothing.
+  let text = "";
   try {
-    parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    text = fs.readFileSync(file, "utf8");
+    parsed = JSON.parse(text);
   } catch (err) {
-    return { problem: `${basename} is not valid JSON: ${errorMessage(err)}` };
+    return { problem: `${basename} is not valid JSON: ${errorMessage(err)}${jsonSlipSuffix(text)}` };
   }
   // Old key names read as their new names; a file holding both spellings of one key is refused.
   const { raw, renamed, problems } = normalizeConfigKeys(parsed);

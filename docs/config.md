@@ -33,7 +33,10 @@ model jobs, a repeated-failure pause, main's check failing, a failed merge, a bl
 team going down — the command gets
 `TUMWATER_EVENT_TYPE` (the type names are in the Notify events table below), `TUMWATER_EVENT_SOURCE`, and `TUMWATER_EVENT_MESSAGE` in its environment;
 verify it with `tumwater notify --test`; a hook that exits nonzero logs a warning and raises a standing dashboard alert while a failed page is within the last day).
-Edits apply live while the team runs. A config file written before the settings were renamed still
+Edits apply live while the team runs. `tumwater.json` is strict JSON: no comments, no trailing
+comma before a closing brace or bracket. A file that uses either is refused, and the refusal names
+which one it found and where (a broken `tumwater.example.json` is reported the same way). A config
+file written before the settings were renamed still
 loads, and `tumwater doctor` names each older key with its new name.
 From the terminal, `tumwater config` prints the effective config as JSON, `tumwater config get
 <key>` reads one resolved value, `tumwater config set <key> <value>` writes one top-level

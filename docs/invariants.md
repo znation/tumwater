@@ -2524,6 +2524,28 @@ translators cannot drift apart on the sum or the envelope.
 **Pinned by.** `test/json-object.test.ts` — "canonicalUsageBlock sums the four counts into
 totalTokens and wraps the cost".
 
+### INV-AF6: a config file a hand edit wrote in JSONC is named as such, and only when it really is
+
+**Guarantee.** When a strict `JSON.parse` of a config file fails, `jsonSlipSuffix` adds one clause
+naming the JSONC convenience the text actually holds — a comment (at its opening line/column) or a
+trailing comma (at the closer it precedes) — and adds nothing when it holds neither, so the clause
+is a true statement about the file rather than a guess at the parser's reason, and the parser's own
+report is kept in front of it. The scan tracks double-quoted strings, so a `//` in a command or a
+`,}` in a note is never named. `stripJsonc` is the same scanner on the removing side, so the two
+cannot disagree about what counts as a comment.
+
+**Binds.** `src/files/json-syntax.ts` (`jsonSlipSuffix`, `stripJsonc`); consumers
+`src/config/config.ts` (`parseJsonConfig`), `src/config/config-write.ts` (`replaceConfigText`) and
+`src/agent/opencode/opencode-config.ts` (`operatorMcpNames`, which stays there and calls the moved
+`stripJsonc`).
+
+**Pinned by.** `test/json-syntax.test.ts` — "a line comment in otherwise valid JSON names the rule
+and the position", "a trailing comma names the closer it precedes, not the comma", "a slip inside a
+string value is never named" and "a file with neither slip keeps the parser's bare report";
+`test/config-validation.test.ts` — "loadConfig names the JSONC spelling a hand-edited tumwater.json
+carries"; `test/config-write.test.ts` — "replaceConfigText names the JSONC spelling in a rejected
+whole-file write".
+
 ## Queue files: one file per entry, ordered by name, and a missing queue reads as empty
 
 The director's prompt inbox (`src/inbox/inbox.ts`) and the durable merge queue
