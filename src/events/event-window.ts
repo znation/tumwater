@@ -17,7 +17,8 @@ import { readTailTextWithEnd } from "../files/tail.js";
  * shares the bound but must not import the presentation layer. */
 export const REPORT_DEFAULT_DAYS = 14;
 /** The report window's ceiling, the upper bound of the pair documented above; the CLI's
- * --days validation and the report API both clamp to it. */
+ * --days validation refuses a value past it (parseCountFlag's fatal) and the report API
+ * clamps its ?days= to it (windowDays). */
 export const REPORT_MAX_DAYS = 90;
 
 /** The `tumwater logs --since <duration>` window's cap: 7 days. Same rationale as the report
