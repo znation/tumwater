@@ -109,10 +109,12 @@ function settleOncePaused(scope: SchedulingScope, runner: RoleRunner, demand: bo
  * `--json` consumer sees the same distinction the payload carries; plain `paused` stays only for
  * the holds `tumwater resume` answers (the per-role pause marker and the team pause marker), and
  * the scheduled quiet window — which `resume` does not lift — is named as its own hold. The order
- * mirrors heldFromStarting, so the label names the hold that declines the run first. Every arm of
- * that run needs a label: an unlabeled hold leaves the runner unsettled, and OnceRound.exitReady
- * waits for a settle on EVERY runner, so the round sat idle-polling until the DEFER_MAX_MS cap
- * (or never, on a full disk) instead of reporting the skip and exiting. */
+ * mirrors heldFromStarting, so the label names the hold that declines the run first, and inside
+ * the team gate it mirrors status-model.ts's heldPhase: the team pause outranks the quiet window,
+ * which outranks the budget pause. Every arm of that run needs a label: an unlabeled hold leaves
+ * the runner unsettled, and OnceRound.exitReady waits for a settle on EVERY runner, so the round
+ * sat idle-polling until the DEFER_MAX_MS cap (or never, on a full disk) instead of reporting the
+ * skip and exiting. */
 function onceHoldLabel(scope: SchedulingScope, runner: RoleRunner, demand: boolean): string | undefined {
   const {
     pausedRoles,
@@ -135,12 +137,15 @@ function onceHoldLabel(scope: SchedulingScope, runner: RoleRunner, demand: boole
     return `held: maintenance quota ${maintenanceQuota.used}/${maintenanceQuota.allowance}`;
   if (bootstrapHeldNow(runner, demand)) return "held: bootstrap"; // lifted by the plan target, or `wake --role`
   if (operatorPauseBlocks(runner.role)) {
-    // The three non-pause disjuncts of the team gate first, each named by its own verdict
-    // (status-data.ts `budget paused`; the scheduled quiet window the header's quiet badge
-    // reports): only the pause markers keep plain `paused`, because `tumwater resume` is their
-    // lever — a quiet window lifts when it ends or `config set quietHours` changes it.
-    if (budgetHolds(runner.role)) return "budget paused";
+    // The team gate's four disjuncts each name their own verdict (the scheduled quiet window the
+    // header's quiet badge reports; the budget tier's pause status-data.ts names `budget paused`),
+    // but the team pause marker leads them: status-model.ts's heldPhase ranks the operator's own
+    // pause ahead of the quiet window and the spend state (user intent is more specific than
+    // spend), and `tumwater resume` is that pause's lever — a quiet window lifts when it ends or
+    // `config set quietHours` changes it.
+    if (scope.userPaused) return "paused";
     if (scope.quietNow || scope.roleQuietHeld.has(runner.role)) return "held: quiet hours";
+    if (budgetHolds(runner.role)) return "budget paused";
     return "paused";
   }
   // The team-failure hold, last exactly as heldFromStarting runs it last: the role's provider

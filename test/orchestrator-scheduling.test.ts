@@ -854,6 +854,25 @@ test("once-mode settles each starting hold with its own label, so a held role ne
     { name: "bootstrap", hold: (ctx, r) => (ctx.bootstrapHeld = new Set([r.role])), want: "held: bootstrap" },
     { name: "budget pause", hold: (ctx, r) => (ctx.budgetPausedRoles = new Set([r.role])), want: "budget paused" },
     { name: "quiet hours", hold: (ctx) => (ctx.quietNow = true), want: "held: quiet hours" },
+    // Two holds standing at once: the label must name the one the operator's lever answers first,
+    // the precedence status-model.ts's heldPhase already documents (user pause > quiet window >
+    // budget pause). A per-hold table alone cannot show this — each row stages one hold.
+    {
+      name: "team pause over budget",
+      hold: (ctx, r) => {
+        ctx.userPaused = true;
+        ctx.budgetPausedRoles = new Set([r.role]);
+      },
+      want: "paused", // `resume` answers the operator's pause; a config edit answers the spend cap
+    },
+    {
+      name: "quiet window over budget",
+      hold: (ctx, r) => {
+        ctx.quietNow = true;
+        ctx.budgetPausedRoles = new Set([r.role]);
+      },
+      want: "held: quiet hours", // the status ladder ranks the role's schedule above spend state
+    },
     {
       name: "model check",
       hold: (ctx, r) => (ctx.modelCheckHeld = new Set([r.role])),
