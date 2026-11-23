@@ -6,7 +6,62 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-_None yet._
+### `npm run build` fails at main's tip with a duplicate `isJsonObject` import, and `status`, `gui`, `issues`, `doctor` and a started team all die with `Identifier 'isJsonObject' has already been declared` (found by the qa role 2026-11-23)
+
+**Symptom.** A fresh `npm run build` of main tip `1706a712b` fails, and the commands that read the
+GitHub-issues ledger — `status`, `gui`, `issues`, `doctor` and a started team — each exit 1 with one
+line of output. The README quick start is dead: no team starts, no dashboard is served, no status reads.
+
+```
+$ npm run build
+> tumwater@0.10.1 build
+> rm -rf dist && node scripts/tsc.mjs && node scripts/stamp-build.mjs
+
+src/github/github-issues-state.ts(10,10): error TS2300: Duplicate identifier 'isJsonObject'.
+src/github/github-issues-state.ts(12,10): error TS2300: Duplicate identifier 'isJsonObject'.
+```
+
+`tsc` exits 2 so `stamp-build.mjs` never runs, but the native compiler still emitted `dist/`, and the
+emitted module carries the import twice — so a `dist/` produced by the failed build loads with a
+SyntaxError:
+
+```
+$ node dist/src/cli.js status
+tumwater: Identifier 'isJsonObject' has already been declared
+$ echo $?
+1
+```
+
+**Reproduce** (offline, no model, no network): from a clean worktree at `1706a712b`, `npm run build`
+(the `node_modules` borrow makes `npm run build` work in a team worktree); then in a scratch dir made
+with `mktemp -d`, `git init -b main`, one empty commit, and `node <wt>/dist/src/cli.js init "hi"`.
+`status`, `gui`, `issues` and `doctor` each print that one line and exit 1; `gui` prints it instead of
+the documented `tumwater gui at http://127.0.0.1:7180 — Ctrl+C to stop` banner and binds nothing
+(`lsof -nP -iTCP:<port> -sTCP:LISTEN` returns no row). `start --once` prints its banner and role list,
+then the same line, exit 1 — the crash lands on the lazy import when the round first reads the ledger.
+
+Scoped by running each command against that `dist/` and against a scratch copy of it with the duplicate
+import line deleted: exit 1 with that message on `status`, `gui`, `issues`, `doctor` and `start
+--once`; exit 0 unchanged on `help`, `init`, `logs`, `report`, `guide`, `history`, `role feature`,
+`prompt --list`, `plan --list`, `bug --list`, `questions`, `config get`, `brief --json`, `completion
+bash` and `version`. With that one line removed from the copy, every crashing command exits 0 and the
+dashboard serves on an ephemeral loopback port.
+
+**Cause.** `1706a712b` ("Fix e3572db9 — … the guard sits at the one shared read") replaced the inline
+object check in `isGithubIssueRow` with the shared `isJsonObject` predicate and added its import at
+`src/github/github-issues-state.ts:12`, but the file already imported it at line 10 — lines 9–13 are
+`ensureParentDir`, `isJsonObject`, `readJsonFile`/`writeJsonAtomic`, `isJsonObject`, `cachedByStat`. A
+top-level duplicate binding is `TS2300`, which the native compiler reports and refuses to stamp a build
+over, while eslint's import-hygiene rules in `eslint.config.js` (`consistent-type-imports`,
+`no-import-type-side-effects`, `consistent-type-exports`) name no duplicate-import rule, so the lint half
+of the gate stayed quiet and only the `tsc` half saw it.
+
+**Expected.** `npm run build` exits 0 at main's tip, and the README's start/watch path works: `start`
+boots a team, `gui` prints its banner and serves the dashboard, `status`, `issues` and `doctor` report.
+**Fix direction (one line, no behavior change):** delete the duplicate `import { isJsonObject } from
+"../files/json-object.js";` at `src/github/github-issues-state.ts:12`, keeping line 10; the predicate's
+uses at lines 188 and 327 need nothing else. Confirm with `node scripts/tsc.mjs` (red before, green
+after) and the issues-ledger/GUI tests.
 
 ## Fixed
 
