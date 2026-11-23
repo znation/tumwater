@@ -431,7 +431,7 @@ export function startGui(
     "POST /api/revert": (req, res) => handleRevert(req, res, root),
     "POST /api/post-review-accept": (req, res) => handlePostReviewAccept(req, res, root),
     "POST /api/quarantine-release": (req, res) => handleQuarantineRelease(req, res, root),
-    "GET /api/salvage": (_req, res) => handleSalvageList(res, root),
+    "GET /api/salvage": (_req, res, target) => handleSalvageList(target.searchParams, res, root),
     "GET /api/salvage-show": (_req, res, target) => handleSalvageShow(target.searchParams, res, root),
     "POST /api/salvage-apply": (req, res) => handleSalvageApply(req, res, root),
     "POST /api/salvage-drop": (req, res) => handleSalvageDrop(req, res, root),

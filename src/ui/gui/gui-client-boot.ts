@@ -122,9 +122,13 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   });
   // The Health card's Problems only checkbox: repaint the cached report with only its warn
   // and fail rows (toggleDoctorProblems, gui-client-settings), without rerunning the checks.
+  // The Salvaged patches card's search box: the browser twin of tumwater salvage --grep — the
+  // trimmed text goes to setSalvageFilter, which repaints and refetches (gui-client-settings).
   document.addEventListener("change", (ev) => {
     const box = clickClosest(ev, "input[data-action='doctor-problems']");
     if (box) toggleDoctorProblems(box.checked);
+    const grep = clickClosest(ev, "input[data-action='salvage-grep']");
+    if (grep) setSalvageFilter(grep.value.trim());
   });
   // ---- global actions: alert and tile buttons, role names anywhere, questions ----
   // run-act:start

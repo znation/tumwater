@@ -1,7 +1,9 @@
 /**
  * The dashboard's salvaged workspace patch endpoints (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts):
- * GET /api/salvage lists every kept patch, GET /api/salvage-show reads one back for reading,
+ * GET /api/salvage lists every kept patch, optionally narrowed by a `q` filter the way
+ * `tumwater salvage --grep <text>` narrows the CLI list, GET /api/salvage-show reads one back
+ * for reading,
  * and POST /api/salvage-apply and POST /api/salvage-drop act on one by its list position — the
  * browser twins of `tumwater salvage`'s list, `--show <n>`, `--apply <n>` and `--drop <n>`. The
  * dashboard's Settings "Salvaged patches" card renders the list and posts the actions per row,
@@ -17,6 +19,7 @@ import { applySalvagePatchForOperator, salvagePatchStat } from "../git/slot-salv
 import {
   collectSalvagePatches,
   dropSalvagePatch,
+  grepSalvagePatches,
   readSalvagePatch,
   salvagePatchAt,
 } from "../status/status-salvage.js";
@@ -51,12 +54,22 @@ function requirePosition(
  * `sessionRetentionDays`), the same clause the CLI's list prints so the card names the
  * deadline from the patch's own row. The window is read live per request, not cached with the
  * stat-cached listing, so a retention edit shows on the card's next refresh.
- * A missing or unreadable salvage dir answers the empty list, and pending patches under
+ * A `q` parameter narrows the listing the way `tumwater salvage --grep <text>` does, through
+ * the same `grepSalvagePatches` call the CLI's list makes, so the card searches patch *text*
+ * case-insensitively and not only file names; each kept copy carries its own `position` from
+ * the unfiltered list, so a filtered row is still addressed by `--show`/`--apply`/`--drop` and
+ * by this file's own show/apply/drop handlers (INV-SV1). An absent or empty `q` means no
+ * filter — the endpoint never searches the empty pattern. The payload carries `total`, the
+ * whole-list count, filtered or not, so the card can say how many rows it hid; `grep` is not
+ * echoed. A missing or unreadable salvage dir answers the empty list, and pending patches under
  * `salvage/<role>/` wait for their role's next run, so they are never listed here. */
-export function handleSalvageList(res: http.ServerResponse, root: string): void {
+export function handleSalvageList(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const retentionDays = liveConfig(root).sessionRetentionDays;
   const now = Date.now();
-  const patches = collectSalvagePatches(root).map((p) => ({
+  const full = collectSalvagePatches(root);
+  const pattern = q.get("q");
+  const kept = pattern ? grepSalvagePatches(root, full, pattern) : full;
+  const patches = kept.map((p) => ({
     position: p.position,
     file: p.file,
     savedAt: p.savedAt,
@@ -64,7 +77,7 @@ export function handleSalvageList(res: http.ServerResponse, root: string): void 
     size: formatBytes(p.bytes),
     prune: prunePhrase(p.savedAt, retentionDays, now),
   }));
-  sendJson(res, 200, { patches });
+  sendJson(res, 200, { patches, total: full.length });
 }
 
 /** Handle GET /api/salvage-show?position=<n>: read one kept patch back for the operator to look

@@ -44,9 +44,9 @@ function seedSalvage(repo: string): { older: string; newer: string } {
 test("GET /api/salvage lists the kept patches oldest first with size, skipping pending and non-patch files", async () => {
   const repo = makeRepo();
   seedSalvage(repo);
-  const { captured, data } = await captureJson((res) => handleSalvageList(res, repo));
+  const { captured, data } = await captureJson((res) => handleSalvageList(new URLSearchParams(), res, repo));
   assert.equal(captured.status, 200);
-  const patches = (data as { patches: Array<{ position: number; file: string; savedAt: number; bytes: number; size: string; prune: string }> }).patches;
+  const patches = (data as { patches: Array<{ position: number; file: string; savedAt: number; bytes: number; size: string; prune: string }>; total: number }).patches;
   // Exactly the two direct patches, oldest first, with the CLI's size text — the pending
   // patch and notes.txt are not listed.
   assert.equal(patches.length, 2);
@@ -63,6 +63,76 @@ test("GET /api/salvage lists the kept patches oldest first with size, skipping p
   // omitted prune fails both assertions, and a card row built from it prints no clause.
   assert.equal(patches[0]!.prune, "prune deadline in 7d");
   assert.equal(patches[1]!.prune, "prune deadline in 7d");
+  // The unfiltered listing answers the whole-list count beside its rows, so the card can say
+  // how many rows a filter hid.
+  assert.equal((data as { total: number }).total, 2);
+});
+
+// The card's search box: GET /api/salvage?q=<text> narrows through the CLI's own
+// grepSalvagePatches, so it searches the patch body and not only the file name, and every kept
+// row carries the position it holds in the unfiltered list (INV-SV1's one shared position).
+test("GET /api/salvage with q matches inside the patch text case-insensitively and keeps each row's whole-list position", async () => {
+  const repo = makeRepo();
+  seedSalvage(repo);
+  // "NEWER" sits only in b.patch's body ("newer patch body"): a name-only filter would answer
+  // no rows, and a renumbering filter would answer it as position 1.
+  const kept = (await captureJson((res) =>
+    handleSalvageList(new URLSearchParams({ q: "NEWER" }), res, repo),
+  )).data as { patches: Array<{ position: number; file: string; prune: string }>; total: number };
+  assert.deepEqual(kept.patches.map((p) => [p.position, p.file]), [[2, "b.patch"]]);
+  // The surviving row keeps its prune clause, phrased from its own age like the other rows.
+  assert.equal(kept.patches[0]!.prune, "prune deadline in 7d");
+  // total is the whole-list count, filtered or not.
+  assert.equal(kept.total, 2);
+  // A pattern only the older patch's body carries keeps that patch at its own number.
+  const older = (await captureJson((res) =>
+    handleSalvageList(new URLSearchParams({ q: "OLD" }), res, repo),
+  )).data as { patches: Array<{ position: number; file: string }>; total: number };
+  assert.deepEqual(older.patches.map((p) => [p.position, p.file]), [[1, "a.patch"]]);
+  assert.equal(older.total, 2);
+  // A pattern nothing matches answers no rows but the whole-list total.
+  const none = (await captureJson((res) =>
+    handleSalvageList(new URLSearchParams({ q: "nowhere-in-the-patches" }), res, repo),
+  )).data as { patches: unknown[]; total: number };
+  assert.deepEqual(none.patches, []);
+  assert.equal(none.total, 2);
+  // An empty q is no filter at all: the body is identical to an absent q's, rows and total.
+  const emptyQ = await captureJson((res) => handleSalvageList(new URLSearchParams({ q: "" }), res, repo));
+  const absentQ = await captureJson((res) => handleSalvageList(new URLSearchParams(), res, repo));
+  assert.equal(emptyQ.captured.status, 200);
+  assert.deepEqual(emptyQ.data, absentQ.data);
+});
+
+// A filtered card row's number addresses the same patch as an unfiltered one: the endpoint
+// filters rows, never renumbers them, and show/apply/drop still address the whole list.
+test("GET /api/salvage with q answers whole-list positions show then reads back at the same number", async () => {
+  const repo = makeRepo();
+  seedSalvage(repo);
+  const listed = (await captureJson((res) =>
+    handleSalvageList(new URLSearchParams({ q: "newer patch body" }), res, repo),
+  )).data as { patches: Array<{ position: number; file: string }>; total: number };
+  assert.deepEqual(listed.patches.map((p) => [p.position, p.file]), [[2, "b.patch"]]);
+  // That row's own number reads b.patch back.
+  const row = (await captureJson((res) =>
+    handleSalvageShow(new URLSearchParams({ position: "2" }), res, repo),
+  )).data as { position: number; file: string; patch: string };
+  assert.equal(row.position, 2);
+  assert.equal(row.file, "b.patch");
+  assert.equal(row.patch, "newer patch body\n");
+  // A number the filtered card does not show still addresses its patch: the filter hides rows,
+  // it does not move the list.
+  const hidden = (await captureJson((res) =>
+    handleSalvageShow(new URLSearchParams({ position: "1" }), res, repo),
+  )).data as { ok?: boolean; file?: string; patch?: string };
+  assert.equal(hidden.file, "a.patch");
+  assert.equal(hidden.patch, OLDER_TEXT);
+  // The off-list sentence still counts the whole salvage dir, not the filtered rows — a handler
+  // that renumbered 1..kept would state "1 patch" here.
+  const off = (await captureJson((res) =>
+    handleSalvageShow(new URLSearchParams({ position: "3" }), res, repo),
+  )).data as { ok: boolean; message: string };
+  assert.equal(off.ok, false);
+  assert.equal(off.message, "no salvaged workspace patch at position 3 (salvage holds 2 patches) — valid: 1-2");
 });
 
 // The card's window comes from the live config, not defaultConfig(): a written
@@ -71,7 +141,7 @@ test("GET /api/salvage names each patch's deadline from the configured sessionRe
   let repo = makeRepo();
   seedSalvage(repo);
   writeConfig(repo, { sessionRetentionDays: 1 });
-  let { data } = await captureJson((res) => handleSalvageList(res, repo));
+  let { data } = await captureJson((res) => handleSalvageList(new URLSearchParams(), res, repo));
   let patches = (data as { patches: Array<{ file: string; prune: string }> }).patches;
   // a.patch is 3h old under a 24h window: 21h left, the hour bucket.
   assert.equal(patches[0]!.file, "a.patch");
@@ -79,7 +149,7 @@ test("GET /api/salvage names each patch's deadline from the configured sessionRe
   repo = makeRepo();
   seedSalvage(repo);
   writeConfig(repo, { sessionRetentionDays: 0 });
-  ({ data } = await captureJson((res) => handleSalvageList(res, repo)));
+  ({ data } = await captureJson((res) => handleSalvageList(new URLSearchParams(), res, repo)));
   const offPatches = (data as { patches: Array<{ prune: string }> }).patches;
   assert.deepEqual(
     offPatches.map((p) => p.prune),
@@ -89,17 +159,22 @@ test("GET /api/salvage names each patch's deadline from the configured sessionRe
 
 test("GET /api/salvage with no salvage dir answers the empty list, creating nothing", async () => {
   const repo = makeRepo();
-  const { captured, data } = await captureJson((res) => handleSalvageList(res, repo));
+  const { captured, data } = await captureJson((res) => handleSalvageList(new URLSearchParams(), res, repo));
   assert.equal(captured.status, 200);
-  assert.deepEqual(data, { patches: [] });
+  assert.deepEqual(data, { patches: [], total: 0 });
   assert.equal(fs.existsSync(salvageDir(repo)), false, "the list never creates the salvage dir");
+  // A filter on a dir that does not exist answers the same body and still creates nothing.
+  const filtered = await captureJson((res) => handleSalvageList(new URLSearchParams({ q: "x" }), res, repo));
+  assert.equal(filtered.captured.status, 200);
+  assert.deepEqual(filtered.data, { patches: [], total: 0 });
+  assert.equal(fs.existsSync(salvageDir(repo)), false, "a filtered list never creates the salvage dir");
 });
 
 test("GET /api/salvage-show reads a kept patch back with the CLI's --show fields, addressing the list position", async () => {
   const repo = makeRepo();
   const { older, newer } = seedSalvage(repo);
   // The list's own rows first: the show reply's file/savedAt/bytes/size must equal them.
-  const listed = (await captureJson((res) => handleSalvageList(res, repo))).data as {
+  const listed = (await captureJson((res) => handleSalvageList(new URLSearchParams(), res, repo))).data as {
     patches: Array<{ position: number; file: string; savedAt: number; bytes: number; size: string }>;
   };
   const before = fs.readdirSync(salvageDir(repo)).sort();

@@ -150,10 +150,17 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // position and its already-built body, and renderSalvage splices that body into the row whose
   // position and file still match it, so the paint stays a pure function of the fetched list
   // plus that one slot.
+  // The card's filter text, the browser twin of tumwater salvage --grep <text>: it travels to
+  // the endpoint as ?q= (server-side through grepSalvagePatches, so it searches patch text and
+  // not just file names) and back into the box on every repaint, so a filter survives a
+  // refetch and a later open of the view. A kept patch's number never changes with it: the
+  // server answers each filtered row with its whole-list position, the number --show, --apply
+  // and --drop address (INV-SV1).
+  let salvageGrep = "";
   let lastSalvage = null;
   let salvageOpen = null;
   const salvageSlot = confirmSlot(paintSalvage);
-  function renderSalvage(d, armed, open) {
+  function renderSalvage(d, armed, open, filter) {
     const rows = (d.patches || []).map((p) => {
       const applyArmed = armed("apply:" + p.position);
       const dropArmed = armed("drop:" + p.position);
@@ -171,16 +178,39 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
         (dropArmed ? "Confirm drop" : "Drop") + "</button>" +
         (isOpen ? salvageViewHtml(open.body) : "") + "</div>";
     }).join("");
-    return "<div class='settings-row'><strong>Salvaged patches</strong><span>Workspace patches kept for you under <code>.tumwater/salvage/</code> — view, apply or drop the same way <code>tumwater salvage</code> does; applying never commits and never deletes the patch.</span></div>" +
-      (rows || "<div class='empty'>no salvaged workspace patches are kept for you</div>");
+    // A filter in effect says how many rows survived out of the whole list, and a filtered list
+    // that matched nothing reads the CLI's own no-match sentence; an unfiltered empty dir keeps
+    // the empty sentence. total is the whole-list count the endpoint always answers, defaulted
+    // so an older server's payload still paints.
+    const kept = (d.patches || []).length;
+    const total = d.total === undefined || d.total === null ? 0 : d.total;
+    const header = "<div class='settings-row'><strong>Salvaged patches</strong><span>Workspace patches kept for you under <code>.tumwater/salvage/</code> — view, apply or drop the same way <code>tumwater salvage</code> does; applying never commits and never deletes the patch.</span>" +
+      (filter ? "<span>Showing " + kept + " of " + total + " patches matching this filter.</span>" : "") + "</div>";
+    return "<div class='settings-row'><label><span class='sr-only'>Search patches</span>" +
+      "<input class='field' data-action='salvage-grep' type='search' placeholder='Search patches…' autocomplete='off' value='" + esc(filter || "") + "'></label>" +
+      "<span>Narrows the list the way <code>tumwater salvage --grep &lt;text&gt;</code> does — file name or patch text; a row keeps its whole-list number.</span></div>" +
+      header +
+      (rows || (filter
+        ? "<div class='empty'>no salvaged workspace patches match \"" + esc(filter) + "\"</div>"
+        : "<div class='empty'>no salvaged workspace patches are kept for you</div>"));
   }
   function paintSalvage() {
-    if (lastSalvage) $("salvagecard").innerHTML = renderSalvage(lastSalvage, salvageSlot.armed, salvageOpen);
+    if (lastSalvage) $("salvagecard").innerHTML = renderSalvage(lastSalvage, salvageSlot.armed, salvageOpen, salvageGrep);
+  }
+  // The card's search box (the change delegate in gui-client-boot routes
+  // input[data-action='salvage-grep'] here): store the text, repaint from the cached list at
+  // once so the box keeps what was typed, then refetch — the filter runs on the server, since
+  // only the server can read patch text. On change (Enter or blur), like #histgrep, not per
+  // keystroke.
+  async function setSalvageFilter(text) {
+    salvageGrep = String(text === null || text === undefined ? "" : text);
+    if (lastSalvage) paintSalvage();
+    await fetchSalvage();
   }
   async function fetchSalvage() {
     buildSettingsView();
     try {
-      lastSalvage = await getJson("/api/salvage");
+      lastSalvage = await getJson("/api/salvage" + (salvageGrep ? "?q=" + encodeURIComponent(salvageGrep) : ""));
       paintSalvage();
     } catch (err) {
       $("salvagecard").innerHTML = errorPanel("Salvaged patches could not load", err, "empty");

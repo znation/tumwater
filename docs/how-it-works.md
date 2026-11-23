@@ -545,7 +545,10 @@ standing amber `salvage-patches` alert on `tumwater status` and the dashboard na
 (capped, with a count of the rest) and say how long the oldest has left before the pass reaches it
 — a countdown against the configured window, `at the next prune pass` once that deadline has
 passed, or that the patches are never pruned when the window is `0` — so work a run left behind is
-never silently discarded. Both
+never silently discarded. The dashboard's salvaged-patches card carries a search box that
+narrows its list the way `tumwater salvage --grep <text>` does — file name or patch text,
+case-insensitively — and a filtered row keeps its whole-list number, so View, Apply and Drop act
+on the patch that number names, exactly as `--show`/`--apply`/`--drop <n>` do. Both
 kinds are deleted with the session store by the `sessionRetentionDays` pass, which also ages out
 each role's pi session files, its session ledgers and the full-output files kept for oversized
 tool results, and purges the expired OpenCode and Codex sessions each backend's ledger names. It

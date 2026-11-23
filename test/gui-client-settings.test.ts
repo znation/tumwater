@@ -26,8 +26,9 @@ interface SettingsFns {
   testNotify(): Promise<void>;
   fetchBrief(): Promise<void>;
   saveBrief(form: { querySelector(sel: string): { value: string } }): Promise<void>;
-  renderSalvage(d: unknown, armed: (key: string) => boolean, open: unknown): string;
+  renderSalvage(d: unknown, armed: (key: string) => boolean, open: unknown, filter: string): string;
   fetchSalvage(): Promise<void>;
+  setSalvageFilter(text: string): Promise<void>;
   salvageApplyClick(position: string): Promise<void>;
   salvageDropClick(position: string): Promise<void>;
   salvageViewClick(position: string): Promise<void>;
@@ -55,7 +56,7 @@ interface SettingsFns {
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "err-message", "settings-view", "format"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderSalvage", "fetchSalvage", "salvageApplyClick", "salvageDropClick", "salvageViewClick", "paintSalvage", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "renderIssues", "fetchIssues", "issueViewClick", "paintIssues", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderSalvage", "fetchSalvage", "setSalvageFilter", "salvageApplyClick", "salvageDropClick", "salvageViewClick", "paintSalvage", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "renderIssues", "fetchIssues", "issueViewClick", "paintIssues", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -314,6 +315,11 @@ test("the settings region is spliced into the served script, and the boot routes
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='salvage-drop'\]/);
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='salvage-view'\]/);
   assert.match(GUI_CLIENT_BOOT_JS, /salvageViewClick\(salView\.dataset\.position\)/);
+  // The card's search box rides the same document change delegate as the Health checkbox, and
+  // hands its trimmed value to setSalvageFilter.
+  assert.match(GUI_CLIENT_BOOT_JS, /input\[data-action='salvage-grep'\]/);
+  assert.match(GUI_CLIENT_BOOT_JS, /setSalvageFilter\(grep\.value\.trim\(\)\)/);
+  assert.match(clientRegion("settings-view"), /data-action='salvage-grep'/);
   // The issues card's per-row View button is delegated the same way, addressed by position.
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='issues-view'\]/);
   assert.match(GUI_CLIENT_BOOT_JS, /issueViewClick\(issView\.dataset\.position\)/);
@@ -457,8 +463,8 @@ test("a submit on form.brief-form routes to saveBrief, and the settings listener
 test("renderSalvage renders one row per patch with View, Apply and Drop, the empty sentence, and the confirm labels", () => {
   const { renderSalvage } = settingsScope();
   // An empty list is the CLI's empty sentence, no rows.
-  assert.match(renderSalvage({ patches: [] }, () => false, null), /no salvaged workspace patches are kept for you/);
-  assert.doesNotMatch(renderSalvage({ patches: [] }, () => false, null), /data-action='salvage-apply'/);
+  assert.match(renderSalvage({ patches: [] }, () => false, null, ""), /no salvaged workspace patches are kept for you/);
+  assert.doesNotMatch(renderSalvage({ patches: [] }, () => false, null, ""), /data-action='salvage-apply'/);
   // Two patches: each row carries its position, file, saved-ago, size, prune deadline and both
   // buttons.
   const now = Date.now();
@@ -466,13 +472,13 @@ test("renderSalvage renders one row per patch with View, Apply and Drop, the emp
     { position: 1, file: "a.patch", savedAt: now - 3 * 3600_000, bytes: 38, size: "38 B", prune: "prune deadline in 21h" },
     { position: 2, file: "b.patch", savedAt: now - 1000, bytes: 17, size: "17 B", prune: "retention is off, so this patch is never pruned" },
   ] };
-  const html = renderSalvage(d, () => false, null);
+  const html = renderSalvage(d, () => false, null, "");
   assert.match(html, /<strong>1\. a\.patch<\/strong>/);
   assert.match(html, /saved 3h ago, 38 B, prune deadline in 21h/);
   assert.match(html, /saved just now, 17 B, retention is off, so this patch is never pruned/);
   // Each clause sits in the same row element as that patch's own buttons — the operator reads
   // the deadline off the row they are about to act on, not off another row.
-  const rows = html.split("<div class='settings-row'>").filter((r) => r.includes("data-action='salvage-"));
+  const rows = html.split("<div class='settings-row'>").filter((r) => /data-action='salvage-(view|apply|drop)'/.test(r));
   assert.equal(rows.length, 2, "one row element per patch");
   assert.ok(rows[0]!.includes("prune deadline in 21h") && rows[0]!.includes("data-position='1'"));
   assert.ok(rows[1]!.includes("retention is off, so this patch is never pruned") && rows[1]!.includes("data-position='2'"));
@@ -481,21 +487,108 @@ test("renderSalvage renders one row per patch with View, Apply and Drop, the emp
   assert.match(html, /data-action='salvage-drop' data-position='1'>Drop<\/button>/);
   assert.match(html, /data-action='salvage-apply' data-position='2'>Apply<\/button>/);
   // A file with HTML is esc'd, in its file name and in its prune clause.
-  const bad = renderSalvage({ patches: [{ position: 1, file: "<x>.patch", savedAt: now, bytes: 5, size: "5 B", prune: "prune deadline in <7d>" }] }, () => false, null);
+  const bad = renderSalvage({ patches: [{ position: 1, file: "<x>.patch", savedAt: now, bytes: 5, size: "5 B", prune: "prune deadline in <7d>" }] }, () => false, null, "");
   assert.match(bad, /&lt;x&gt;\.patch/);
   assert.match(bad, /prune deadline in &lt;7d&gt;/);
   // A record with no prune field (an older server) renders the row with no clause and no
   // trailing separator.
-  const older = renderSalvage({ patches: [{ position: 1, file: "a.patch", savedAt: now, bytes: 5, size: "5 B" }] }, () => false, null);
+  const older = renderSalvage({ patches: [{ position: 1, file: "a.patch", savedAt: now, bytes: 5, size: "5 B" }] }, () => false, null, "");
   assert.match(older, /saved just now, 5 B<\/span>/);
   // The armed apply key repaints only its own Apply button as a confirm; the same position's
   // Drop button stays un-armed.
-  assert.match(renderSalvage(d, (k) => k === "apply:1", null), /data-action='salvage-apply' data-position='1'>Confirm apply<\/button>/);
-  assert.doesNotMatch(renderSalvage(d, (k) => k === "apply:1", null), /data-position='1'>Confirm drop<\/button>/);
-  assert.match(renderSalvage(d, (k) => k === "drop:2", null), /data-action='salvage-drop' data-position='2'>Confirm drop<\/button>/);
+  assert.match(renderSalvage(d, (k) => k === "apply:1", null, ""), /data-action='salvage-apply' data-position='1'>Confirm apply<\/button>/);
+  assert.doesNotMatch(renderSalvage(d, (k) => k === "apply:1", null, ""), /data-position='1'>Confirm drop<\/button>/);
+  assert.match(renderSalvage(d, (k) => k === "drop:2", null, ""), /data-action='salvage-drop' data-position='2'>Confirm drop<\/button>/);
   // No open slot means no row paints a body, and every View button reads "View".
   assert.doesNotMatch(html, /<pre class='mono/);
   assert.doesNotMatch(html, /Hide<\/button>/);
+});
+
+// The card's search box and the count line it drives. A filtered row keeps its whole-list
+// number, so the buttons address the same patch as tumwater salvage --show/--apply/--drop.
+test("renderSalvage paints the search box, the matching-filter count line, and the CLI's no-match sentence", () => {
+  const { renderSalvage } = settingsScope();
+  const now = Date.now();
+  const filtered = {
+    patches: [{ position: 3, file: "c.patch", savedAt: now, bytes: 5, size: "5 B", prune: "prune deadline in 7d" }],
+    total: 9,
+  };
+  const html = renderSalvage(filtered, () => false, null, "c");
+  // The box carries the filter back, so a repaint keeps what the operator typed.
+  assert.match(html, /data-action='salvage-grep'[^>]*value='c'/);
+  // The surviving row keeps its whole-list number on every button, plus its prune clause.
+  assert.match(html, /<strong>3\. c\.patch<\/strong>/);
+  assert.match(html, /data-action='salvage-view' data-position='3'>View<\/button>/);
+  assert.match(html, /data-action='salvage-apply' data-position='3'>Apply<\/button>/);
+  assert.match(html, /data-action='salvage-drop' data-position='3'>Drop<\/button>/);
+  assert.match(html, /saved just now, 5 B, prune deadline in 7d/);
+  assert.match(html, /Showing 1 of 9 patches matching this filter\./);
+  // No filter: the box paints with an empty value and the count line is absent — the card reads
+  // exactly as it did before the search existed.
+  const plain = renderSalvage(filtered, () => false, null, "");
+  assert.match(plain, /data-action='salvage-grep'[^>]*value=''/);
+  assert.doesNotMatch(plain, /patches matching this filter/);
+  // A filter that matched nothing reads the CLI's own no-match sentence, quoted with the text.
+  assert.match(
+    renderSalvage({ patches: [], total: 9 }, () => false, null, "zz"),
+    /no salvaged workspace patches match "zz"/,
+  );
+  assert.match(renderSalvage({ patches: [], total: 9 }, () => false, null, "zz"), /Showing 0 of 9 patches matching this filter\./);
+  // An unfiltered empty dir keeps the existing empty sentence, with no rows to act on.
+  const empty = renderSalvage({ patches: [] }, () => false, null, "");
+  assert.match(empty, /no salvaged workspace patches are kept for you/);
+  assert.doesNotMatch(empty, /data-action='salvage-apply'/);
+  // A payload with no total (an older server) still paints the sentence, with 0.
+  assert.match(
+    renderSalvage({ patches: [{ position: 1, file: "a.patch", savedAt: now, bytes: 5, size: "5 B" }] }, () => false, null, "a"),
+    /Showing 1 of 0 patches matching this filter\./,
+  );
+});
+
+// The search box's handler: repaint from the cached list at once, then refetch with the text as
+// ?q=, encoded, and never a bare "?".
+test("setSalvageFilter repaints from the cache at once and asks the endpoint with ?q=, empty text included", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard"]) els[id] = { innerHTML: "", dataset: {} };
+  const paths: string[] = [];
+  const { setSalvageFilter } = settingsScope({
+    $: (id: string) => els[id],
+    getJson: async (path: string) => {
+      paths.push(path);
+      return { patches: [{ position: 2, file: "b.patch", savedAt: Date.now(), bytes: 17, size: "17 B" }], total: 3 };
+    },
+  });
+  await setSalvageFilter("a b");
+  // The text reaches the endpoint encoded, and the painted card shows the filter and the row's
+  // whole-list number.
+  assert.deepEqual(paths, ["/api/salvage?q=a%20b"]);
+  assert.match(els["salvagecard"]!.innerHTML, /value='a b'/);
+  assert.match(els["salvagecard"]!.innerHTML, /<strong>2\. b\.patch<\/strong>/);
+  assert.match(els["salvagecard"]!.innerHTML, /Showing 1 of 3 patches matching this filter\./);
+  // Clearing it asks for the unfiltered list — never a trailing bare "?".
+  await setSalvageFilter("");
+  assert.deepEqual(paths, ["/api/salvage?q=a%20b", "/api/salvage"]);
+  assert.doesNotMatch(els["salvagecard"]!.innerHTML, /patches matching this filter/);
+});
+
+test("setSalvageFilter repaints a cached card before it refetches, so the box keeps the typed text", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard"]) els[id] = { innerHTML: "", dataset: {} };
+  const seen: Array<{ path: string; card: string }> = [];
+  const { fetchSalvage, setSalvageFilter } = settingsScope({
+    $: (id: string) => els[id],
+    getJson: async (path: string) => {
+      seen.push({ path, card: els["salvagecard"]!.innerHTML });
+      return { patches: [{ position: 1, file: "a.patch", savedAt: Date.now(), bytes: 38, size: "38 B" }], total: 1 };
+    },
+  });
+  await fetchSalvage();
+  await setSalvageFilter("a");
+  // The second read is the filtered one, and the card it was painted over already carries the
+  // typed filter — the repaint from the cache happened before the request.
+  assert.equal(seen.length, 2);
+  assert.equal(seen[1]!.path, "/api/salvage?q=a");
+  assert.match(seen[1]!.card, /value='a'/);
 });
 
 test("fetchSalvage loads GET /api/salvage and paints the card; a failure renders the error panel", async () => {
@@ -708,7 +801,7 @@ test("renderSalvage splices the open body only into the row its file still match
     { position: 2, file: "c.patch", savedAt: now - 1000, bytes: 5, size: "5 B" },
   ] };
   const open = { position: 1, file: "b.patch", body: { position: 1, file: "b.patch", savedAt: now - 1000, size: "17 B", stat: null, patch: "+kept\n" } };
-  const html = renderSalvage(d, () => false, open);
+  const html = renderSalvage(d, () => false, open, "");
   // The patch text reaches the pre verbatim, its trailing newline intact.
   assert.match(html, /<pre class='mono diff'>\+kept\n<\/pre>/);
   // The body sits inside the b.patch row, not the c.patch row.
@@ -717,7 +810,7 @@ test("renderSalvage splices the open body only into the row its file still match
   assert.doesNotMatch(html.slice(html.indexOf("c.patch")), /<pre class='mono diff'>/);
   // A body whose file no longer matches any listed row is dropped: a patch read never appears
   // under a different patch's header.
-  assert.doesNotMatch(renderSalvage(d, () => false, { position: 1, file: "gone.patch", body: open.body }), /<pre class='mono diff'>/);
+  assert.doesNotMatch(renderSalvage(d, () => false, { position: 1, file: "gone.patch", body: open.body }, ""), /<pre class='mono diff'>/);
 });
 
 test("renderRetirable renders an Enable button for every row, a Retire button only for the leftover row, and esc's ids", () => {

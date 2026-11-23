@@ -6137,7 +6137,9 @@ The read creates no directory, changes no file and applies nothing.
 `src/status/status-salvage.ts` (`collectSalvagePatches`, `salvagePatchAt`, `readSalvagePatch`).
 
 **Pinned by.** `test/gui-salvage.test.ts` — "GET /api/salvage-show reads a kept patch back with
-the CLI's --show fields, addressing the list position", "GET /api/salvage-show answers stat null
+the CLI's --show fields, addressing the list position", "GET /api/salvage with q answers
+whole-list positions show then reads back at the same number" (the position addressing a filtered
+`GET /api/salvage` listing shares with the unfiltered one), "GET /api/salvage-show answers stat null
 for a patch that is not a diff, and a non-null stat for one that is", "GET /api/salvage-show with
 no salvage dir creates nothing and answers the off-list sentence", "GET /api/salvage-show with an
 absent or malformed position is a 400 with the shared query wording", "GET /api/salvage-show with
