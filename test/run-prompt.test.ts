@@ -276,6 +276,56 @@ test("a role run prompt reads the lessons from roleLessonsPath, and omits the bl
   assert.match(withoutLessons.prompt, /tumwater-notes lesson add/, "the lesson commands are still taught");
 });
 
+test("a role run prompt names how full its lessons store stands, measured from the file", () => {
+  const dir = root();
+  const stored = "<!-- next: L3 -->\n- L1 (2026-11-13): the oracle helpers drive coverage\n";
+  writeFileDeep(roleLessonsPath(dir, "coverage"), stored);
+  const result = promptFor(dir, "coverage");
+  assert.ok(result);
+  // Worked out from the lessons file format: one stored lesson, and the store's size is the file
+  // text the writer produces — the marker line plus the lesson line, which is what was written.
+  assert.match(
+    result.prompt,
+    new RegExp(
+      `Your lessons store stands at 1 of 12 lessons and ${Buffer.byteLength(stored, "utf8")} of 2048 bytes`,
+    ),
+  );
+
+  // A second lesson moves the figures: the count and the size both rise, from the file alone.
+  // The marker names L3, the id the next add would take, or the store is malformed.
+  writeFileDeep(roleLessonsPath(dir, "coverage"), `${stored.trimEnd()}\n- L2 (2026-11-14): another one\n`);
+  const second = promptFor(dir, "coverage");
+  assert.ok(second);
+  assert.match(second.prompt, /Your lessons store stands at 2 of 12 lessons and \d+ of 2048 bytes/);
+});
+
+test("a role run prompt with no lessons file carries no usage sentence", () => {
+  const dir = root();
+  const result = promptFor(dir, "coverage");
+  assert.ok(result);
+  assert.ok(!result.prompt.includes("<role-lessons>"), "no lessons block");
+  assert.ok(!result.prompt.includes("lessons store stands at"), "and no usage sentence");
+});
+
+test("a lessons store past the byte cap reports its whole-store figure beside the truncation marker", () => {
+  const dir = root();
+  // A hand-edited store of eight lessons the writer would never produce. Worked out from the file
+  // format contract: the next-id marker line, then one `- L<n> (date): text` line each.
+  const line = (n: number): string => `- L${n} (2026-11-13): ${"a".repeat(290)}`;
+  const stored = `<!-- next: L9 -->\n${[1, 2, 3, 4, 5, 6, 7, 8].map(line).join("\n")}\n`;
+  writeFileDeep(roleLessonsPath(dir, "coverage"), stored);
+  const result = promptFor(dir, "coverage");
+  assert.ok(result);
+  const m = /Your lessons store stands at (\d+) of 12 lessons and (\d+) of 2048 bytes/.exec(result.prompt);
+  assert.ok(m, `the usage sentence rides for an over-cap store: ${result.prompt.slice(0, 200)}`);
+  assert.equal(m[1], "8");
+  // The figure is the whole store as the writer would re-render it — which is above the cap, so it
+  // explains the cut of the shown text rather than contradicting it.
+  assert.equal(Number(m[2]), Buffer.byteLength(stored, "utf8"));
+  assert.ok(Number(m[2]) > 2048, "the reported figure is past the cap");
+  assert.match(result.prompt, /<role-lessons>[\s\S]*truncated at 2048 chars[\s\S]*<\/role-lessons>/);
+});
+
 test("a role with a note but no lessons file gets the one-time seeding sentence", () => {
   const dir = root();
   writeFileDeep(roleNotesPath(dir, "coverage"), "coverage runs through the oracle helpers\n");

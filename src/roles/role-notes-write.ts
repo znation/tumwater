@@ -78,6 +78,26 @@ export interface RoleLesson {
   text: string;
 }
 
+/** How full one role's lessons store stands, as the run prompt reports it: `lessons` is the
+ * lessons it holds and `bytes` is its file's size in UTF-8 bytes exactly as renderRoleLessons
+ * writes it — each measured the way the write path compares it (`addRoleLesson`'s count check,
+ * `writeRoleLessons`'s whole-file byte check), so the prompt's figures and a refusal's cannot
+ * disagree. */
+export interface RoleLessonUsage {
+  lessons: number;
+  bytes: number;
+}
+
+/** The usage of one lessons store, against the caps above: the lessons it holds and the rendered
+ * file's UTF-8 byte length (the marker line included, since that is the text the whole-file cap
+ * is checked against). A role that has never written a lesson holds none, so the count is 0. The
+ * byte figure is a re-render, never a raw file read: `tumwater doctor`'s `role notes` row reports
+ * the raw file's bytes (src/status/status-role-notes.ts), so a hand-edited store's two figures can
+ * differ by the stray lines the next write normalizes away. */
+export function roleLessonUsage(lessons: readonly RoleLesson[], nextId: number): RoleLessonUsage {
+  return { lessons: lessons.length, bytes: Buffer.byteLength(renderRoleLessons(nextId, lessons), "utf8") };
+}
+
 /** Parse a lessons file's text into its id, its next-id counter, and its lessons in file
  * order. A missing file is the empty store. A malformed file — a next-id line that is not
  * the first line, a line that is neither the next-id marker nor a `- L<n> (date): text` lesson,
@@ -146,7 +166,7 @@ export function roleLessonsText(lessons: RoleLesson[]): string {
 
 /** Serialize a lessons store to its file text: the next-id marker, then one line per lesson
  * (roleLessonLine), each ending in a newline. The inverse of parseRoleLessons. */
-export function renderRoleLessons(nextId: number, lessons: RoleLesson[]): string {
+export function renderRoleLessons(nextId: number, lessons: readonly RoleLesson[]): string {
   const lines = [`<!-- next: L${nextId} -->`];
   for (const l of lessons) lines.push(roleLessonLine(l));
   return lines.join("\n") + "\n";

@@ -135,6 +135,44 @@ test("the lessons are checked against the live backlog, so a stale lesson gets t
   assert.match(prompt, /- Codex backend, part 2b\/9 — needs review/);
 });
 
+test("the lessons block names how full the store stands, so a run curates before a refusal", () => {
+  const role = roleById("feature")!;
+  const prompt = buildRunPrompt({
+    role,
+    lessons: "- L11 (2026-11-23): a durable lesson",
+    lessonsUsage: { lessons: 11, bytes: 1900 },
+  });
+  // Both figures against their caps, from the plan's shape, in the lead before the block body.
+  assert.match(prompt, /Your lessons store stands at 11 of 12 lessons and 1900 of 2048 bytes/);
+  assert.match(prompt, /a lesson that would pass either cap is refused/);
+  assert.match(prompt, /retire or replace one first/);
+  const usagePos = prompt.indexOf("Your lessons store stands at");
+  const bodyPos = prompt.indexOf("<role-lessons>");
+  assert.ok(usagePos !== -1 && bodyPos !== -1 && usagePos < bodyPos, "the usage sentence leads the block");
+});
+
+test("a full lessons store reports itself full, at both caps", () => {
+  const role = roleById("feature")!;
+  const prompt = buildRunPrompt({
+    role,
+    lessons: "- L12 (2026-11-23): the twelfth lesson",
+    lessonsUsage: { lessons: 12, bytes: 2040 },
+  });
+  assert.match(prompt, /stands at 12 of 12 lessons and 2040 of 2048 bytes/);
+});
+
+test("no usage sentence when the store holds no lesson or was never measured", () => {
+  const role = roleById("feature")!;
+  for (const usage of [undefined, { lessons: 0, bytes: 15 }]) {
+    const prompt = buildRunPrompt({ role, lessons: "- L1 (2026-11-23): a lesson", lessonsUsage: usage });
+    assert.ok(prompt.includes("<role-lessons>"), "the lessons block itself still rides");
+    assert.ok(
+      !prompt.includes("lessons store stands at"),
+      `no usage sentence for ${JSON.stringify(usage)}`,
+    );
+  }
+});
+
 test("every role run is told to write a note, even the first one with none", () => {
   const role = roleById("feature")!;
   const prompt = buildRunPrompt({ role });

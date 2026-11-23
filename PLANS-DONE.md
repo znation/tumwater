@@ -5,6 +5,45 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### A role's run prompt names how full its own lessons store is, so a run curates before a `lesson add` refusal instead of discovering it from one (planned 2026-11-23 by the plan role) — done 2026-11-23 by the feature role
+
+**Heading restored.** This entry reached PLANS.md as a single truncated line — the heading cut
+mid-sentence at "so a run curates before a", with no `(planned …)` parenthetical and no body — and
+the rest of the plan text (the heading's second line and the Why / Approach / Files touched /
+Acceptance criteria paragraphs) landed orphaned at the tail of PLANS-DONE.md's archived copy of the
+reviews-backoff entry, where the plan run b98fadbc's write landed it. The heading and body here are
+that plan text, restored; nothing about the shipped shape changed because of it.
+
+**Shipped.** `roleLessonUsage(lessons, nextId)` in src/roles/role-notes-write.ts returns
+`{ lessons, bytes }` — the lessons the store holds (the figure `addRoleLesson` compares against
+`ROLE_LESSONS_MAX_COUNT`, so a retired lesson stops counting) and the UTF-8 bytes of the store as
+`renderRoleLessons` re-renders it (the marker line included, which is the text `writeRoleLessons`
+compares against `ROLE_LESSONS_MAX_BYTES`; never `roleLessonsText`'s length, which drops the marker,
+and never a raw file read, which counts a hand edit's stray bytes that the next write normalizes
+away — `tumwater doctor`'s `role notes` row reports that raw figure, so the two can differ). It is
+exported as `RoleLessonUsage`. src/run/run-prompt.ts `readPromptNotes` measures it from the store it
+already parses — no second read — and returns it beside `lessons`; src/prompt/prompt.ts carries it as
+`RunPromptInput.lessonsUsage`, hands it through `runNotesBlocks` to `roleLessonsBlock`, and appends
+one sentence to that block's lead before the `<role-lessons>` fence, both cap numbers built from the
+constants: `Your lessons store stands at N of 12 lessons and B of 2048 bytes; a lesson that would
+pass either cap is refused, so retire or replace one first.` The figure is measured before
+`truncateWithNote` bounds the block's text, so a store an old build or a hand edit left past the cap
+names its whole size and the shown text carries the truncation marker — the number explains the cut.
+No sentence when the store holds no lesson, is missing or unreadable, or `lessonsUsage` is left
+undefined (the director), so every lesson-less prompt is byte-identical to before. One clause joined
+docs/how-it-works.md's role-notes paragraph, which already states the 12 / 300-byte / 2 KB caps.
+
+**Deviation from the plan's shape:** the plan asked `readPromptNotes` to set the field only when
+`hasLessons` holds; it is set from the parsed store always and the prompt gates the sentence on a
+non-zero lesson count instead — the same visible result (no sentence for a missing, empty, corrupt or
+unreadable store, or for the director) without a second branch in the reader.
+
+**Files touched:** src/roles/role-notes-write.ts, src/run/run-prompt.ts, src/prompt/prompt.ts,
+test/role-lessons.test.ts, test/prompt.test.ts, test/run-prompt.test.ts, docs/how-it-works.md — as
+the entry listed, no more: no CLI flag, no status key, no dashboard change, nothing under src/status/
+or src/ui/, and docs/invariants.md untouched (the run prompt's lessons block is not an invariant this
+change moves).
+
 ### `tumwater reviews`, its `--show` detail and the dashboard's Post-merge reviews card name a queued (retired 2026-11-23 by the plan role)
 **Retired 2026-11-23 by the plan role: duplicate of "`tumwater reviews`, its `--show` detail and the dashboard's Post-merge reviews card name a queued" — the two copies were byte-identical apart from this stamp, so the earlier `## Planned` copy is the survivor and nothing was folded into it.**
   commit's live provider-failure backoff, so an entry that is not moving is told apart from one that is

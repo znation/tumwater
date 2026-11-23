@@ -3,6 +3,7 @@ import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { Role } from "../roles/roles.js";
 import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_QUEUE_GUIDANCE, PLAN_SIZING } from "../roles/role-guidance.js";
+import { ROLE_LESSONS_MAX_BYTES, ROLE_LESSONS_MAX_COUNT, type RoleLessonUsage } from "../roles/role-notes-write.js";
 import { CLAIMS_RULE, REPLY_ENDINGS } from "../verdict/reply-contract.js";
 import { todayStamp } from "../budget/budget.js";
 import { daysBetween } from "../text/datetime.js";
@@ -388,6 +389,14 @@ interface RunPromptInput {
    * an undefined value means the file is missing, so the block is omitted (the run is then
    * told to seed one). The director never reaches buildRunPrompt, so it never carries one. */
   lessons?: string;
+  /** How full the role's lessons store stands (roleLessonUsage in roles/role-notes-write.ts,
+   * read by run-prompt.ts from the parsed store, not from the rendered block): the lessons it
+   * holds and its UTF-8 bytes, each measured the way the write path enforces its cap. The usage
+   * sentence at the end of the <role-lessons> lead names both figures against their caps, so a
+   * run curates before a `lesson add` is refused instead of discovering the cap from one. A
+   * store holding no lesson reports no lesson, and an absent value means the caller measured
+   * nothing: either way the lead block carries no usage sentence. */
+  lessonsUsage?: RoleLessonUsage;
   /** True while the role has a non-empty note but no lessons file yet: the one-time
    * seeding sentence in the write instruction asks the run to move its durable lessons out
    * of the note with `lesson add` (plans/typed-role-notes.md "Prompt"). Omitted: the role
@@ -533,13 +542,25 @@ function runEvidenceBlocks(input: RunPromptInput): string[] {
  * — with no lessons yet — still learns the commands. Unlike the notes, a lesson is checked
  * before acting on it: the live-state block after it (notes-backlog.ts) applies to the
  * lessons as well as the note, so a stale lesson cannot keep a hold the backlog has lifted. */
-function roleLessonsBlock(lessons: string): string {
+function roleLessonsBlock(lessons: string, usage: RoleLessonUsage | undefined): string {
   return `Lessons your role concluded in earlier runs — kept verbatim and dated by tumwater, so
 they survive every note rewrite: check one before acting on it, \`replace\` it when it needs
 amending, and \`retire\` it when it has proved wrong. The live-state block after your note is
 checked against the lessons as well as the note, so a stale lesson cannot keep a hold the
-backlog has lifted.
+backlog has lifted.${lessonUsageSentence(usage)}
 <role-lessons>\n${lessons.trim()}\n</role-lessons>`;
+}
+
+/** The usage sentence the lessons lead ends with: what the store stands at now and what a full
+ * one does. Measured from the store as parsed on disk, never from the rendered block's length,
+ * so an over-cap file cut by truncateWithNote reports its real size, not its truncation.
+ * Absent, or holding no lesson: a role's first `lesson add` creates the store, so there is
+ * nothing to weigh and the lead block stays byte-identical to what it was before. */
+function lessonUsageSentence(usage: RoleLessonUsage | undefined): string {
+  if (usage === undefined || usage.lessons === 0) return "";
+  return ` Your lessons store stands at ${usage.lessons} of ${ROLE_LESSONS_MAX_COUNT} lessons and`
+    + ` ${usage.bytes} of ${ROLE_LESSONS_MAX_BYTES} bytes; a lesson that would pass either cap is`
+    + ` refused, so retire or replace one first.`;
 }
 
 /** The one-time seeding sentence (plans/typed-role-notes.md "Prompt"): while the role has a
@@ -558,7 +579,7 @@ keeps only this run's state and next step.`;
  * note exists), the live backlog state block, and the since-last-run block, in that order. */
 function runNotesBlocks(input: RunPromptInput, day: string): string[] {
   const parts: string[] = [];
-  if (input.lessons && input.lessons.trim() !== "") parts.push(roleLessonsBlock(input.lessons));
+  if (input.lessons && input.lessons.trim() !== "") parts.push(roleLessonsBlock(input.lessons, input.lessonsUsage));
   if (input.notes && input.notes.trim() !== "")
     parts.push(roleNotesBlock(input.notes, Boolean(input.backlogIndex), input.notesSavedDay, day));
   if (input.sinceLastRun) parts.push(`<since-last-run>\n${input.sinceLastRun.trim()}\n</since-last-run>`);

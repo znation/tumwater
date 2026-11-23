@@ -9,6 +9,6 @@ considered and set aside on purpose, and every state change is dated so stalenes
 
 ## Planned
 
-### A role's run prompt names how full its own lessons store is, so a run curates before a
+_None yet._
 
 ## Done

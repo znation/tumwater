@@ -30,7 +30,14 @@ import { pathTokens } from "../text/text.js";
 import { isDirectory, readRegularTextOrNull, readTextOrNull, statOrNull } from "../files/files.js";
 import { dayKey } from "../text/datetime.js";
 import { appendPromptNote, prependPromptNote } from "../text/format.js";
-import { ROLE_LESSONS_MAX_BYTES, ROLE_NOTES_MAX_BYTES, readRoleLessons, roleLessonsText } from "../roles/role-notes-write.js";
+import {
+  ROLE_LESSONS_MAX_BYTES,
+  ROLE_NOTES_MAX_BYTES,
+  readRoleLessons,
+  roleLessonUsage,
+  roleLessonsText,
+  type RoleLessonUsage,
+} from "../roles/role-notes-write.js";
 import { truncateWithNote } from "../text/text.js";
 import { renderBacklogStructureBlock, renderDuplicatePlansBlock } from "../backlog/backlog-structure.js";
 import { renderBacklogIndexBlock } from "../backlog/backlog-index.js";
@@ -163,7 +170,8 @@ function buildRoleRunPrompt(
   const filings = collectFeedbackFilingsBlock(root, base);
   const backlogStructure = collectBacklogStructureBlock(root, base);
   const duplicatePlans = collectDuplicatePlansBlock(root, base);
-  const { notes, lessons, notesSavedDay, notesBacklog, lessonsSeeding } = readPromptNotes(root, role);
+  const { notes, lessons, lessonsUsage, notesSavedDay, notesBacklog, lessonsSeeding } =
+    readPromptNotes(root, role);
   // What landed on main since this role's last run, from git (since-last-run.ts): one bounded
   // spawn, omitted for a first run or a git failure. Every run gets the
   // block; only the file ordering depends on the claim — a run holding one leads the file list
@@ -189,6 +197,7 @@ function buildRoleRunPrompt(
     backlogIndex: assigned ? undefined : backlogIndex,
     notes,
     lessons,
+    lessonsUsage,
     notesSavedDay,
     notesBacklog,
     lessonsSeeding,
@@ -336,7 +345,7 @@ function collectPendingPlansBlock(root: string, base: string): string | undefine
 function readPromptNotes(
   root: string,
   role: string,
-): { notes: string | undefined; lessons: string | undefined; notesSavedDay: string | undefined; notesBacklog: string | undefined; lessonsSeeding: boolean } {
+): { notes: string | undefined; lessons: string | undefined; lessonsUsage: RoleLessonUsage; notesSavedDay: string | undefined; notesBacklog: string | undefined; lessonsSeeding: boolean } {
   // The role's own notes (readRoleNote): its earlier runs' note. A missing,
   // empty, or unreadable file yields undefined, so the block is omitted; the write
   // instruction in buildRunPrompt is present either way. The director branch above never
@@ -354,9 +363,15 @@ function readPromptNotes(
   // the bound; only an over-cap file is cut, with the visible marker naming the loss.
   let lessons: string | undefined;
   let hasLessons = false;
+  // How full the store stands, measured from the parsed store (not from the rendered text the
+  // prompt carries) so an over-cap file cut by truncateWithNote below still reports its real
+  // size. A store holding no lesson leaves the count at 0, and the prompt then says nothing
+  // about usage — the run's first `lesson add` creates it.
+  let lessonsUsage: RoleLessonUsage = { lessons: 0, bytes: 0 };
   try {
     const store = readRoleLessons(roleLessonsPath(root, role));
     hasLessons = store.lessons.length > 0;
+    lessonsUsage = roleLessonUsage(store.lessons, store.nextId);
     if (hasLessons) {
       lessons = truncateWithNote(roleLessonsText(store.lessons), ROLE_LESSONS_MAX_BYTES, "role lessons");
     }
@@ -385,7 +400,7 @@ function readPromptNotes(
           openBugs: openBugEntries(root),
           donePlanTitles: donePlans(root),
         });
-  return { notes, lessons, notesSavedDay, notesBacklog, lessonsSeeding };
+  return { notes, lessons, lessonsUsage, notesSavedDay, notesBacklog, lessonsSeeding };
 }
 
 /** The directive notes a run may carry: the plan charter's stop target and the bugfix flake

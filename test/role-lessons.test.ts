@@ -26,7 +26,101 @@ import {
   validateRoleLesson,
   writeRoleLessons,
   clearRoleLessons,
+  roleLessonUsage,
 } from "../src/roles/role-notes-write.js";
+
+test("roleLessonUsage reports the count the add cap refuses at, and counts the marker line", () => {
+  const file = lessonsFile();
+  for (let n = 1; n <= ROLE_LESSONS_MAX_COUNT; n++) addRoleLesson(file, `lesson ${n}`, "2026-11-12");
+  const store = readRoleLessons(file);
+  // The 12-lesson store the "a 13th lesson is refused with the count cap" case builds: the count
+  // is the figure `addRoleLesson` compares against ROLE_LESSONS_MAX_COUNT, so 12 is the figure a
+  // refusal names. The byte figure is the writer's own — the file it just wrote, marker line
+  // included — and so exceeds roleLessonsText's length, which drops the marker and the newline.
+  assert.equal(roleLessonUsage(store.lessons, store.nextId).lessons, ROLE_LESSONS_MAX_COUNT);
+  assert.equal(roleLessonUsage(store.lessons, store.nextId).bytes, fs.statSync(file).size);
+  assert.ok(
+    roleLessonUsage(store.lessons, store.nextId).bytes > Buffer.byteLength(roleLessonsText(store.lessons), "utf8"),
+    "the figure counts the marker line roleLessonsText drops",
+  );
+});
+
+test("roleLessonUsage reports the whole-file figure the byte cap refuses at", () => {
+  const file = lessonsFile();
+  // The store the whole-file byte-cap case builds: six lessons of 290 bytes of text each, under
+  // the 2 KB cap, so the seventh of the same size is what the writer refuses. Worked out from the
+  // file format contract: the next-id marker, one lesson line each, a trailing newline.
+  for (let n = 1; n <= 6; n++) addRoleLesson(file, "a".repeat(290), "2026-11-12");
+  const store = readRoleLessons(file);
+  const line = (n: number): string => `- L${n} (2026-11-12): ${"a".repeat(290)}`;
+  const under = `<!-- next: L7 -->\n${[1, 2, 3, 4, 5, 6].map(line).join("\n")}\n`;
+  assert.equal(roleLessonUsage(store.lessons, store.nextId).bytes, Buffer.byteLength(under, "utf8"));
+  assert.ok(roleLessonUsage(store.lessons, store.nextId).bytes < ROLE_LESSONS_MAX_BYTES, "six lessons fit");
+  // The store the refused seventh add would have produced: the same figure writeRoleLessons
+  // enforced when it threw, above the cap. A count read off the next-id marker instead of the
+  // stored lessons would fail this assertion.
+  const after = [...store.lessons, { id: "L7", date: "2026-11-12", text: "a".repeat(290) }];
+  const over = `<!-- next: L8 -->\n${[1, 2, 3, 4, 5, 6, 7].map(line).join("\n")}\n`;
+  assert.equal(roleLessonUsage(after, 8).bytes, Buffer.byteLength(over, "utf8"));
+  assert.ok(roleLessonUsage(after, 8).bytes > ROLE_LESSONS_MAX_BYTES, "seven lessons pass the cap");
+  assert.equal(roleLessonUsage(after, 8).lessons, 7);
+});
+
+test("roleLessonUsage of the empty store counts no lesson and names the marker-only file", () => {
+  const file = lessonsFile();
+  // The empty store on disk is the marker line alone (writeRoleLessons with no lessons); its byte
+  // figure is that file's size — the room the whole-file cap leaves for the first add.
+  assert.deepEqual(roleLessonUsage(readRoleLessons(file).lessons, readRoleLessons(file).nextId), {
+    lessons: 0,
+    bytes: Buffer.byteLength("<!-- next: L1 -->\n", "utf8"),
+  });
+});
+
+test("roleLessonUsage counts a retired lesson as gone, the way the add cap counts it", () => {
+  const file = lessonsFile();
+  addRoleLesson(file, "first", "2026-11-12"); // L1
+  addRoleLesson(file, "second", "2026-11-13"); // L2
+  retireRoleLesson(file, "L1");
+  const store = readRoleLessons(file);
+  // The count is the lessons the store holds — the figure `addRoleLesson` compares against the
+  // 12-lesson cap — so retiring one frees room; the id is still never reused (the marker keeps
+  // L3). The byte figure is the rendered file, marker line included. If the count came from the
+  // marker instead of the lessons, this assertion would fail.
+  assert.equal(roleLessonUsage(store.lessons, store.nextId).lessons, 1);
+  assert.equal(
+    roleLessonUsage(store.lessons, store.nextId).bytes,
+    Buffer.byteLength("<!-- next: L3 -->\n- L2 (2026-11-13): second\n", "utf8"),
+  );
+});
+
+test("roleLessonUsage measures UTF-8 bytes, not characters", () => {
+  const file = lessonsFile();
+  addRoleLesson(file, "a é in the text", "2026-11-12"); // é is 2 UTF-8 bytes
+  const store = readRoleLessons(file);
+  const rendered = "<!-- next: L2 -->\n- L1 (2026-11-12): a é in the text\n";
+  assert.equal(roleLessonUsage(store.lessons, store.nextId).bytes, Buffer.byteLength(rendered, "utf8"));
+  assert.ok(
+    roleLessonUsage(store.lessons, store.nextId).bytes > rendered.length,
+    "the byte figure exceeds the character count",
+  );
+});
+
+test("roleLessonUsage of a hand-edited file reports the writer's re-render, not the raw bytes", () => {
+  const file = lessonsFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // A hand edit that drops the store's trailing newline still parses (parseRoleLessons drops at
+  // most one trailing empty line), but the figure is what the next write re-renders — the
+  // writer's text, which always ends in a newline. So the prompt's figure and `tumwater doctor`'s
+  // `role notes` row, which reports the raw file's bytes (src/status/status-role-notes.ts), can
+  // differ on a hand-edited store. A count read off the next-id marker would fail this too.
+  const handEdited = "<!-- next: L3 -->\n- L1 (2026-11-12): first\n- L2 (2026-11-13): second";
+  fs.writeFileSync(file, handEdited);
+  const store = readRoleLessons(file);
+  const rendered = `${handEdited}\n`;
+  assert.equal(roleLessonUsage(store.lessons, store.nextId).bytes, Buffer.byteLength(rendered, "utf8"));
+  assert.equal(roleLessonUsage(store.lessons, store.nextId).bytes, fs.statSync(file).size + 1);
+  assert.equal(roleLessonUsage(store.lessons, store.nextId).lessons, 2);
+});
 
 /** A lessons file path under a fresh temp dir. */
 function lessonsFile(): string {

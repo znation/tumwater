@@ -627,7 +627,10 @@ the durable conclusions a role's earlier runs kept (a still-true, reusable lesso
 point-in-time recollection) — the operator twin of the `<role-lessons>` block a run is asked to
 check before acting on them. They live at `.tumwater/state/notes/<role>.md` and
 `.tumwater/state/notes/lessons/<role>.md` respectively. The note is capped at 4 KB; a lessons
-store holds at most 12 lessons of at most 300 bytes each (2 KB whole file). A run sees the note
+store holds at most 12 lessons of at most 300 bytes each (2 KB whole file). A run also sees how
+full its own lessons store stands — its lesson count and its byte size, each against that cap — in
+the lead of its `<role-lessons>` block, so a run nearing the cap curates instead of discovering it
+from a refused `lesson add`. A run sees the note
 when one exists, along with the day it was last saved and how many days ago that was, and may replace it
 by running `tumwater-notes write` on every backend; it may add, replace, or retire a lesson with
 `tumwater-notes lesson add` / `replace` / `retire`, and sees its stored lessons in the run prompt
