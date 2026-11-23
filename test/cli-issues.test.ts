@@ -270,7 +270,11 @@ test("issues --grep keeps whole-list positions so --show addresses the same issu
   assert.match(lines[1]!, /^1\. #3 — Report totals drift/, "a title match keeps its whole-list number");
   const byNumber = await cli(repo, "issues", "--grep", "12");
   const numLines = byNumber.stdout.trimEnd().split("\n");
-  assert.equal(numLines[1]!, "3. #12 — A quiet request — untrusted, mirrored, updated 12d ago", "a numeric pattern matches the number and keeps its whole-list position");
+  assert.match(
+    numLines[1]!,
+    /^3\. #12 — A quiet request — untrusted, mirrored, updated \d+d ago$/,
+    "a numeric pattern matches the number and keeps its whole-list position; the age is a day span, since it reads off the real clock",
+  );
   const none = await cli(repo, "issues", "--grep", "nothing-here");
   assert.equal(none.code, 0);
   assert.equal(none.stdout.trim(), 'no GitHub issues match "nothing-here"');
