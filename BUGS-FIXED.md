@@ -5,6 +5,71 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### An event type added to the `HarnessEvent` union is forced to have a label by tsc but its digest classification is checked only by a runtime test the budgeted gate may skip, so new event types land main red on that guard (found by the selfcheck role 2026-11-23) — fixed 2026-11-23 by the bugfix role
+
+**Cluster.** `check failed (npm run test:gate): ✖ every event type is replayed or explicitly excluded — …`
+(1×, feature-3, 11-22, post-merge rejection — so the commit had already reached main). The same guard held main red
+twice on 2026-11-21, verified by a first-parent walk comparing `git show <c>:src/events/event-labels.ts` against
+`git show <c>:src/failure/failure-state-change.ts` at every commit: `55f36129d` (12:40, "Scan open GitHub issues
+hourly into a mirror-state ledger") and `f46a13980` (12:44, "Log a review_dropped event when a post-merge review is
+dropped") left it red until `5928d5538` (12:55, coverage #1001, "Classify review_dropped and github_issues_unavailable
+in failure-state-change") — 15 minutes — and `d4ea1c618` (13:05) reddened it again
+through `f27753fd5` (13:16) and `77fff10b3` (13:47) until `ae80f726f` (14:14, ci #255, "Classify new github_issue_*
+events …") — 69 minutes. Those five merged commits each added an event type named in neither
+`STATE_CHANGE_FAMILY` nor `STATE_CHANGE_EXCLUDED_TYPES`; none classified its own type.
+
+**The wrong response (why this is a bug, not weather).** The label half of that guarantee is compile-enforced:
+`EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>>` (src/events/event-labels.ts:11) makes a missing
+label a build error, so every one of those commits had its label. The classification half is
+`Partial<Record<HarnessEvent["type"], (ev: HarnessEvent) => string>>` (src/failure/failure-state-change.ts:30-31),
+so a missing entry is legal TypeScript, and the only thing that fails on it is one runtime test
+(test/failure-state-change.test.ts:73, "every event type is replayed or explicitly excluded"). The merge gate runs
+`npm run test:gate` = the affected tests under a 20 s budget, so the guard that a change is one import hop from
+runs only if the budget happens to leave room for it: the change passes its own gate, main goes red, and the repair
+is a separate ci or coverage run that re-derives the cause from scratch. The digest prices that repair: coverage
+#1001 took 33 turns and ci #255 47 turns (their own WHY lines say the full check catches what the gate's
+affected-only run misses), and the 11-22 occurrence reached a post-merge rejection at all — a commit already on
+main, which is never re-reviewed.
+
+**Reproduce.** Offline and deterministic, no model: replay the selection over each of the five commits' changed-file
+lists with the current test-cost ledger. The guard ranks at distance 1 for all five, and `fitBudget` leaves it in
+`fit.left` for `77fff10b3`'s list (7 test files run, 19 994 ms of the 20 000 ms budget, 10 118 ms of it already
+spent on the `POLICY_SCANS` scans) while it fits inside the budget for the other four lists today. Whether the
+guard runs therefore depends on the cost ledger of the moment, not on the change — that is the defect.
+
+**Fix direction.** Move the guarantee from the budgeted test to the compiler, where it costs the gate nothing: make
+the classification one exhaustive object literal keyed by every event type —
+`Record<HarnessEvent["type"], ((ev: HarnessEvent) => string) | null>` with `null` naming a deliberately excluded
+type — and derive `STATE_CHANGE_TYPES` (from the function entries) and `STATE_CHANGE_EXCLUDED_TYPES` (from the
+`null` entries) from it. A new union member is then a tsc error until its author classifies it, exactly as the
+label already is. That shape also closes a live defect the current guard cannot see: `github_issues_unavailable` is
+listed twice in the excluded set's literal (src/failure/failure-state-change.ts:125 and :148), `new Set` collapses
+the duplicate, and the test's partition assertion passes over it — a repeated key in an object literal is a compile
+error. Keep test/failure-state-change.test.ts:73 as the runtime pin over the derived sets.
+
+**Not this fix.** Registering `test/failure-state-change.test.ts` in `POLICY_SCANS` — the fix that closed the same
+family in BUGS-FIXED.md's "The self-scan guard for the tmpdir rule is not in `POLICY_SCANS`, so the budgeted gate
+passes over it and a change that adds offenders lands main red" (found 2026-11-17, fixed 2026-11-19) — would spend
+the guard on every gate whatever the change touches; that family's guard is genuinely repo-wide, this one is
+distance-1 to the file the change already had to edit. Raising the budget is off the table: QUESTIONS.md's "Should a
+change to a widely read default run more than the budgeted gate?" (asked by the plan role 2026-11-21) was answered
+the same day with option (a), keep the 20 s trade-off. The compile-time route keeps that trade-off and removes the
+failure.
+
+**Fix.** `STATE_CHANGE_CLASSIFICATION` is the one exhaustive `Record` over the whole event union — a builder per
+replayed type, `null` per excluded type, module-private — and `STATE_CHANGE_TYPES`, `STATE_CHANGE_EXCLUDED_TYPES`
+and `describeStateChange` all read it, so the sets can no longer disagree with the classification. `Partial` is gone,
+so a new union member is a missing-key error on the change that adds it: re-running the reproduction — add a type to
+the union, give it a label and a feed-table entry, leave the classification untouched — went from no compile error to
+TS2741 naming the missing member, and the old double-listed `github_issues_unavailable` is one entry. The runtime
+partition test stays, plus a test that parses this module's table for the shape the compile guarantee rests on: one
+table keyed by the union, no `Partial`, a `null` value available, one key per event type. INV-D4 in docs/invariants.md
+pins the guarantee.
+
+**Validation gap:** none — the existing suite reproduced it and named the guard outright, so what was hard was
+confirming the fix: no runtime observation of the fixed module tells an exhaustive table from a `Partial` one, so the
+reproduction had to be an injected union member checked against the compiler and the new test pins that shape.
+
 ### `reset-counters --role <base>` / `wake --role <base>` reach a role's whole instance family only while a team is live, so the same command on a stopped team leaves every instance row dirty (found by the qa role 2026-11-23) — fixed 2026-11-23 by the bugfix role
 
 **Symptom.** With no team running, `tumwater reset-counters --role feature` prints `counters reset for feature` and zeroes only `.tumwater/state/feature.json`; the `feature #2` row `tumwater status` still shows keeps its runs, commits, tokens and cost. The identical command with a live team zeroes the whole family, because the marker consumer fans a base id out through `baseRole` — docs/invariants.md INV-AQ5 states it outright: "A base id in the marker still reaches every instance of it while the team is live." Same command, same confirmation line, different result depending on whether a fleet happens to be up. `tumwater wake --role <base>` has the same shape offline: instance 2 keeps its backoff and its future `nextRunAt`, so the `tumwater start` the confirmation promises runs instance 1 immediately and leaves instance 2 sleeping out its old schedule. The dashboard is hit through the same path: the Roles card's **Reset counters** button posts `{}`, which `configuredRoleIds` resolves to the base ids only (INV-AQ5 pins that list as `resetTargetRoles`' base-id subset), and its own button title promises "Zero every role's runs, commits, tokens, and cost" — with no team running, every instance row survives it. The 2026-11-21 fix (BUGS-FIXED.md, "Offline `tumwater reset-counters` with no `--role` zeroes only base roles") widened only the bare form; `--role` and the endpoint kept the base-only write.

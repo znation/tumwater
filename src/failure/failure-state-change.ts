@@ -14,21 +14,27 @@ import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, commitsBehindP
 import { shortSha } from "../text/format.js";
 import { deferredReasonText, untilClockSuffix, gigabytes, windowSuffix, windowResetPhrase, backendLabel } from "../events/event-format.js";
 
-/** The transition events the digest replays: the decisions the harness made about itself (the
- * cap/team gates and the team hold, the error-streak breaker's pause, the role's own daily
- * cap, live-config edits, self-hosted redeploys, need-based deferrals,
- * orchestrator lifecycle, and the gate holds/lifts that stop and restart work — low disk,
- * quiet hours, the maintenance allowance and the subscription-window reserve). Everything the
- * set omits is deliberately excluded and named in STATE_CHANGE_EXCLUDED_TYPES; the two sets
- * partition EVENT_TYPE_LABELS' keys, so a new event type must land in exactly one of them and
- * cannot ship unclassified. The wiring twins `fallback_switched` and `budget_handback` are the
- * run-side consequence of `budget_resumed` — the budget/window reopening that aborts in-flight
- * fallback runs so their next run continues on the primary. The rest are the evidence the
- * selfcheck role's load-bearing rule asks it to
- * judge — whether the harness's RESPONSE to a failure was wrong (plans/telemetry-role.md) —
- * so they sit beside the outcomes rather than being dropped. */
-const STATE_CHANGE_FAMILY: Partial<
-  Record<HarnessEvent["type"], (ev: HarnessEvent) => string>
+/** Every event type, classified once: the builder that renders its Team state change line, or
+ * `null` for a type the digest deliberately does not replay. The replayed half is the decisions
+ * the harness made about itself (the cap/team gates and the team hold, the error-streak breaker's
+ * pause, the role's own daily cap, live-config edits, self-hosted redeploys, need-based
+ * deferrals, orchestrator lifecycle, and the gate holds/lifts that stop and restart work — low
+ * disk, quiet hours, the maintenance allowance and the subscription-window reserve). The wiring
+ * twins `fallback_switched` and `budget_handback` are the run-side consequence of
+ * `budget_resumed` — the budget/window reopening that aborts in-flight fallback runs so their
+ * next run continues on the primary. The `null` half is the evidence the selfcheck role's
+ * load-bearing rule asks it to judge — whether the harness's RESPONSE to a failure was wrong
+ * (plans/telemetry-role.md) — so it sits beside the outcomes rather than being dropped.
+ *
+ * The type is the guarantee, not a test: an exhaustive `Record` over the union, so a new event
+ * type is a compile error until its author classifies it, exactly as `EVENT_TYPE_LABELS` already
+ * demands its label, and a type named twice is a compile error too. That is why the table is one
+ * literal instead of a replayed set plus a separate excluded list: a classification the budgeted
+ * gate checked only with a runtime test let an unclassified type reach main (BUGS.md 2026-11-23).
+ * `STATE_CHANGE_TYPES` and `STATE_CHANGE_EXCLUDED_TYPES` are derived from it. */
+const STATE_CHANGE_CLASSIFICATION: Record<
+  HarnessEvent["type"],
+  ((ev: HarnessEvent) => string) | null
 > = {
   // Budget and window reopening.
   budget_paused: budgetStateChange,
@@ -75,84 +81,89 @@ const STATE_CHANGE_FAMILY: Partial<
   orchestrator_stop: lifecycleStateChange,
   supervisor_exit: lifecycleStateChange,
   bootstrap_complete: lifecycleStateChange,
+
+  // Excluded: run, merge and main-watch outcomes and per-run bookkeeping.
+  run_start: null,
+  run_end: null,
+  merge_queued: null,
+  merge_cancelled: null,
+  merge_topped: null,
+  merge_done: null,
+  merge_failed: null,
+  merged: null,
+  counters_reset: null,
+  run_aborted: null,
+  resume: null,
+  wake: null,
+  operator_revert: null,
+  build_check: null,
+  dep_install: null,
+  budget_warning: null,
+  role_cap_warning: null,
+  main_check: null,
+  main_culprit: null,
+  main_red_hold: null,
+  warning: null,
+  // Excluded: reviews and revisions.
+  review_start: null,
+  review_verdict: null,
+  review_rejected: null,
+  review_failed: null,
+  review_dropped: null,
+  revision: null,
+  conflict_handback: null,
+  // Excluded: inbox and backlog.
+  question_posted: null,
+  issue_filed: null,
+  remote_ci_failed: null,
+  github_issues_unavailable: null,
+  github_issue_closed: null,
+  github_issue_declined: null,
+  github_issue_queued: null,
+  github_issue_upstream_closed: null,
+  entry_refused: null,
+  prompt_enqueued: null,
+  prompt_cancelled: null,
+  prompt_edited: null,
+  prompt_topped: null,
+  prompt_taken: null,
+  // Excluded: per-run advisories and assignments.
+  claim: null,
+  permit_reserve: null,
+  slot_wait: null,
+  provider_wait: null,
+  check_wait: null,
+  // Excluded: observations and actions.
+  disk_reclaim: null,
+  model_check_busy: null,
+  maintenance_start: null,
+  maintenance_done: null,
+  image_blind: null,
+  // Excluded: state-adjacent but not self-decisions.
+  state_migrated: null,
+  restart_forced: null,
+  backend_binary: null,
+  opencode_free_model_billed: null,
+  image_reroute: null,
 };
 
-/** The event types the digest replays, derived from STATE_CHANGE_FAMILY's keys so the filter
- * set can never drift from the dispatch. */
-export const STATE_CHANGE_TYPES = new Set<string>(Object.keys(STATE_CHANGE_FAMILY));
+/** The event types the digest replays — the classification table's function entries, derived from
+ * it so the filter set can never drift from the dispatch. */
+export const STATE_CHANGE_TYPES = new Set<string>(
+  Object.entries(STATE_CHANGE_CLASSIFICATION)
+    .filter(([, build]) => build !== null)
+    .map(([type]) => type),
+);
 
-/** The event types the digest deliberately does not replay, one per EVENT_TYPE_LABELS key that
- * is not a STATE_CHANGE_TYPES member. Together with STATE_CHANGE_TYPES it partitions
- * EVENT_TYPE_LABELS' keys, so a new event type must be classified in one set or the other — the
- * disjoint-and-covering commitment the digest's Team state changes section rests on. Grouped by
- * reason, one line per group (the run-outcome half, the per-run advisories and the observations
- * were named in the older comment; the state-adjacent group is newly listed). */
-export const STATE_CHANGE_EXCLUDED_TYPES = new Set<string>([
-  // Run, merge and main-watch outcomes and per-run bookkeeping.
-  "run_start",
-  "run_end",
-  "merge_queued",
-  "merge_cancelled",
-  "merge_topped",
-  "merge_done",
-  "merge_failed",
-  "merged",
-  "counters_reset",
-  "run_aborted",
-  "resume",
-  "wake",
-  "operator_revert",
-  "build_check",
-  "dep_install",
-  "budget_warning",
-  "role_cap_warning",
-  "main_check",
-  "main_culprit",
-  "main_red_hold",
-  "warning",
-  // Reviews and revisions.
-  "review_start",
-  "review_verdict",
-  "review_rejected",
-  "review_failed",
-  "review_dropped",
-  "revision",
-  "conflict_handback",
-  // Inbox and backlog.
-  "question_posted",
-  "issue_filed",
-  "remote_ci_failed",
-  "github_issues_unavailable",
-  "github_issue_closed",
-  "github_issue_declined",
-  "github_issue_queued",
-  "github_issue_upstream_closed",
-  "entry_refused",
-  "prompt_enqueued",
-  "prompt_cancelled",
-  "prompt_edited",
-  "prompt_topped",
-  "prompt_taken",
-  // Per-run advisories and assignments.
-  "claim",
-  "permit_reserve",
-  "slot_wait",
-  "provider_wait",
-  "check_wait",
-  // Observations and actions.
-  "disk_reclaim",
-  "model_check_busy",
-  "maintenance_start",
-  "maintenance_done",
-  "image_blind",
-  "github_issues_unavailable",
-  // State-adjacent but not self-decisions.
-  "state_migrated",
-  "restart_forced",
-  "backend_binary",
-  "opencode_free_model_billed",
-  "image_reroute",
-]);
+/** The event types the digest deliberately does not replay — the classification table's `null`
+ * entries. Together with STATE_CHANGE_TYPES it partitions EVENT_TYPE_LABELS' keys, so every event
+ * type is classified in exactly one set or the other — the disjoint-and-covering commitment the
+ * digest's Team state changes section rests on, and the one the compiler now enforces. */
+export const STATE_CHANGE_EXCLUDED_TYPES = new Set<string>(
+  Object.entries(STATE_CHANGE_CLASSIFICATION)
+    .filter(([, build]) => build === null)
+    .map(([type]) => type),
+);
 
 /** The Team state changes section's caps: newest N transitions, each line's payload capped at
  * STATE_CHANGE_MAX (a marked word-boundary cut per truncateExample), each free field within it
@@ -499,7 +510,7 @@ function lifecycleStateChange(ev: HarnessEvent): string {
  * timestamp and a roleCell-sliced role, so no unbounded field reaches the page. */
 export function describeStateChange(ev: HarnessEvent): string {
   return truncateExample(
-    STATE_CHANGE_FAMILY[ev.type]?.(ev) ?? ev.type,
+    STATE_CHANGE_CLASSIFICATION[ev.type]?.(ev) ?? ev.type,
     STATE_CHANGE_MAX,
   );
 }

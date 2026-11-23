@@ -554,6 +554,25 @@ title" and "extractFiled returns null when absent, empty, or only mid-sentence";
 — "a cut-off feedback run with filed records nothing" and "a failed feedback ledger write warns
 and the no_change run stands".
 
+### INV-D4: the digest classifies every event type in one exhaustive table, so an unclassified type is a compile error
+
+**Guarantee.** One `Record<HarnessEvent["type"], builder | null>` object is the whole
+classification of the event union as a state change or not, and the replayed set and the excluded
+set are both *derived* from it. A type the union gains must be classified in that same edit — a
+missing member is `TS2741` — and a type cannot be named twice (an object literal with duplicate
+constant keys is a TS error), so no event type can reach main unclassified. The runtime partition
+is a second line of defence, not the guarantee: the budgeted gate may skip its test file, but
+`test:gate` type-checks every change.
+
+**Binds.** `src/failure/failure-state-change.ts` (`STATE_CHANGE_CLASSIFICATION`, the derived
+`STATE_CHANGE_TYPES` and `STATE_CHANGE_EXCLUDED_TYPES`), `src/events/events.ts` (the union).
+
+**Pinned by.** `test/failure-state-change.test.ts` — "the digest classifies every event type
+exactly once in one exhaustive table" (parses the module: one table, no `Partial`, a `null` member
+available, one key per event type) and "every event type is replayed or explicitly excluded";
+`test/agent-backend.test.ts` and `test/event-format.test.ts` pin the union's label and feed-table
+totality, which the injection reproduction exercised alongside this one.
+
 ## Bounded waits: a step that produces no verdict cannot hold its caller forever
 
 A wait on something outside tumwater — a spawned child, a probe — is bounded so a hang is

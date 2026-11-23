@@ -1,5 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
+import { repoRoot } from "./helpers/repo-root.js";
 import {
   describeStateChange,
   STATE_CHANGE_TOP,
@@ -85,6 +90,63 @@ test("every event type is replayed or explicitly excluded", () => {
   for (const t of STATE_CHANGE_EXCLUDED_TYPES) {
     assert.ok(Object.hasOwn(EVENT_TYPE_LABELS, t), `excluded type ${t} is not an event type`);
   }
+});
+
+/** The one object literal in this module whose type annotation is keyed by the event union — the
+ * classification table the two sets above are derived from — with its annotation text.
+ * A spread or shorthand member has no name to pin, so the reader must keep the table plain. */
+function classificationTable(source: string): { annotation: string; table: ts.ObjectLiteralExpression } | undefined {
+  const file = ts.createSourceFile("failure-state-change.ts", source, ts.ScriptTarget.Latest, true);
+  let found: { annotation: string; table: ts.ObjectLiteralExpression } | undefined;
+  for (const statement of file.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const decl of statement.declarationList.declarations) {
+      const init = decl.initializer;
+      if (decl.type === undefined || init === undefined) continue;
+      if (!ts.isObjectLiteralExpression(init)) continue;
+      const annotation = decl.type.getText();
+      if (!annotation.includes('HarnessEvent["type"]')) continue;
+      found = { annotation, table: init };
+    }
+  }
+  return found;
+}
+
+test("the digest classifies every event type exactly once in one exhaustive table", () => {
+  // The partition above is a runtime pin, and the budgeted gate (`npm run test:gate`) may skip
+  // this file, so a new event type used to be able to reach main unclassified (BUGS.md
+  // 2026-11-23). The guarantee lives in the type instead: one object literal over the whole
+  // union, with `null` naming a type the digest does not replay. `test:gate` compiles every
+  // change, so an unclassified type, a `Partial` that hides one, and a type named twice are all
+  // compile errors on the commit that adds them. This test pins that shape, since no runtime
+  // observation of the fixed module can tell an exhaustive table from a `Partial` one.
+  const source = fs.readFileSync(
+    path.join(
+      repoRoot(fileURLToPath(new URL(".", import.meta.url))),
+      "src", "failure", "failure-state-change.ts",
+    ),
+    "utf8",
+  );
+  const found = classificationTable(source);
+  assert.ok(found !== undefined, "no classification object keyed by HarnessEvent[\"type\"]");
+  const { annotation, table } = found;
+  assert.ok(!annotation.includes("Partial<"), `classification is a Partial, so a missing type compiles: ${annotation}`);
+  assert.ok(annotation.includes("null"), `no null in ${annotation}: an excluded type has nothing to name`);
+
+  const keys: string[] = [];
+  for (const prop of table.properties) {
+    if (!ts.isPropertyAssignment(prop) || !(ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name))) {
+      assert.fail(`classification table member ${prop.getText().slice(0, 40)} is not a plain name: value pair`);
+    }
+    keys.push(prop.name.text);
+  }
+  const duplicates = keys.filter((k, i) => keys.indexOf(k) !== i);
+  assert.deepEqual(duplicates, [], "a type classified twice");
+  assert.deepEqual(
+    [...keys].sort(),
+    Object.keys(EVENT_TYPE_LABELS).sort(),
+    "the table does not name every event type once",
+  );
 });
 
 test("budget_paused leads with the breaker demotion cause when a fallback was demoted", () => {
