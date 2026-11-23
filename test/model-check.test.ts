@@ -499,14 +499,17 @@ test("a probe that stays silent while the pair answers the team's own runs defer
   answer("flintrunner/flint", { ok: false, reason: "wrong answer", reply: "salad" });
   await gate.settled();
   assert.equal(gate.checks["flintrunner/flint"]?.status, "failed", "a wrong answer fails the pair even while it answers the team");
-  // A pair already failed keeps its own doubled back-off: a busy probe does not clear it.
+  // A pair already failed keeps its own doubled back-off, and the busy signal does not defer it:
+  // the answer lands after this probe starts, yet the silent probe still fails again and doubles.
   const retryBefore = gate.checks["flintrunner/flint"]?.retryMs;
   now += POLICY.retryMs * 2;
+  feature.setAnswered("flintrunner/flint", now + 1_000);
   gate.recheckNow();
   poll();
   answer("flintrunner/flint", { ok: false, reason: "no reply", reply: "" });
   await gate.settled();
   assert.equal(gate.checks["flintrunner/flint"]?.retryMs, 2 * retryBefore, "the failed pair's back-off doubles as today");
+  assert.equal(eventsOfType(root, "model_check_busy").length, 1, "a failed pair's silent probe defers nothing");
 });
 
 test("a run waiting on an unanswered request re-checks its pair at the suspicion rate and is handed back once it fails", async () => {
