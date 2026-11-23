@@ -78,12 +78,24 @@ export function finishedKey(title: string, dateRe: RegExp): string {
  * over the merge-base count: a duplicate already on main stays the plan role's to retire through
  * its `<duplicate-plans>` block. Names the existing entry, and the unmerged change's role and SHA
  * when the existing one comes from a pending change, and says to drop the copy or fold what it
- * adds into the existing entry. At most one finding: the first new duplicate in file order. */
+ * adds into the existing entry. At most one finding: the first new duplicate in file order.
+ *
+ * `archive` (PLANS-DONE.md at main's tip, empty by default) adds a second arm: a new `## Planned`
+ * entry whose finished identity — `finishedKey` with FINISHED_PLAN_RE, the identity
+ * `finishedDuplicateFindings` uses, so the `(planned …)`/`(done …)` stamps and the trailing
+ * `— done …` epitaph are all invisible — a `## Done` entry in the archive already holds. The
+ * 2026-11-23 incident: a plan run re-added under `## Planned` a plan another run had merged and
+ * archived, and no guard compared the two files, so finished work was handed back out as open
+ * work. Retired archive entries are skipped: a retired plan was never built, so re-planning it is
+ * a reconsideration, not finished work re-added. The archive arm matches finished identity only —
+ * a reused series part label is not the same plan once the parts are archived separately. Like the
+ * planned-set arm, this is a staging finding, never a merge-gate refusal. */
 export function duplicatePlanFinding(
   head: string,
   base: string,
   pending: readonly PendingPlanChange[],
   current: string = base,
+  archive = "",
 ): string | undefined {
   interface Identity {
     key: string;
@@ -103,8 +115,25 @@ export function duplicatePlanFinding(
   for (const e of parseEntryDetails(current, "Planned")) consider(e.title);
   for (const change of pending) for (const e of change.added) consider(e.title, change);
   const baseKeys = new Set(parseEntryDetails(base, "Planned").map((e) => entryKey(e.title)));
+  // The archive arm's known set: the finished identity of every non-retired `## Done` entry the
+  // archive holds.
+  const finishedHeld = new Map<string, string>();
+  for (const e of parseEntryDetails(archive, "Done")) {
+    if (isRetiredTitle(e.title)) continue;
+    const key = finishedKey(e.title, FINISHED_PLAN_RE);
+    if (!finishedHeld.has(key)) finishedHeld.set(key, e.title);
+  }
   for (const e of parseEntryDetails(head, "Planned")) {
     if (baseKeys.has(entryKey(e.title))) continue; // Only new entries count.
+    const archived = finishedHeld.get(finishedKey(e.title, FINISHED_PLAN_RE));
+    if (archived !== undefined) {
+      return (
+        `this change adds PLANS.md "## Planned" entry "${truncate(e.title, 160)}", but that plan is ` +
+        `already finished: PLANS-DONE.md holds "${truncate(archived, 160)}" — drop the copy, or fold what it ` +
+        "adds into the archived entry, before this change commits; a re-added plan is repairable, so this " +
+        "is a staging finding, not a merge-gate refusal"
+      );
+    }
     const p = seriesPart(e.title);
     const part = p === null ? null : partKey(p.series, p.part);
     const hit = known.find((k) => k.key === entryKey(e.title) || (part !== null && k.part === part));

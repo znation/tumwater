@@ -1133,16 +1133,26 @@ records the claim its run worked, so the merge can drop it once main deletes the
 and the revision, and marks the entry"; `test/run-apply.test.ts` — "a withdrawn merge ends the change's life without a
 strike against its author".
 
-### INV-N6: a change that adds a duplicate `## Planned` entry, or retires a plan on evidence that does not check out, gets its fix-up turn at staging
+### INV-N6: a change that adds a duplicate `## Planned` entry, re-plans a finished plan, or retires a plan on evidence that does not check out, gets its fix-up turn at staging
 
 **Guarantee.** `stageCheckFindings` (given the pending snapshot) reports (a) a `## Planned`
 entry the change adds over its merge-base with main whose entry key or series part label a planned
 entry on main's tip at staging or in an unmerged change already carries — the latter named with
-its role and short SHA (`duplicatePlanFinding`) — and (b) a plan entry it newly retires over the
+its role and short SHA (`duplicatePlanFinding`) —, (b) a plan entry it newly retires over the
 change's merge-base
 whose Retired note cites a short SHA main's tip does not contain, or a double-quoted surviving
 title no `## Planned` or done (not retired) `## Done` heading carries by `finishedKey`
-(`retireEvidenceFinding`). Only newly added and newly retired entries count; evidence with
+(`retireEvidenceFinding`), and (c) a `## Planned` entry the change adds over its merge-base whose
+finished identity (`finishedKey` with `FINISHED_PLAN_RE`, so the `(planned …)` stamp and the
+done/retired epitaph are invisible) a non-retired `## Done` entry in PLANS-DONE.md **at main's tip
+at staging** already holds — the plan-side twin of INV-N7: on 2026-11-22 two plan runs re-added
+under `## Planned` plans main had built and archived minutes earlier, and no guard compared the
+two files, so finished work was handed back out as open work. The archive arm keys on finished
+identity, not exact title text, because the re-added copies were reworded and restamped; a retired
+archive entry is skipped, since re-planning a plan that was never built is a reconsideration. As
+in INV-N7, reading the archive at main's tip is what catches the shape where the archive move
+lands while the run works; a git hiccup falls back to the worktree's copy. Only newly added and
+newly retired entries count; evidence with
 neither a SHA nor a quoted title passes, for the post-merge review to judge. This is a staging
 finding only — a duplicate is repairable by a later edit, so it is never a merge-gate refusal.
 A git hiccup yields no finding.
@@ -1156,7 +1166,11 @@ pending change, and stays quiet for edits and pre-existing duplicates", "retireE
 checks a cited SHA against main's tip", "retireEvidenceFinding quotes a survivor a planned or
 done heading carries, and flags one that does not", "stageCheckFindings carries both the
 duplicate and the retire-evidence findings" and "stageCheckFindings names a duplicate of a plan
-main gained while the change ran".
+main gained while the change ran", plus the archive arm's four: "stageCheckFindings flags a
+PLANS.md planned entry the finished archive already holds", "a re-added plan whose planned date
+and body differ still matches the archived copy", "a re-added plan main archived while the change
+ran is flagged from main's tip" and "a fresh plan, a pre-existing planned twin, a done move, and a
+re-planned retiree stay quiet".
 
 ### INV-N7: a change that adds a `## Open` bug a closed record already holds gets its fix-up turn at staging
 

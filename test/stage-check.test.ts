@@ -1543,3 +1543,120 @@ test("a fresh open bug, a pre-existing open twin, and a fix move all stay quiet"
   fs.writeFileSync(path.join(move.wt, "BUGS.md"), bugsRecord("_None yet._\n", `### ${REFILED_TITLE} — fixed 2026-11-23 by the bugfix role\n\n**Fix:** it works now.\n`));
   assert.deepEqual(await stageCheckFindings(move.wt, "main", "selfcheck"), []);
 });
+
+// The re-added-finished-plan finding (BUGS.md "A plan run re-adds a merged, already-archived plan
+// under PLANS.md `## Planned`, and no guard compares `## Planned` against PLANS-DONE.md, so
+// finished work is handed back out as open work"): the plan side of the re-filed-bug guard
+// (INV-N7's twin in INV-N6).
+
+/** A PLANS-DONE.md whose `## Done` holds `entries` (headings). */
+function plansArchive(done: string): string {
+  return `# Plans done\n\n## Done\n\n${done}\n`;
+}
+
+const ARCHIVED_PLAN = "Give the issues card a search box (planned 2026-11-20, done 2026-11-22 by the feature role)";
+
+test("stageCheckFindings flags a PLANS.md planned entry the finished archive already holds", async () => {
+  const { wt } = await repoWith({
+    "PLANS.md": PLANS5("_None yet._", "_None yet._"),
+    "PLANS-DONE.md": plansArchive(`### ${ARCHIVED_PLAN}\n\nBuilt it.\n`),
+  });
+  // The run's own entry: the same heading without the done stamp, under `## Planned`.
+  fs.writeFileSync(
+    path.join(wt, "PLANS.md"),
+    PLANS5("### Give the issues card a search box (planned 2026-11-20)\n\nAdd a box.\n", "_None yet._"),
+  );
+
+  const findings = await stageCheckFindings(wt, "main", "plan");
+  assert.equal(findings.length, 1, `expected one finding, got ${JSON.stringify(findings)}`);
+  assert.match(findings[0]!, /PLANS\.md/);
+  assert.match(findings[0]!, /PLANS-DONE\.md/);
+  assert.match(findings[0]!, /already finished/);
+  assert.match(findings[0]!, /drop the copy/);
+});
+
+test("a re-added plan whose planned date and body differ still matches the archived copy", async () => {
+  // The incident's shape: the re-added copy carries a fresh `(planned …)` stamp and its own body,
+  // so an exact heading or entry-key compare would miss it — the finished identity strips both.
+  const { wt } = await repoWith({
+    "PLANS.md": PLANS5("_None yet._", "_None yet._"),
+    "PLANS-DONE.md": plansArchive(`### ${ARCHIVED_PLAN}\n\nBuilt it.\n`),
+  });
+  fs.writeFileSync(
+    path.join(wt, "PLANS.md"),
+    PLANS5("### Give the issues card a search box (planned 2026-11-24)\n\nA box over the issue list.\n", "_None yet._"),
+  );
+
+  const findings = await stageCheckFindings(wt, "main", "plan");
+  assert.equal(findings.length, 1, `expected one finding, got ${JSON.stringify(findings)}`);
+  assert.match(findings[0]!, /PLANS-DONE\.md/);
+});
+
+test("a re-added plan main archived while the change ran is flagged from main's tip", async () => {
+  // The archive move for the merged plan lands in main's PLANS-DONE.md while the plan run works,
+  // so the worktree's own archive never saw it — the same reason the closed-bug set is read at
+  // main's tip.
+  const { root, wt } = await repoWith({ "PLANS.md": PLANS5("_None yet._", "_None yet._") });
+  writeFileDeep(path.join(root, "PLANS-DONE.md"), plansArchive(`### ${ARCHIVED_PLAN}\n\nBuilt it.\n`));
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "archive the finished plan");
+  fs.writeFileSync(
+    path.join(wt, "PLANS.md"),
+    PLANS5("### Give the issues card a search box (planned 2026-11-24)\n\nA box over the issue list.\n", "_None yet._"),
+  );
+
+  const findings = await stageCheckFindings(wt, "main", "plan");
+  assert.equal(findings.length, 1, `expected one finding, got ${JSON.stringify(findings)}`);
+  assert.match(findings[0]!, /PLANS-DONE\.md/);
+});
+
+test("a fresh plan, a pre-existing planned twin, a done move, and a re-planned retiree stay quiet", async () => {
+  const archived = plansArchive(`### ${ARCHIVED_PLAN}\n\nBuilt it.\n`);
+
+  // A genuinely new plan.
+  const fresh = await repoWith({
+    "PLANS.md": PLANS5("_None yet._", "_None yet._"),
+    "PLANS-DONE.md": archived,
+  });
+  fs.writeFileSync(
+    path.join(fresh.wt, "PLANS.md"),
+    PLANS5("### Something nobody planned yet (planned 2026-11-24)", "_None yet._"),
+  );
+  assert.deepEqual(await stageCheckFindings(fresh.wt, "main", "plan"), []);
+
+  // The twin the base's `## Planned` already held: not this change's doing, even reworded.
+  const pre = await repoWith({
+    "PLANS.md": PLANS5("### Give the issues card a search box (planned 2026-11-20)\n\nAdd a box.\n", "_None yet._"),
+    "PLANS-DONE.md": archived,
+  });
+  fs.writeFileSync(
+    path.join(pre.wt, "PLANS.md"),
+    PLANS5("### Give the issues card a search box (planned 2026-11-20)\n\nAdd a box, wider.\n", "_None yet._"),
+  );
+  assert.deepEqual(await stageCheckFindings(pre.wt, "main", "plan"), []);
+
+  // The done move itself: the entry leaves `## Planned` and lands in `## Done`, and the archive
+  // holds a different plan (an archive that already held this one would be the finished-duplicate
+  // finding INV-N6 already pins, not this arm's business).
+  const move = await repoWith({
+    "PLANS.md": PLANS5("### Give the issues card a search box (planned 2026-11-20)\n\nAdd a box.\n", "_None yet._"),
+    "PLANS-DONE.md": plansArchive("### Something built long ago (planned 2026-10-02, done 2026-10-04)\n\nDone.\n"),
+  });
+  fs.writeFileSync(
+    path.join(move.wt, "PLANS.md"),
+    PLANS5("_None yet._", `### Give the issues card a search box (planned 2026-11-20, done 2026-11-24)\n\nAdd a box.\n`),
+  );
+  assert.deepEqual(await stageCheckFindings(move.wt, "main", "plan"), []);
+
+  // A retired archive entry was closed without being built: re-planning it is a reconsideration,
+  // not finished work handed back out.
+  const retired = await repoWith({
+    "PLANS.md": PLANS5("_None yet._", "_None yet._"),
+    "PLANS-DONE.md": plansArchive("### Give the issues card a search box (planned 2026-11-20, retired 2026-11-22)\n\n**Retired 2026-11-22 by the user: declined.**\n"),
+  });
+  fs.writeFileSync(
+    path.join(retired.wt, "PLANS.md"),
+    PLANS5("### Give the issues card a search box (planned 2026-11-24)\n\nBuild it after all.\n", "_None yet._"),
+  );
+  assert.deepEqual(await stageCheckFindings(retired.wt, "main", "plan"), []);
+});

@@ -138,11 +138,16 @@ async function plansFindings(wt: string, mainBranch: string, pending: readonly P
   // pre-existing one. The other findings stay merge-base-relative. A failed read falls back to
   // the merge-base.
   const mainPlans = (await fileContentAt(wt, mainBranch, "PLANS.md")) || base;
+  // The finished-plan set comes from main's tip for the same reason: the archive move that
+  // follows a merge lands in main's PLANS-DONE.md while a plan run works, so the run's own
+  // worktree never sees it. A failed read falls back to the worktree's copy, and a missing
+  // archive reads as empty.
+  const mainArchive = (await fileContentAt(wt, mainBranch, PLANS_ARCHIVE).catch(() => "")) || readDirTextOrEmpty(wt, PLANS_ARCHIVE);
   const findings = [
     planDependencyFinding(head, base, archived),
     ungroundedRefusalFinding("PLANS.md", head, base),
     malformedNeedsReviewFinding("PLANS.md", head, base),
-    duplicatePlanFinding(head, base, pending, mainPlans),
+    duplicatePlanFinding(head, base, pending, mainPlans, mainArchive),
     await retireEvidenceFinding(wt, mainBranch, head, base).catch(() => undefined),
   ];
   return findings.filter((f): f is string => f !== undefined);
