@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { cancelScheduledStop, isTeamPaused, scheduleStop } from "../team/team-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../team/team-orchestrator-info.js";
@@ -27,6 +28,7 @@ import {
   resetRequestPath,
   restartRequestPath,
   scheduledWakeDir,
+  statePath,
   wakeRequestPath,
 } from "../paths.js";
 
@@ -67,6 +69,33 @@ function applyClause(live: boolean, when: string, verb: string): string {
     : "takes effect on the next `tumwater start` (tumwater is not running)";
 }
 
+/** The state files the offline arms of reset-counters and wake may write for a listed id.
+ *
+ * A listed id is expanded the way the live consumer's applyResetRequest/applyWakeRequest matches
+ * its payload: `requested.includes(r.role) || requested.includes(r.baseRole)`, so a base id names
+ * its whole instance family and a listed instance id names that runner alone — it never fans out
+ * to its siblings or to its base id. The family comes from runnerIds, the same source the live
+ * consumer's runnerlessTargets reads, so a role with no enabled config entry contributes just the
+ * listed id. Only ids that already have a state file are returned: with no team running there is
+ * nothing to zero or wake where no runner ever wrote state, and a name the marker never wrote
+ * must not conjure a file (the guarantee runnerlessTargets holds for a corrupt marker). Pure —
+ * it reads the config and the state directory and writes nothing. */
+function offlineWriteTargets(root: string, requested: readonly string[]): string[] {
+  const { config } = loadConfigCached(root);
+  // A broken or missing config has no family to expand through: each listed id then names only
+  // itself, exactly as the offline arm behaved before, and the CLI's own role-id validation has
+  // already refused an unknown id for the commands that have one.
+  const family = config ? runnerIds(config) : [];
+  const targets: string[] = [];
+  for (const id of requested) {
+    const names = family.filter((r) => r === id || baseRoleOf(r) === id);
+    for (const target of names.length > 0 ? names : [id]) {
+      if (fs.existsSync(statePath(root, target)) && !targets.includes(target)) targets.push(target);
+    }
+  }
+  return targets;
+}
+
 /** The marker-writing core of `reset-counters`: zero each target's state file directly when no
  * team is running, and drop the team marker a running team consumes within one poll cycle.
  * Returns the confirmation the CLI prints verbatim. The CLI and the GUI's
@@ -80,7 +109,13 @@ export function requestResetCounters(root: string, roles: string[]): string {
   // the lost update discards. So with a live team only the marker is written; with none there
   // is no concurrent writer and the direct write is what carries the reset to the next run.
   const { live, when } = markerApplyNote(root);
-  if (!live) for (const r of roles) saveRunnerState(root, zeroCounters(loadRunnerState(root, r)));
+  // A listed base id is expanded to its instance family: the live consumer zeroes every runner of
+  // that family (applyResetRequest's baseRole match), so writing the base id alone would zero one
+  // instance of an N-instance role and leave its siblings dirty. offlineWriteTargets keeps a listed
+  // instance id at one instance.
+  if (!live)
+    for (const t of offlineWriteTargets(root, roles))
+      saveRunnerState(root, zeroCounters(loadRunnerState(root, t)));
   // Atomic: a concurrent poll reading the marker mid-write would see a torn file, which
   // readJsonFile folds to null — the corrupt-marker superset that wakes/resets EVERY runner.
   // For a scheduled wake (`--in`) that superset drops notBeforeMs, firing the wake hours early.
@@ -225,8 +260,12 @@ export function requestWakeOutcome(root: string, roles: string[], inMs?: number)
       disabledNote;
     return { message, payload: { command: "wake", status: "scheduled", roles, inMs, atMs, live, disabled } };
   }
+  // The offline arm writes the state files itself, so it expands a listed base id across the
+  // instance family exactly as requestResetCounters does; a scheduled wake above returns first and
+  // writes nothing.
   if (!live)
-    for (const r of roles) saveRunnerState(root, clearBackoff(loadRunnerState(root, r), now));
+    for (const t of offlineWriteTargets(root, roles))
+      saveRunnerState(root, clearBackoff(loadRunnerState(root, t), now));
   writeJsonAtomic(wakeRequestPath(root), { at: now, roles });
   const message = `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}${disabledNote}`;
   return { message, payload: { command: "wake", status: "requested", roles, live, disabled } };

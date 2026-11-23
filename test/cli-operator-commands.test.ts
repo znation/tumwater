@@ -28,6 +28,7 @@ import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import {
   abortRequestPath,
   pausedPath,
+  statePath,
   pausedRolesPath,
   reclaimRequestPath,
   resetRequestPath,
@@ -109,6 +110,91 @@ test("bare cmdResetCounters offline zeroes an instance runner's counters too", a
   assert.equal(after.totalCostUsd, 0);
   const roles = readJson<Record<string, unknown>>(resetRequestPath(root))["roles"] as string[];
   assert.ok(roles.includes("feature-2"));
+});
+
+// The offline `--role <base>` arm writes the state files itself, so it must fan a base id out
+// through the same family the live consumer reaches by baseRole (INV-AQ1): every runner id the
+// config says should exist, and only those that already have a state file.
+/** A team with only `feature` enabled at two instances: runnerIds yields feature, feature-2,
+ * feature-3, feature-4 (RUNNERS_PER_INSTANCE=2), so the family is deterministic. feature-3 is
+ * deliberately left with no state file. */
+function instanceFamilyRoot(): string {
+  const root = tmpdir();
+  const cfg = defaultConfig();
+  for (const id of Object.keys(cfg.roles)) if (id !== "feature") cfg.roles[id]!.enabled = false;
+  cfg.roles.feature = { enabled: true, instances: 2 };
+  writeJsonFile(configPath(root), cfg);
+  return root;
+}
+
+/** Seed one runner's state with nonzero counters AND a sleeping schedule. */
+function seedDirty(root: string, id: string): void {
+  saveRunnerState(root, {
+    ...freshRunnerState(id),
+    runs: 7,
+    commits: 2,
+    generatedTokens: 30_000,
+    totalCostUsd: 1.5,
+    backoffSeconds: 600,
+    nextRunAt: Date.now() + 600_000,
+  });
+}
+
+test("offline reset-counters --role <base> zeroes every instance runner's counters too", async () => {
+  const root = instanceFamilyRoot();
+  for (const id of ["feature", "feature-2", "feature-4"]) seedDirty(root, id);
+  const { stdout } = await expectOk(() => cmdResetCounters(root, ["--role", "feature"]));
+  assert.match(stdout, /counters reset for feature/);
+  for (const id of ["feature", "feature-2", "feature-4"]) {
+    const after = loadRunnerState(root, id);
+    assert.equal(after.runs, 0, `${id} runs zeroed`);
+    assert.equal(after.commits, 0, `${id} commits zeroed`);
+    assert.equal(after.generatedTokens, 0, `${id} tokens zeroed`);
+    assert.equal(after.totalCostUsd, 0, `${id} cost zeroed`);
+    assert.equal(after.backoffSeconds, 600, `${id} schedule untouched`);
+  }
+  // A family member with no state file stays unwritten: the reset has nothing to change there,
+  // and the live consumer's runnerlessTargets refuses to conjure files the marker never named.
+  assert.equal(fs.existsSync(statePath(root, "feature-3")), false, "no state file conjured");
+  // The marker payload and the confirmation keep naming exactly the id the operator asked for:
+  // a base id means its whole family to the live consumer (INV-AQ5).
+  assert.deepEqual(readJson<Record<string, unknown>>(resetRequestPath(root))["roles"], ["feature"]);
+});
+
+test("offline wake --role <base> clears every instance runner's backoff and nextRunAt too", async () => {
+  const root = instanceFamilyRoot();
+  for (const id of ["feature", "feature-2", "feature-4"]) seedDirty(root, id);
+  const before = Date.now();
+  const { stdout } = await expectOk(() => cmdWake(root, ["--role", "feature"]));
+  assert.match(stdout, /wake requested for feature/);
+  for (const id of ["feature", "feature-2", "feature-4"]) {
+    const after = loadRunnerState(root, id);
+    assert.equal(after.backoffSeconds, 0, `${id} backoff cleared`);
+    assert.ok(after.nextRunAt >= before && after.nextRunAt <= Date.now(), `${id} nextRunAt ${after.nextRunAt} pulled to now`);
+    assert.equal(after.runs, 7, `${id} counters untouched`);
+  }
+  assert.equal(fs.existsSync(statePath(root, "feature-3")), false, "no state file conjured");
+  assert.deepEqual(readJson<Record<string, unknown>>(wakeRequestPath(root))["roles"], ["feature"]);
+});
+
+// Naming one instance names ONE instance: the live consumer matches a listed id against
+// r.role, never the reverse, so `--role feature-2` must not sweep the family.
+test("offline reset-counters --role <instance> leaves its siblings alone", async () => {
+  const root = instanceFamilyRoot();
+  for (const id of ["feature", "feature-2", "feature-4"]) seedDirty(root, id);
+  await expectOk(() => cmdResetCounters(root, ["--role", "feature-2"]));
+  assert.equal(loadRunnerState(root, "feature-2").runs, 0, "the named instance is reset");
+  assert.equal(loadRunnerState(root, "feature").runs, 7, "the base id keeps its counters");
+  assert.equal(loadRunnerState(root, "feature-4").runs, 7, "a sibling instance keeps its counters");
+});
+
+test("offline wake --role <instance> leaves its siblings asleep", async () => {
+  const root = instanceFamilyRoot();
+  for (const id of ["feature", "feature-2", "feature-4"]) seedDirty(root, id);
+  await expectOk(() => cmdWake(root, ["--role", "feature-4"]));
+  assert.equal(loadRunnerState(root, "feature-4").backoffSeconds, 0, "the named instance wakes");
+  assert.equal(loadRunnerState(root, "feature-2").backoffSeconds, 600, "a sibling instance sleeps on");
+  assert.equal(loadRunnerState(root, "feature").backoffSeconds, 600, "the base id sleeps on");
 });
 
 // --- wake ---

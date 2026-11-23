@@ -3238,16 +3238,23 @@ of it.
 **Guarantee.** A marker listing roles reaches each runner whose `role` or `baseRole` is listed, so
 `wake --role feature` also wakes `feature-2`. A retired id reads as its current id (`dry` reaches
 `dedupe`). A requested role with no live runner is reached through its existing state file. A
-corrupt marker targets every runner.
+corrupt marker targets every runner. With no team running, the CLI's own direct write expands a
+listed base id through the same family (`runnerIds`) and writes only ids that already have a state
+file, so the offline command reaches the instances the live consumer would have; a listed instance
+id stays one instance.
 
 **Binds.** `src/operator/operator-requests.ts` (`roleRequestTargets`, `requestedRoles`,
-`runnerlessTargets`).
+`runnerlessTargets`); `src/operator/operator-intent.ts` (`offlineWriteTargets`).
 
 **Pinned by.** `test/operator-requests.test.ts` — "consumeResetRequest resets only the named roles
 and logs one role event", "consumeResetRequest treats a corrupt marker as all roles (superset is
 safe)", "consumeResetRequest zeroes a named role that has no live runner through its state file",
 "consumeWakeRequest clears the schedule of a named role that has no live runner" and
 "consumeWakeRequest wakes every instance of a named base role and the current id of a legacy one".
+`test/cli-operator-commands.test.ts` — "offline reset-counters --role <base> zeroes every instance
+runner's counters too", "offline wake --role <base> clears every instance runner's backoff and
+nextRunAt too", "offline reset-counters --role <instance> leaves its siblings alone" and "offline
+wake --role <instance> leaves its siblings asleep".
 
 ### INV-AQ2: an unloggable event or a failed state save does not end the poll or skip later roles
 
