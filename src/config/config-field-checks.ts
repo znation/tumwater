@@ -103,11 +103,16 @@ export interface NumberRule {
   what: string;
 }
 
-/** The plain ≥ 0 shape: any number of 0 or more, with no special meaning attached to 0. */
+/** The plain ≥ 0 shape: any number of 0 or more. The rule itself attaches no meaning to 0, but
+ * some of its fields' readers do — diskHoldGB 0 lifts the hold, diskReclaimGB 0 skips pressure
+ * reclaim, worktreeIdleReclaimHours 0 skips the idle pass — while maintenancePerWorkMerge,
+ * thrashTurns and thrashMinutes take 0 as an ordinary value. */
 export const NON_NEGATIVE: NumberRule = { ok: (n) => n >= 0, what: "a number of 0 or more" };
-/** A number of 0 or more that reads `<= 0` as "feature off": validation accepts either, and
- * the readers branch on it — retention.ts skips the prune, team-reclaim.ts skips the idle
- * pass, the disk gate skips the hold and reclaim, and a 0 spend cap means uncapped. */
+/** A number of 0 or more that reads `<= 0` as "feature off": validation accepts either and
+ * the reader branches on it — sessionRetentionDays is this rule's only field, and
+ * retention.ts skips the prune when it is 0. The other 0-disables keys reach that convention
+ * through sibling rules: the disk keys validate as NON_NEGATIVE, the spend caps as
+ * DOLLAR_CAP. */
 export const NON_NEGATIVE_OR_DISABLED: NumberRule = {
   ok: (n) => n >= 0,
   what: "a number of 0 or more (0 disables)",
@@ -128,8 +133,9 @@ export const POSITIVE_INTEGER: NumberRule = {
   ok: (n) => Number.isInteger(n) && n >= 1,
   what: "an integer of at least 1",
 };
-/** A whole number of 0 or more — 0 is a real value here (a full interval of 0 means the
- * interval-only cadence), unlike the `*_OR_DISABLED` rules where 0 switches the feature off. */
+/** A whole number of 0 or more — 0 is a real value, not an off switch: `check`
+ * `fullIntervalMinutes` 0 restores one full main check per new code head (main-watch-full.ts),
+ * unlike the `*_OR_DISABLED` rules where 0 switches the feature off. */
 export const NON_NEGATIVE_INTEGER: NumberRule = {
   ok: (n) => Number.isInteger(n) && n >= 0,
   what: "a whole number of 0 or more",

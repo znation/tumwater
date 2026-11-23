@@ -30,11 +30,14 @@ import type { TumwaterConfig } from "./config-schema.js";
  * is worse than a write that reports an error. */
 const CONFIG_LOCK_TIMEOUT_MS = 10_000;
 /** Run `fn` while holding the config lock, releasing it on the way out however `fn` ends —
- * the one entry point for a config write, so every writer (dashboard PUT, `config set`, the
- * role-request write, edit-merge, append-role, replace-text) shares one critical section.
- * Serializes the read-modify-write across processes: `tumwater config set` runs as its own
- * process while the orchestrator holds the live config. Waits up to CONFIG_LOCK_TIMEOUT_MS for
- * a contended lock, then throws rather than clobbering the other writer's file. */
+ * the entry point every editor write takes, so they share one critical section: setConfigKey /
+ * unsetConfigKey (`config set`, `config unset`, the dashboard's POST /api/config-set and
+ * friends), setDailyBudgetUsd, setRoleModelFields, replaceConfigText (`config edit`'s whole-file
+ * write) and the config-request write (config-request.ts). Serializes the read-modify-write
+ * across processes: `tumwater config set` runs as its own process while the orchestrator holds
+ * the live config. Waits up to CONFIG_LOCK_TIMEOUT_MS for a contended lock, then throws rather
+ * than clobbering the other writer's file. Two writers sit outside it: init seeds the file only
+ * when it is absent, and a merge's config restore runs under the primary-worktree lock. */
 export function withConfigLock<T>(root: string, fn: () => T): T {
   // withStateLock creates the state dir the lock sits in (a CLI write may run before any state
   // file).
