@@ -9,7 +9,7 @@ import {
   handleSalvageDrop,
 } from "../src/gui/gui-endpoint-commands.js";
 import { salvageDir, salvagePendingDir } from "../src/paths.js";
-import { makeRepo, sh, headSha, tmpdir, runningAsRoot } from "./fixtures/repo-fixtures.js";
+import { makeRepo, sh, headSha, tmpdir, runningAsRoot, writeConfig } from "./fixtures/repo-fixtures.js";
 import { captureJson, fakeReq } from "./fakes/fake-res.js";
 
 // The dashboard's salvaged workspace patch endpoints (src/gui/gui-salvage-commands.ts): the
@@ -46,7 +46,7 @@ test("GET /api/salvage lists the kept patches oldest first with size, skipping p
   seedSalvage(repo);
   const { captured, data } = await captureJson((res) => handleSalvageList(res, repo));
   assert.equal(captured.status, 200);
-  const patches = (data as { patches: Array<{ position: number; file: string; savedAt: number; bytes: number; size: string }> }).patches;
+  const patches = (data as { patches: Array<{ position: number; file: string; savedAt: number; bytes: number; size: string; prune: string }> }).patches;
   // Exactly the two direct patches, oldest first, with the CLI's size text — the pending
   // patch and notes.txt are not listed.
   assert.equal(patches.length, 2);
@@ -57,6 +57,34 @@ test("GET /api/salvage lists the kept patches oldest first with size, skipping p
   assert.equal(patches[1]!.position, 2);
   assert.equal(patches[1]!.file, "b.patch");
   assert.ok(patches[1]!.savedAt > patches[0]!.savedAt);
+  // Each record names its own prune deadline: with no tumwater.json the window is
+  // defaultConfig()'s 7 days, so a.patch (3h old) is 6.875d out — the day bucket's 7d — and
+  // b.patch (30s old) is 6d23h59m30s out, which rounds up to the same 7d. A record that
+  // omitted prune fails both assertions, and a card row built from it prints no clause.
+  assert.equal(patches[0]!.prune, "prune deadline in 7d");
+  assert.equal(patches[1]!.prune, "prune deadline in 7d");
+});
+
+// The card's window comes from the live config, not defaultConfig(): a written
+// sessionRetentionDays changes the figure on the next request without a restart.
+test("GET /api/salvage names each patch's deadline from the configured sessionRetentionDays, including 0 = never pruned", async () => {
+  let repo = makeRepo();
+  seedSalvage(repo);
+  writeConfig(repo, { sessionRetentionDays: 1 });
+  let { data } = await captureJson((res) => handleSalvageList(res, repo));
+  let patches = (data as { patches: Array<{ file: string; prune: string }> }).patches;
+  // a.patch is 3h old under a 24h window: 21h left, the hour bucket.
+  assert.equal(patches[0]!.file, "a.patch");
+  assert.equal(patches[0]!.prune, "prune deadline in 21h");
+  repo = makeRepo();
+  seedSalvage(repo);
+  writeConfig(repo, { sessionRetentionDays: 0 });
+  ({ data } = await captureJson((res) => handleSalvageList(res, repo)));
+  const offPatches = (data as { patches: Array<{ prune: string }> }).patches;
+  assert.deepEqual(
+    offPatches.map((p) => p.prune),
+    ["retention is off, so this patch is never pruned", "retention is off, so this patch is never pruned"],
+  );
 });
 
 test("GET /api/salvage with no salvage dir answers the empty list, creating nothing", async () => {

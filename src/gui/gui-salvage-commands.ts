@@ -21,6 +21,8 @@ import {
   salvagePatchAt,
 } from "../status/status-salvage.js";
 import { formatBytes } from "../text/format.js";
+import { prunePhrase } from "../text/datetime.js";
+import { liveConfig } from "../config/config.js";
 import { intQuery } from "./gui-args.js";
 import { readPostBody } from "./gui-endpoint-common.js";
 import { badRequest, sendJson } from "./gui-http-body.js";
@@ -44,16 +46,23 @@ function requirePosition(
 /** Handle GET /api/salvage: every operator-kept workspace patch under `.tumwater/salvage/`
  * oldest first (collectSalvagePatches, the same walk the status snapshot's `salvagePatches`
  * and the doctor `salvage patches` row use), each row carrying the list's own `position`,
- * `file`, `savedAt`, `bytes` and a display `size` (formatBytes) for the card to render.
+ * `file`, `savedAt`, `bytes`, a display `size` (formatBytes) for the card to render, and a
+ * `prune` clause — the session-retention deadline phrase for that patch (prunePhrase over
+ * `sessionRetentionDays`), the same clause the CLI's list prints so the card names the
+ * deadline from the patch's own row. The window is read live per request, not cached with the
+ * stat-cached listing, so a retention edit shows on the card's next refresh.
  * A missing or unreadable salvage dir answers the empty list, and pending patches under
  * `salvage/<role>/` wait for their role's next run, so they are never listed here. */
 export function handleSalvageList(res: http.ServerResponse, root: string): void {
+  const retentionDays = liveConfig(root).sessionRetentionDays;
+  const now = Date.now();
   const patches = collectSalvagePatches(root).map((p) => ({
     position: p.position,
     file: p.file,
     savedAt: p.savedAt,
     bytes: p.bytes,
     size: formatBytes(p.bytes),
+    prune: prunePhrase(p.savedAt, retentionDays, now),
   }));
   sendJson(res, 200, { patches });
 }

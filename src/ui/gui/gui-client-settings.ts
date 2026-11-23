@@ -141,8 +141,12 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // tumwater salvage --show <n>) and a two-click Apply (POST /api/salvage-apply) and Drop (POST
   // /api/salvage-drop) — the same operations as tumwater salvage --show <n> / --apply <n> /
   // --drop <n>, so an operator watching the dashboard can read and act on a patch without a
-  // shell. The single slot is keyed "apply:<n>"/"drop:<n>" per row, so one row's arm never
-  // fires another row's button. A read opens in place: salvageOpen holds the one open row's
+  // shell. Each row also names the session-retention deadline that patch goes at (the /api/
+  // salvage record's prune clause, phrased by the server's prunePhrase), so the card says how
+  // long a patch stays without the operator opening a config file; a record without prune (an
+  // older server) prints no clause. The single slot is keyed "apply:<n>"/"drop:<n>" per row,
+  // so one row's arm never fires another row's button. A read opens in place: salvageOpen holds
+  // the one open row's
   // position and its already-built body, and renderSalvage splices that body into the row whose
   // position and file still match it, so the paint stays a pure function of the fetched list
   // plus that one slot.
@@ -157,7 +161,8 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
         (open.file === null || open.file === p.file);
       return "<div class='settings-row'>" +
         "<strong>" + p.position + ". " + esc(p.file) + "</strong>" +
-        "<span>saved " + fmtAgo(p.savedAt) + ", " + esc(p.size) + "</span>" +
+        "<span>saved " + fmtAgo(p.savedAt) + ", " + esc(p.size) +
+        (p.prune ? ", " + esc(p.prune) : "") + "</span>" +
         "<button type='button' class='btn btn-sm' data-action='salvage-view' data-position='" + p.position + "'>" +
         (isOpen ? "Hide" : "View") + "</button>" +
         "<button type='button' class='btn btn-sm' data-action='salvage-apply' data-position='" + p.position + "'>" +

@@ -404,10 +404,14 @@ Usage:
                                    .tumwater/salvage/ — a settled run's discarded edits or a
                                    verification's scratch output — as the doctor's "salvage
                                    patches" row counts them, oldest first, each naming its file,
-                                   how long ago it was saved and its size; an empty dir prints
+                                   how long ago it was saved, its size and the session retention
+                                   deadline it goes at (with sessionRetentionDays: 0 that row
+                                   says retention is off and the patch is never pruned); an
+                                   empty dir prints
                                    "no salvaged workspace patches are kept for you"; --json
                                    prints the same patches as { patches: [...] }, each with
-                                   position, file, savedAt and bytes; read-only and needing no
+                                   position, file, savedAt, bytes and prune; read-only and
+                                   needing no
                                    ready repo, like the list; --grep <text> keeps only the
                                    patches whose file name or patch text contains the text,
                                    case-insensitively, each under its whole-list number, so

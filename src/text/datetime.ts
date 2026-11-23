@@ -207,6 +207,20 @@ export function humanAgo(sinceMs: number, now: number): string {
   return `${humanSince(sinceMs, now)} ago`;
 }
 
+/** The kept-patch prune-deadline phrase the `tumwater salvage` list and the dashboard's
+ * "Salvaged patches" card print in each row, so an operator learns from the patch's own row
+ * when the session pruner may delete it — the file that set the window is itself a prunable
+ * log. `savedAt`/`now` are epoch ms and `retentionDays` is `sessionRetentionDays` as the
+ * pruner reads it: 0 means retention is off and no patch is ever pruned, so the row says so
+ * rather than naming a deadline. `humanUntil` in one call so the s/m/h/d bucketing and the
+ * past-deadline clamp have one home, shared with every other countdown. */
+export function prunePhrase(savedAt: number, retentionDays: number, now: number): string {
+  if (retentionDays <= 0) return "retention is off, so this patch is never pruned";
+  const due = savedAt + retentionDays * DAY_MS;
+  if (due <= now) return "prune deadline passed, goes at the next prune pass";
+  return `prune deadline in ${humanUntil(due, now)}`;
+}
+
 /** A compact age clamped at zero and floored to whole units — `12m`, `4h`, `6d` — the bare
  * (no `ago`) parenthetical the `qa` coverage block and the `feedback` "previously filed" block
  * render for each ledger entry, which each defined as their own local `formatAge`. Kept

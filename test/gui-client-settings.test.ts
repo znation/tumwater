@@ -459,22 +459,35 @@ test("renderSalvage renders one row per patch with View, Apply and Drop, the emp
   // An empty list is the CLI's empty sentence, no rows.
   assert.match(renderSalvage({ patches: [] }, () => false, null), /no salvaged workspace patches are kept for you/);
   assert.doesNotMatch(renderSalvage({ patches: [] }, () => false, null), /data-action='salvage-apply'/);
-  // Two patches: each row carries its position, file, saved-ago, size and both buttons.
+  // Two patches: each row carries its position, file, saved-ago, size, prune deadline and both
+  // buttons.
   const now = Date.now();
   const d = { patches: [
-    { position: 1, file: "a.patch", savedAt: now - 3 * 3600_000, bytes: 38, size: "38 B" },
-    { position: 2, file: "b.patch", savedAt: now - 1000, bytes: 17, size: "17 B" },
+    { position: 1, file: "a.patch", savedAt: now - 3 * 3600_000, bytes: 38, size: "38 B", prune: "prune deadline in 21h" },
+    { position: 2, file: "b.patch", savedAt: now - 1000, bytes: 17, size: "17 B", prune: "retention is off, so this patch is never pruned" },
   ] };
   const html = renderSalvage(d, () => false, null);
   assert.match(html, /<strong>1\. a\.patch<\/strong>/);
-  assert.match(html, /saved 3h ago, 38 B/);
+  assert.match(html, /saved 3h ago, 38 B, prune deadline in 21h/);
+  assert.match(html, /saved just now, 17 B, retention is off, so this patch is never pruned/);
+  // Each clause sits in the same row element as that patch's own buttons — the operator reads
+  // the deadline off the row they are about to act on, not off another row.
+  const rows = html.split("<div class='settings-row'>").filter((r) => r.includes("data-action='salvage-"));
+  assert.equal(rows.length, 2, "one row element per patch");
+  assert.ok(rows[0]!.includes("prune deadline in 21h") && rows[0]!.includes("data-position='1'"));
+  assert.ok(rows[1]!.includes("retention is off, so this patch is never pruned") && rows[1]!.includes("data-position='2'"));
   assert.match(html, /data-action='salvage-view' data-position='1'>View<\/button>/);
   assert.match(html, /data-action='salvage-apply' data-position='1'>Apply<\/button>/);
   assert.match(html, /data-action='salvage-drop' data-position='1'>Drop<\/button>/);
   assert.match(html, /data-action='salvage-apply' data-position='2'>Apply<\/button>/);
-  // A file with HTML is esc'd.
-  const bad = renderSalvage({ patches: [{ position: 1, file: "<x>.patch", savedAt: now, bytes: 5, size: "5 B" }] }, () => false, null);
+  // A file with HTML is esc'd, in its file name and in its prune clause.
+  const bad = renderSalvage({ patches: [{ position: 1, file: "<x>.patch", savedAt: now, bytes: 5, size: "5 B", prune: "prune deadline in <7d>" }] }, () => false, null);
   assert.match(bad, /&lt;x&gt;\.patch/);
+  assert.match(bad, /prune deadline in &lt;7d&gt;/);
+  // A record with no prune field (an older server) renders the row with no clause and no
+  // trailing separator.
+  const older = renderSalvage({ patches: [{ position: 1, file: "a.patch", savedAt: now, bytes: 5, size: "5 B" }] }, () => false, null);
+  assert.match(older, /saved just now, 5 B<\/span>/);
   // The armed apply key repaints only its own Apply button as a confirm; the same position's
   // Drop button stays un-armed.
   assert.match(renderSalvage(d, (k) => k === "apply:1", null), /data-action='salvage-apply' data-position='1'>Confirm apply<\/button>/);

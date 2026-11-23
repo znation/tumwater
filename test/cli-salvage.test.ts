@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { salvageDir, salvagePendingDir } from "../src/paths.js";
-import { makeRepo, sh, teamWorkspace, headSha, tmpdir } from "./fixtures/repo-fixtures.js";
+import { makeRepo, sh, teamWorkspace, headSha, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { teamWorkspaceMessage } from "../src/gates/readiness-gates.js";
 import { cli } from "./helpers/cli-harness.js";
 
@@ -45,8 +45,8 @@ test("salvage lists the kept patches oldest first with age and size, skipping pe
   const lines = r.stdout.trimEnd().split("\n");
   assert.equal(lines.length, 3);
   assert.equal(lines[0], "salvaged workspace patches: 2");
-  assert.equal(lines[1], "1. a.patch — saved 3h ago, 38 B");
-  assert.equal(lines[2], "2. b.patch — saved 0m ago, 17 B");
+  assert.equal(lines[1], "1. a.patch — saved 3h ago, 38 B, prune deadline in 7d");
+  assert.equal(lines[2], "2. b.patch — saved 0m ago, 17 B, prune deadline in 7d");
   assert.deepEqual(bytesOf(older, newer), before, "the list never writes a patch");
 });
 
@@ -64,7 +64,7 @@ test("salvage --json serves the positioned patches oldest first", async () => {
   seedSalvage(repo);
   const r = await cli(repo, "salvage", "--json");
   assert.equal(r.code, 0);
-  const payload = JSON.parse(r.stdout) as { patches: { position: number; file: string; savedAt: number; bytes: number }[] };
+  const payload = JSON.parse(r.stdout) as { patches: { position: number; file: string; savedAt: number; bytes: number; prune: string }[] };
   assert.equal(payload.patches.length, 2);
   const [first, second] = payload.patches;
   assert.equal(first!.position, 1);
@@ -75,6 +75,64 @@ test("salvage --json serves the positioned patches oldest first", async () => {
   assert.equal(second!.file, "b.patch");
   assert.equal(second!.bytes, 17);
   assert.ok(second!.savedAt > first!.savedAt);
+  // The default window (no tumwater.json) is defaultConfig()'s 7 days: a.patch is 3h old, so
+  // its deadline is 7d − 3h = 6.875d out, which humanSeconds' day bucket rounds to 7d. The
+  // --json wording is byte-identical to the row of the same position in the list the same
+  // repo prints.
+  assert.equal(first!.prune, "prune deadline in 7d");
+  const list = await cli(repo, "salvage");
+  for (const p of payload.patches) {
+    const row = list.stdout.split("\n").find((l) => l.startsWith(`${p.position}. `))!;
+    assert.ok(row.endsWith(`, ${p.prune}`), `--json prune "${p.prune}" matches the row "${row}"`);
+  }
+});
+
+// Each case works the phrase out from the seeded age and the configured window, not from
+// output: a.patch is 3h old, b.patch 30s old, and humanSeconds' buckets are
+// <60s → s, <3600s → m, <86400s → h (a count rounding to 24h moves to days), else rounded days.
+test("salvage names each row's prune deadline from the configured sessionRetentionDays window", async () => {
+  let repo = makeRepo();
+  seedSalvage(repo);
+  writeConfig(repo, { sessionRetentionDays: 1 });
+  // 24h window, a.patch 3h old → 21h left (hour bucket); b.patch 30s old → 23h59m30s, which
+  // rounds to 24h and so reads in the day bucket as 1d.
+  let r = await cli(repo, "salvage");
+  assert.equal(
+    r.stdout.trimEnd(),
+    "salvaged workspace patches: 2\n1. a.patch — saved 3h ago, 38 B, prune deadline in 21h\n2. b.patch — saved 0m ago, 17 B, prune deadline in 1d",
+  );
+  repo = makeRepo();
+  seedSalvage(repo);
+  writeConfig(repo, { sessionRetentionDays: 4 });
+  // 96h window, a.patch 3h old → 93h, which rounds to 4d, not 3d.
+  r = await cli(repo, "salvage");
+  assert.ok(r.stdout.includes("1. a.patch — saved 3h ago, 38 B, prune deadline in 4d"), r.stdout);
+  repo = makeRepo();
+  seedSalvage(repo);
+  writeConfig(repo, { sessionRetentionDays: 0 });
+  // 0 is retention's off switch (RetentionPruner runs a pass only when days > 0), so no row
+  // invents a date.
+  r = await cli(repo, "salvage");
+  assert.ok(r.stdout.includes("1. a.patch — saved 3h ago, 38 B, retention is off, so this patch is never pruned"), r.stdout);
+  assert.ok(r.stdout.includes("2. b.patch — saved 0m ago, 17 B, retention is off, so this patch is never pruned"), r.stdout);
+});
+
+test("salvage calls a patch older than the window a passed deadline, not a negative countdown", async () => {
+  const repo = makeRepo();
+  seedSalvage(repo);
+  // A patch 10 days old under the default 7-day window: its due instant is 3 days past, which
+  // humanUntil would read as `0s`. A team that never starts runs no prune pass, so the row
+  // says the patch goes at the next one.
+  const old = path.join(salvageDir(repo), "old.patch");
+  fs.writeFileSync(old, "old patch body\n");
+  const tenDays = Date.now() - 10 * 24 * 3600_000;
+  fs.utimesSync(old, new Date(tenDays), new Date(tenDays));
+  const r = await cli(repo, "salvage");
+  assert.equal(r.code, 0);
+  assert.ok(
+    r.stdout.includes("1. old.patch — saved 10d ago, 15 B, prune deadline passed, goes at the next prune pass"),
+    r.stdout,
+  );
 });
 
 test("salvage --json with no patches prints an empty array and creates nothing", async () => {
@@ -142,6 +200,13 @@ test("salvage --show <n> --json carries the patch's diffstat as stat", async () 
   assert.ok(typeof payload.savedAt === "number");
   assert.equal(payload.stat, " f |    2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)");
   assert.equal(payload.patch, OLDER_TEXT);
+  // The detail view's shape is pinned by INV-SV1 and carries no prune key: the deadline
+  // belongs to the list row, not to a patch read.
+  assert.deepEqual(
+    Object.keys(payload).sort(),
+    ["bytes", "file", "patch", "position", "savedAt", "stat"],
+    "--show --json gains no prune key",
+  );
 });
 
 test("salvage --show past the list fails naming the position and the depth", async () => {
@@ -190,11 +255,11 @@ test("salvage --grep keeps each matching patch under its whole-list number", asy
   // A phrase present in only the older patch's text keeps that patch under position 1.
   let r = await cli(repo, "salvage", "--grep", "+new");
   assert.equal(r.code, 0);
-  assert.equal(r.stdout.trimEnd(), "salvaged workspace patches: 1\n1. a.patch — saved 3h ago, 38 B");
+  assert.equal(r.stdout.trimEnd(), "salvaged workspace patches: 1\n1. a.patch — saved 3h ago, 38 B, prune deadline in 7d");
   // A pattern matching only the other patch's file name keeps it under position 2.
   r = await cli(repo, "salvage", "--grep", "b.patch");
   assert.equal(r.code, 0);
-  assert.equal(r.stdout.trimEnd(), "salvaged workspace patches: 1\n2. b.patch — saved 0m ago, 17 B");
+  assert.equal(r.stdout.trimEnd(), "salvaged workspace patches: 1\n2. b.patch — saved 0m ago, 17 B, prune deadline in 7d");
   assert.deepEqual(bytesOf(older, newer), before, "the filtered list never writes a patch");
 });
 
@@ -219,11 +284,12 @@ test("salvage --grep <text> --json serves only the kept rows with whole-list pos
   seedSalvage(repo);
   const r = await cli(repo, "salvage", "--grep", "+new", "--json");
   assert.equal(r.code, 0);
-  const payload = JSON.parse(r.stdout) as { patches: { position: number; file: string; savedAt: number; bytes: number }[] };
+  const payload = JSON.parse(r.stdout) as { patches: { position: number; file: string; savedAt: number; bytes: number; prune: string }[] };
   assert.equal(payload.patches.length, 1);
   assert.equal(payload.patches[0]!.position, 1);
   assert.equal(payload.patches[0]!.file, "a.patch");
   assert.equal(payload.patches[0]!.bytes, 38);
+  assert.equal(payload.patches[0]!.prune, "prune deadline in 7d", "a filtered row still names its deadline");
   const noMatch = await cli(repo, "salvage", "--grep", "zzz", "--json");
   assert.equal(noMatch.code, 0);
   assert.deepEqual(JSON.parse(noMatch.stdout), { patches: [] });
@@ -261,7 +327,7 @@ test("salvage --drop <n> deletes the Nth patch and leaves the rest and pending a
   assert.equal(fs.existsSync(path.join(salvageDir(repo), "notes.txt")), true, "a non-patch file survives");
   const list = await cli(repo, "salvage");
   assert.equal(list.code, 0);
-  assert.equal(list.stdout.trimEnd(), "salvaged workspace patches: 1\n1. a.patch — saved 3h ago, 38 B");
+  assert.equal(list.stdout.trimEnd(), "salvaged workspace patches: 1\n1. a.patch — saved 3h ago, 38 B, prune deadline in 7d");
 });
 
 test("salvage --drop <n> --json deletes the same patch and prints one object", async () => {

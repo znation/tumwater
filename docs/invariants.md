@@ -6086,3 +6086,33 @@ once, opens only that row, and a second click closes it without refetching", "a 
 that fails shows the server's sentence in that row and leaves Apply and Drop working",
 "salvageViewClick shows the transport error in the row when the read rejects" and
 "renderSalvage splices the open body only into the row its file still matches".
+
+### INV-SV3: every salvage list surface names each patch's own prune deadline from that patch's savedAt and the live retention window, and an off window says so rather than inventing a date
+
+**Guarantee.** `prunePhrase(savedAt, retentionDays, now)` has exactly three shapes and never
+returns an empty string: a future deadline reads `prune deadline in <humanUntil>`, a deadline
+already past reads `prune deadline passed, goes at the next prune pass` (a team that never starts
+runs no pass, so the patch is still there, and `humanUntil` would read `0s`), and
+`sessionRetentionDays: 0` — retention's off switch, which starts no pass at all — reads
+`retention is off, so this patch is never pruned`. Each row's window comes from
+`liveConfig(root).sessionRetentionDays`, the same stat-cached value
+`orchestrator-poll.ts` feeds the pruner, so a live config edit shows on the next frame or request
+without a restart. The clause is a row display field, not a `SalvagePatch` field:
+`collectSalvagePatches` serves from a stat-keyed cache and the same array carries
+`status --json`'s `salvagePatches` and counts the standing `salvage-patches` alert, so a clause
+computed there would go stale against a config or clock change and would leak into a payload that
+prints no deadline. `tumwater salvage --show <n>` keeps INV-SV1's exact shape with no `prune` key.
+
+**Binds.** `src/text/datetime.ts` (`prunePhrase`), `src/cli/cli-salvage-command.ts`
+(`readSalvageRows`, `renderSalvageRows`), `src/gui/gui-salvage-commands.ts`
+(`handleSalvageList`) and `src/ui/gui/gui-client-settings.ts` (`renderSalvage`).
+
+**Pinned by.** `test/cli-salvage.test.ts` — "salvage lists the kept patches oldest first with age
+and size, skipping pending and non-patch files", "salvage names each row's prune deadline from the
+configured sessionRetentionDays window", "salvage calls a patch older than the window a passed
+deadline, not a negative countdown" and "salvage --show <n> --json carries the patch's diffstat as
+stat"; `test/gui-salvage.test.ts` — "GET /api/salvage lists the kept patches oldest first with
+size, skipping pending and non-patch files" and "GET /api/salvage names each patch's deadline from
+the configured sessionRetentionDays, including 0 = never pruned";
+`test/gui-client-settings.test.ts` — "renderSalvage renders one row per patch with View, Apply and
+Drop, the empty sentence, and the confirm labels".

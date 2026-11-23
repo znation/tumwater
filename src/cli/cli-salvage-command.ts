@@ -22,15 +22,31 @@ import {
   readSalvagePatch,
   salvagePatchAt,
 } from "../status/status-salvage.js";
-import { formatAge } from "../text/datetime.js";
+import { formatAge, prunePhrase } from "../text/datetime.js";
+import { liveConfig } from "../config/config.js";
 import { formatBytes } from "../text/format.js";
+
+/** One listed salvage row: the whole-list `position` a `--show`/`--drop`/`--apply <n>`
+ * addresses, the row's three facts from collectSalvagePatches, and the `prune` clause this
+ * surface adds — the session-retention deadline phrase for that patch (prunePhrase). It lives
+ * in the command, not in status-salvage.ts's SalvagePatch: that listing is stat-cached and
+ * shared with the status snapshot and the doctor row, which print no deadline, and the window
+ * is a live config value that must be read per frame, not cached with the listing. */
+interface SalvageRow {
+  position: number;
+  file: string;
+  savedAt: number;
+  bytes: number;
+  prune: string;
+}
 
 /** `tumwater salvage [-f/--follow] [--grep <text>] [--show <n>] [--drop <n>]
  * [--apply <n>] [--json]`:
  * list the kept workspace
  * patches under `.tumwater/salvage/` oldest first, as the doctor's `salvage patches` row
- * counts them, each naming its file, how long ago it was saved and its size — so an operator
- * can see what a run left behind before applying or deleting it. `--grep <text>` keeps only
+ * counts them, each naming its file, how long ago it was saved, its size and the session
+ * retention deadline the pruner would take it at — so an operator can see what a run left
+ * behind, and for how long it stays, before applying or deleting it. `--grep <text>` keeps only
  * the patches whose file name or patch text contains the text (case-insensitively), each
  * under its whole-list number. `-f/--follow` repaints the list every couple of seconds until
  * Ctrl+C or the process that started it exits, re-reading `.tumwater/salvage/` each frame so
@@ -84,15 +100,25 @@ export async function cmdSalvage(root: string, args: string[], seams: FollowView
   // filtered frame still numbers the kept rows whole-list.
   const readSalvageRows = (): {
     full: ReturnType<typeof collectSalvagePatches>;
-    rows: ReturnType<typeof grepSalvagePatches>;
+    rows: SalvageRow[];
   } => {
     const full = collectSalvagePatches(root);
+    const retentionDays = liveConfig(root).sessionRetentionDays;
     return {
       full,
       rows:
         pattern === null
-          ? full.map((p, i) => ({ position: i + 1, file: p.file, savedAt: p.savedAt, bytes: p.bytes }))
-          : grepSalvagePatches(root, full, pattern),
+          ? full.map((p, i) => ({
+              position: i + 1,
+              file: p.file,
+              savedAt: p.savedAt,
+              bytes: p.bytes,
+              prune: prunePhrase(p.savedAt, retentionDays, Date.now()),
+            }))
+          : grepSalvagePatches(root, full, pattern).map((p) => ({
+              ...p,
+              prune: prunePhrase(p.savedAt, retentionDays, Date.now()),
+            })),
     };
   };
   // The no-match prose is a filter's line (the dir is non-empty but nothing matches); a
@@ -100,13 +126,14 @@ export async function cmdSalvage(root: string, args: string[], seams: FollowView
   // cases.
   const renderSalvageRows = (r: {
     full: ReturnType<typeof collectSalvagePatches>;
-    rows: ReturnType<typeof grepSalvagePatches>;
+    rows: SalvageRow[];
   }): string => {
     if (r.full.length === 0) return "no salvaged workspace patches are kept for you";
     if (r.rows.length === 0) return `no salvaged workspace patches match "${pattern}"`;
     const now = Date.now();
     const lines = r.rows.map(
-      (p) => `${p.position}. ${p.file} — saved ${formatAge(now - p.savedAt)} ago, ${formatBytes(p.bytes)}`,
+      (p) =>
+        `${p.position}. ${p.file} — saved ${formatAge(now - p.savedAt)} ago, ${formatBytes(p.bytes)}, ${p.prune}`,
     );
     return [`salvaged workspace patches: ${r.rows.length}`, ...lines].join("\n");
   };
