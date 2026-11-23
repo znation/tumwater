@@ -10,110 +10,6 @@ considered and set aside on purpose, and every state change is dated so stalenes
 ## Planned
 _None yet._
 
-### An issue GitHub closed upstream stops holding the `waitingPush` banner, so the blue "push main and it closes" alert can no longer stand forever (planned 2026-11-22 by the plan role; independent in behavior of every waiting entry — `grep -c "waitingPush" PLANS.md` printed 0 before this entry, and no waiting entry names `src/github/issue-scan.ts` or `githubCloseForStatus`; the waiting dashboard entry and the waiting `--lost` entry both edit `docs/invariants.md` (a new INV in the `INV-DE` section, and INV-DG1's **Binds**/**Pinned by** lists) while this one edits INV-DG1's **Guarantee.** prose and the same two lists, so whichever lands second rebases there — every change is an additive list item or a different sentence; touches src/github/issue-scan.ts src/github/github-issues-state.ts docs/invariants.md docs/config.md docs/steering.md test/github-issue-scan.test.ts test/github-issue-close.test.ts)
-
-**Needs review 2026-11-22 by feature: plan defect — nothing to build: this entry's deliverable is already merged, and the entry is a stranded duplicate of its own archived twin (main 1ed332cfb "Drop a lost issue's waitingPush record so its push banner clears", whose archived heading — the identical text of this entry, plus `— done 2026-11-22 by the feature role` — sits at PLANS-DONE.md:78; the entry was put back into `## Planned` afterwards by 89c4fb469, which added it as a new `### ` heading — `git show 89c4fb469 -- PLANS.md` adds 1 such heading, and 1ed332cf had removed 1).**
-
-**Problem.** An issue whose fix commits are on local main but not yet on GitHub's copy is recorded in
-the ledger's `waitingPush` map (`closeOne`, src/github/issue-close.ts), and `githubCloseForStatus`
-(src/github/github-issues-state.ts) folds `Object.keys(ledger.waitingPush ?? {}).length` into the
-snapshot's `githubClose` field, which `pushGithubCloseAlert` (src/ui/team-alert-status.ts) turns into
-the standing blue `github-close` banner titled
-`1 GitHub issue is fixed on main and closes when you push main to o/r`. If GitHub closes that issue
-upstream, the promise in that sentence can never be kept: the issue is gone, `gh issue close` would
-close nothing, and the banner stands for as long as the ledger does — the same never-clearing-banner
-class INV-DE4 fixed for declined issues. Nothing drops the record: `recordUpstreamCloses`
-(src/github/issue-scan.ts) documents and INV-DG1 pins that "nothing else in it changes —
-`waitingPush`, `closed`, `queued` and `declined` records stay owed", and test/github-issue-scan.test.ts
-"an upstream-close record whose issue the ledger still lists open is never queued or closed again"
-builds exactly that pairing (`upstreamClosed: [row8(2_000)]` beside `waitingPush: { "8": ["abc1234"] }`).
-Meanwhile docs/steering.md already promises the opposite of a hold — of a lost row, "Such a row is
-never mirrored and never counted as unmirrored, so it holds nothing up — it is the mirror's own
-record, not a request." Dropping the entry costs no capability: the ledger's `waitingPush` map has
-three readers (`grep -rn "waitingPush" src` — `closeOne` in src/github/issue-close.ts writes and clears
-it, `foldIssueState`/`issueStateLines` in src/github/github-issues-render.ts print it as the
-`waiting for a push of <shas>` detail line, and `githubCloseForStatus` counts it for the snapshot), and
-candidacy for a close never consults it — `closeCandidates` re-derives the fix commits through
-`fixCommits` — so an issue that comes back open gets a fresh record from the next close pass.
-
-**Approach.** Let the same fold that records the loss settle the push hold, for every number the list
-holds so a ledger written by the current build self-heals.
-
-- `recordUpstreamCloses` (src/github/issue-scan.ts): after the `upstreamClosed` list is stored (the
-  non-empty branch, so the `rows.length === 0` early return stays as it is), rebuild
-  `ledger.waitingPush` with the copy-then-`delete` idiom `closeOne` already uses —
-  `const waiting = { ...(ledger.waitingPush ?? {}) }`, delete every key whose number appears in the
-  stored `upstreamClosed` list, then assign it back and `delete ledger.waitingPush` when it came out
-  empty, so the file holds no empty map. A number that is not in the list keeps its entry, and
-  `closed`, `queued` and `declined` records are untouched, as before: they are the read's history and
-  `isReopened`'s clock, not a promise of a future close. Only a complete listing reaches this code —
-  `scanGithubIssues` calls the helper solely when `capped === false` — so a capped, failed or absent
-  listing still settles nothing, INV-DG1's evidence rule unchanged.
-- Update the doc comment that states the old rule: `recordUpstreamCloses`'s "nothing else in it
-  changes — `waitingPush`, `closed`, `queued` and `declined` records stay owed" sentence, naming the
-  `waitingPush` exception and why (the banner's promise cannot be kept for an issue GitHub shut). The
-  `GithubIssuesLedger.waitingPush` field comment (src/github/github-issues-state.ts) gains the same
-  one-clause exception, since the record is now dropped by the scan as well as cleared by the closer.
-- `docs/invariants.md`: amend INV-DG1's **Guarantee.** in the `## The GitHub issues mirror: an issue
-  GitHub closed upstream has one record` section — the "Nothing else in the ledger is touched by a loss"
-  sentence keeps `closed`, `queued` and `declined` as staying owed and gains the `waitingPush` exception
-  stated as a binding rule (a complete listing drops the entry, a capped or failed one does not, and the
-  surfaces therefore cannot raise the push banner for a lost issue); add the new test names below to
-  **Pinned by.** and keep **Binds.** naming `recordUpstreamCloses` (add
-  `src/github/github-issues-state.ts`'s `githubCloseForStatus` there, since the guarantee now reaches the
-  banner count). Same section, same `DG` prefix — a second section for one prefix is a documented
-  problem in test/invariants-doc.test.ts.
-- `docs/config.md`'s `githubIssues` row: its upstream-close sentence ends "those records are never
-  mirrored, never counted as unmirrored, and close nothing" — append that such an issue also stops
-  holding the fixes-waiting-for-a-push count, so the surfaces' wording matches.
-- `docs/steering.md`: the lost-issue paragraph's "so it holds nothing up" clause gains the push banner
-  as one of the things it no longer holds up.
-
-**Files touched.** `recordUpstreamCloses` (src/github/issue-scan.ts), the `waitingPush` field comment
-(src/github/github-issues-state.ts), `docs/invariants.md`, `docs/config.md`, `docs/steering.md`,
-test/github-issue-scan.test.ts, test/github-issue-close.test.ts. `issue-close.ts`, `status-data.ts` and
-`team-alert-status.ts` need no edit: the banner reads the map it is given.
-
-**Acceptance criteria.**
-
-- In test/github-issue-scan.test.ts, a scan whose first listing reports #8 (with the ledger then
-  carrying `waitingPush: { "8": ["abc1234"] }`, `closed: { "8": … }`, `queued: { "8": … }` and
-  `declined: { "8": … }`) and whose second complete listing reports none leaves `#8` in
-  `upstreamClosed`, and the written ledger has no `waitingPush` entry for `"8"` while its `closed`,
-  `queued` and `declined` records for `"8"` read exactly as they did before the scan — a loss settles
-  the push hold and nothing else.
-- A ledger hand-written with `upstreamClosed: [row8(…)]` **and** a stale `waitingPush: { "8": [...] }`
-  (the shape the previous build wrote) comes back from the next complete scan with that entry gone, so
-  the banner clears on an existing install without a role touching it; a `waitingPush` entry for a
-  number the list does not hold survives the same scan.
-- A case in test/github-issue-close.test.ts, beside the existing
-  "the status figures count waiting fixes and retired-only issues, and are absent when neither holds"
-  one: write a ledger whose `upstreamClosed` holds #8 and whose `waitingPush` holds only `"8"`, and
-  `githubCloseForStatus(dir)` (already imported there) reads `undefined` — so `tumwater status` and the
-  dashboard print no `github-close` banner at all for a lost issue — while the same ledger with one more
-  `waitingPush` entry for a number the list does not hold reads `{ repo: "o/r", waitingPush: 1, retiredOnly: 0 }`.
-- A scan whose listing stopped at `MAX_ISSUE_PAGES` (the fixture the existing
-  "the listing stops at five pages, so a repo with 600 issues yields 500" case builds), and a scan whose
-  `gh` could not read the repo, leave that `waitingPush` entry in place: only a listing known to be
-  complete settles it.
-- After the scan in the first criterion, `tumwater issues --show <n>` on the lost row prints its
-  `closed upstream — last seen open <ago>` line and no `waiting for a push of <sha>` line for it, while
-  an open issue whose fix still waits still prints that line — the second half already pinned by
-  test/github-issues-render.test.ts's `waitingPush` cases, which stay unedited (no render change).
-- `grep -n "stay owed" docs/invariants.md` lands inside INV-DG1 and the same entry names `waitingPush`
-  as the one record a complete listing drops; `test/invariants-doc.test.ts`'s honesty check passes with
-  every title cited in **Pinned by.** appearing verbatim in the file it names.
-
-Verify: `npm run build`, then
-`node scripts/check-permit.mjs node dist/test/test-runner.js github-issue-scan github-issue-close github-issues-render team-alert-status status-data doctor-checks invariants-doc config-doc backlog-structure backlog-pending backlog-eligibility plans-citations plan-citations`.
-
-**Not covered (follow-ups).** Nothing raises a signal *for* a loss on the surfaces — the status snapshot,
-the dashboard banners and the doctor's `github issues` row still say nothing about issues GitHub closed
-upstream; that is a new alert/doctor-row entry, not this one. `closed`, `queued` and `declined` records
-still survive a loss on purpose (they are the read's history and `isReopened`'s clock). A loss seen only
-through a capped listing settles nothing, so on a repo past `MAX_ISSUE_PAGES` the banner can still stand
-— the same evidence rule INV-DG1 already pins.
-
 ### `tumwater report` tallies the GitHub-issues mirror by outcome, so an operator reads what the team did about the issue tracker in a window instead of counting log lines (planned 2026-11-22 by the plan role; independent in files of the other entry still in `## Planned` (the one naming `src/github/issue-scan.ts`) — that one takes `src/github/issue-scan.ts`, `src/github/github-issues-state.ts`, `docs/config.md` and `docs/steering.md` and never `src/report/`, while this one takes `src/report/` and never the scanner or the ledger, and both add a distinct `docs/invariants.md` line so whichever lands second rebases on an additive list item; `grep -c github src/report/*.ts` prints 0 in all nine report files, and `grep -c 'GitHub issues by outcome' PLANS-DONE.md docs/cli.md` prints 0 — no planned entry, archived plan, or docs row names a report-side issue tally; the four event types it folds are all on main (`github_issue_queued`, `github_issue_closed`, `github_issue_declined`, `github_issue_upstream_closed` in `src/events/events.ts`); touches src/report/report-usage-fold.ts src/report/report-types.ts src/report/report-data.ts src/report/report-since-data.ts src/report/report-render.ts src/report/report-since-render.ts docs/cli.md docs/invariants.md test/report-usage-fold.test.ts test/report-data.test.ts test/report-cli.test.ts)
 
 **Needs review 2026-11-22 by feature: plan defect — nothing to build: this entry's deliverable is already merged and the entry is a stranded duplicate of its own archived twin (main a5e1a9c24 "Add `tumwater report` GitHub-issues outcome tally by outcome", an ancestor of HEAD; its archived heading — the identical text of this entry, plus `— done 2026-11-22 by the feature role` — sits at PLANS-DONE.md:8, where 14 `githubIssuesByOutcome` mentions and 3 `GitHub issues by outcome` lines live; the entry was put back into `## Planned` afterwards by ec883c64b, which added it again as a new `### ` heading — `git show ec883c64b -- PLANS.md` adds 1 such heading, and a5e1a9c24 had removed 1). Every criterion holds on main: `grep -c githubIssuesByOutcome` prints 3/3/1/3/1/1 across the six named src files and 3/8/5 across the three named test files, `docs/cli.md` names `GitHub issues by outcome` (1), and INV-R5 carries the outcome-map Guarantee sentence with both new **Pinned by** titles.**
@@ -185,5 +81,81 @@ and window reports cannot drift (INV-R5's one-fold guarantee).
 `github_issue_closed` bucketed as `lost`) shows in the ranked line's name, and a day collector that
 set the map in `applyRoleDay` too would make a `--role` report print a line the `--since` report
 omits — the scoped-criterion above catches that drift.
+
+### The `salvage patches` doctor row and its standing alert say how long a kept patch has before session retention prunes it, so an operator never learns about the deadline from a gone file (planned 2026-11-22 by the plan role; the landed dashboard salvage-View plan recorded this gap verbatim as a follow-up (PLANS-DONE.md "**Not covered (follow-ups).** ... the `salvage-patches` alert counts them but never says one is going stale, and session retention can still prune a kept patch an operator never opened") and `grep -c "session retention prunes them" src` prints exactly one hit, the row's remedy clause, which states the threat without a date; `grep -rn "prunes in\|session retention is off\|at the next prune pass" src docs test` printed 0 before this entry; independent in files of both `## Planned` entries — the report-tally entry takes `src/report/` and docs/cli.md's `tumwater report` row, the issues-View entry takes `src/github/github-issues-render.ts`, `src/cli/cli-query-commands.ts`, `src/gui/gui-*issues*`, `src/ui/gui/gui-client-settings.ts` and docs/cli.md's `tumwater issues` row, and neither names `src/doctor/`, `src/ui/team-alert-standings.ts` or the `tumwater status` row; this one edits no `docs/invariants.md` line at all (INV-T6 already pins that the amber detail is `checkSalvagePatches`'s warn sentence whole, and INV-BQ5 already pins the prune window, so both guarantees are unchanged and need no edit); touches src/doctor/doctor-salvage.ts src/doctor/doctor.ts src/ui/team-alert-standings.ts docs/cli.md docs/how-it-works.md docs/config.md test/doctor-checks.test.ts test/team-alerts.test.ts)
+
+**Problem.** A kept workspace patch under `.tumwater/salvage/` is deleted by the session-retention pass
+(`pruneFileHalves`, src/orchestrator/retention.ts — `pruneOldFiles(salvageDir(root), days)`), and the only
+warning an operator gets is the doctor `salvage patches` row and the standing amber `salvage-patches`
+alert, whose warn sentence ends "... before session retention prunes them". That says a deadline exists
+and never says when: the row already prints the oldest patch's age (`oldest 1h`) but not the window it is
+measured against (`sessionRetentionDays`, default 7, `0` disables pruning — `RetentionPruner`'s
+constructor), so an operator looking at a 6-day-old patch cannot tell it is hours out, and one looking at
+a team with `sessionRetentionDays: 0` cannot tell it will never be pruned at all. `checkSalvagePatches`
+(src/doctor/doctor-salvage.ts) reads no config today; both of its call sites have one at hand —
+`doctorSteps` already receives `config` (from `loadConfigSafe`) and `buildStandingAlerts` already
+destructures `config` from its `StandingAlertsInput` — so the number can be passed rather than guessed.
+`collectSalvagePatches` (src/status/status-salvage.ts) already carries each patch's `savedAt` (the file's
+mtime, the very field `pruneOldFiles` compares), so no new read is needed.
+
+**Approach.** One sentence, phrased once, in the row that the alert already copies verbatim.
+
+- `src/doctor/doctor-salvage.ts`: `checkSalvagePatches(root, retentionDays: number, now: number = Date.now())`
+  — a required window parameter, so no surface can silently claim a window the team does not run. Add a
+  module-private `retentionClause(oldestSavedAt: number, retentionDays: number, now: number): string` that
+  returns the clause inserted between the named-patch list and the remedy:
+  - `retentionDays > 0`, deadline ahead (`deadline = oldestSavedAt + retentionDays * DAY_MS`, `DAY_MS` from
+    src/text/datetime.ts): `; session retention prunes a patch older than ${retentionDays}d, so the oldest
+    goes in ${humanUntil(deadline, now)}` (`humanUntil` is src/text/datetime.ts's future-direction
+    countdown — s/m/h/d buckets).
+  - `retentionDays > 0`, deadline already passed (a stopped team, a failed pass): `; session retention prunes
+    a patch older than ${retentionDays}d, so the oldest goes at the next prune pass` — never a `0s` countdown.
+  - `retentionDays === 0`: `; session retention is off, so these patches are never pruned`.
+  The warn sentence becomes `${count} kept for you (oldest ${age}, ${file}): ${named}${more}` + the clause +
+  ` — apply one with \`tumwater salvage --apply <n>\`, or read one with \`tumwater salvage --show <n>\` or
+  delete one with \`tumwater salvage --drop <n>\`` — the stale "before session retention prunes them" tail
+  moves into the clause. The ok sentence stays byte-identical, the level stays warn in all three window
+  shapes (a disabled window is information, not a new warning), and the row still writes nothing.
+- `src/doctor/doctor.ts`: the `salvage patches` step passes the window the team runs,
+  `config?.sessionRetentionDays ?? defaultConfig().sessionRetentionDays`, the same last-good/default
+  fallback shape `doctor-contention-checks.ts` uses for `maxConcurrentChecks`; a config that will not load is
+  the `init` row's and the standing `config-problem` alert's to name, and this row's doc comment says so.
+- `src/ui/team-alert-standings.ts`: `pushSalvagePatchesAlert(out, root, config.sessionRetentionDays)` —
+  `buildStandingAlerts` already has `config` in hand (`configForStatus`'s last-known-good read), so the alert
+  arm passes it to `checkSalvagePatches` and keeps copying the row's warn sentence whole through
+  `pushDoctorTwinAlert`. No new alert, key, tone or action; no change to any other arm.
+- Docs, one sentence each: docs/cli.md's `tumwater status` row, the `salvage-patches` clause (the alert now
+  names the retention window and says outright when it is off); docs/how-it-works.md's kept-patches sentence
+  (the row and alert name how long the oldest has left); docs/config.md's `sessionRetentionDays` row (kept
+  salvage patches report their deadline on `tumwater doctor` and `tumwater status`).
+
+**Acceptance criteria.**
+
+- Given one patch saved 1 h ago and `sessionRetentionDays: 1`, `checkSalvagePatches(root, 1, now)` returns
+  `warn` and a detail containing, in this order: `1 salvaged workspace patch kept for you`, `oldest 1h`,
+  `1. a.patch`, `; session retention prunes a patch older than 1d, so the oldest goes in 23h`,
+  `` tumwater salvage --apply <n> ``.
+- Given the same 1 h-old patch and `retentionDays: 0`, the detail contains
+  `; session retention is off, so these patches are never pruned`, still reads `warn`, and names no countdown.
+- Given a patch 2 h old and `retentionDays: 1`, the detail contains
+  `so the oldest goes at the next prune pass` and matches neither `/goes in 0s/` nor `/goes in -/`.
+- With no patch and with a `pending/<role>/`-only tree, the ok details are byte-identical to today's.
+- `tumwater status`'s amber `salvage-patches` alert detail equals the row's warn sentence for the same
+  tree and the same configured window — including the `sessionRetentionDays: 0` form — and an absent
+  `salvagePatches` snapshot still raises nothing.
+- Every existing `checkSalvagePatches` call in test/doctor-checks.test.ts gains the window argument; no
+  other row name, `--json` key (`salvagePatches`' `{ position, file, savedAt, bytes }` shape) or dashboard
+  card output changes (test/doctor.test.ts's row-name list and test/status-payload.test.ts's salvage suite
+  pass untouched).
+
+**Not covered (follow-ups).** `tumwater salvage`'s own list still prints each patch's age but not its
+deadline; the dashboard's salvage card rows do the same; a kept patch that will outlive a never-restarted
+team is not separately named.
+
+**One plausible bug this pins.** Swapping the deadline test (reading `deadline < now` as the countdown arm)
+would print `goes in 0s` for a patch the pass has not reached yet and `at the next prune pass` for one with
+23 h left — the 1 h/1 d case pins the 23 h figure and the 2 h/1 d case pins the passed-deadline wording, so
+either swap fails one of them. A row that passed `defaultConfig().sessionRetentionDays` instead of the
+loaded config would answer the 0-window criterion with a 7 d countdown.
 
 ## Done
