@@ -8,29 +8,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 _None yet._
 
-### `a pin surviving a restart drains through the gate on next start` fails its `merge_done` count in the full `npm run test:e2e` tier, then passes on the same tree — its wait keys on the pin's disappearance, which the merge deletes a settle turn before the event lands (found by the ci role 2026-11-23)
-
-**Symptom.** Running the CI workflow's own e2e job (`npm run test:e2e`) against main tip `7d45b9c1` named only this test on its first two tier runs and named nothing on its third run of the untouched tree. The failing assertion is not the wait — the pin drained and `crash.txt` reached main; the count read after it did not:
-
-```
-✖ a pin surviving a restart drains through the gate on next start (380.200584ms)
-  AssertionError [ERR_ASSERTION]: the surviving change merged through the gate
-
-  0 !== 1
-
-      at TestContext.<anonymous> (file:///…/dist/test/orchestrator-3.e2e.test.js:174:16)
-```
-
-The same line failed at 368.6 ms on the second tier run; on every passing run the test took 470–512 ms. `test/orchestrator-3.e2e.test.ts:215-219` asserts `eventsOfType(repo, "merge_done").length === 1` immediately after the `waitFor` at line 210.
-
-**Reproduce** (the same-tree fail-then-pass, no source change between runs): `npm run test:e2e` at `7d45b9c1` named only this test on its first two runs and named nothing on its third; six filtered isolated runs (`node dist/test/test-runner.js e2e orchestrator-3#pin surviving a restart`) and one isolated whole-file run all passed. So the flake is a race inside the test's own observation order, not a host-starvation timeout and not a regression: the failing run reached the assertion, i.e. the wait succeeded in ~380 ms, far inside its 60 s deadline. This is NOT the 2026-11-15 load flake for the same test (BUGS-FIXED.md, "A live-orchestrator e2e pin-drain test flakes on a loaded host") — the test carries that quiet-host gate, it did not skip on either failing run (both report zero skipped tests, and the test printed a duration, not a skip line), and that entry's symptom was the `waitFor` deadline expiring, which is a different failure.
-
-**Cause.** The wait's predicate (line 211) is `refAbsentFromFiles(repo, mergeRefName("clean")) && fs.existsSync(path.join(repo, "crash.txt"))` — the pin is gone and main holds the change. Both become true at the merge itself: `mergeMergeRequest` deletes the pin the moment the result is `changed` (src/merge/merge-core.ts:544, `deleteRef(ctx.root, mergeRefName(req.role)); // merged: the pin has done its job`), while the `merge_done` event is logged a settle turn LATER — the drain's `settleOne` (src/merge/merge-drain.ts:414-419) calls `settleMergeOutcome` (src/merge/merge-pipeline.ts:189), and that reaches `writeMergeOutcome`'s `logEventBestEffort` — `type: result === "changed" ? "merge_done" : …` — at src/merge/merge-slot.ts:436-438. So there is a real window between the merge's pin delete and the drain's settle, in which the predicate is satisfied and the count is still 0; a synchronous read in that window asserts 0. The stat cache in `readEvents` (src/events/event-read.ts:232 `cachedByStat`) is not the mechanism — an append changes the log's size, which is exactly what invalidates that cache — so the whole race is the two-turn settle gap. The same ordering was fixed once before, in `test/merge-pipeline.test.ts` (BUGS-FIXED.md, 2026-11-11: "the pin is gone for a real window before the settle's write lands… The fix observes the settle instead of inferring from the ref: it polls for the [outcome] event").
-
-**Expected.** The test observes the settle before it counts it, so it cannot read a pin that is gone but an outcome event that has not landed. **Fix direction (test only, no source change):** make the existing `waitFor` at line 210 also require the settle event, the shape this same file's sibling dedup test already uses at line 260-263 (`() => fs.existsSync(path.join(repo, "hello.txt")) && eventsOfType(repo, "merge_done").length === 1`, its comment: "The slot logs merge_done only after the fast-forward writes hello.txt, so wait for both") — then keep the synchronous `merge_done`/`merge_failed`/`commits`/`mergeRefExists` assertions that follow unchanged. Leave the quiet-host gate and the sibling tests untouched. Do not weaken the assertion to `>= 1` or drop the count.
-
-**Validation gap:** no-repro — the window between the pin delete and the settle event cannot be summoned deterministically offline; the fix rests on the source's own ordering, and a regression pin would have to force the delete-before-settle ordering in the drain, which is a source-side change this entry does not ask for.
-
 ## Fixed
 
 ## Verified

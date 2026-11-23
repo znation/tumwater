@@ -207,9 +207,17 @@ test("a pin surviving a restart drains through the gate on next start", async (t
   seedSurvivorPin(repo, "crash.txt", "crash survivor");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
+    // The merge deletes the pin the moment the result is `changed` (src/merge/merge-core.ts) but
+    // logs merge_done a settle turn later (settleMergeOutcome -> writeMergeOutcome), so the pin
+    // being gone and main holding the change is true before the outcome event exists. Wait for
+    // the settle as well — the shape this file's sibling dedup test uses — or a read landing in
+    // that window counts 0 merge_done for a merge that did happen.
     await waitFor(
-      () => refAbsentFromFiles(repo, mergeRefName("clean")) && fs.existsSync(path.join(repo, "crash.txt")),
-      "the surviving pin to drain onto main",
+      () =>
+        refAbsentFromFiles(repo, mergeRefName("clean")) &&
+        fs.existsSync(path.join(repo, "crash.txt")) &&
+        eventsOfType(repo, "merge_done").length === 1,
+      "the surviving pin to drain onto main and log its merge_done",
     );
     assert.ok(refAbsentFromFiles(repo, mergeRefName("clean")), "the pin was consumed");
     assert.equal(
