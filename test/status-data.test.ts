@@ -11,7 +11,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { maintenanceForPoll, pollStallForPoll, snapshot } from "../src/status/status-data.js";
 import { githubIssuesPath, heartbeatPath, maintenancePath } from "../src/paths.js";
-import { writeGithubIssues, type GithubIssueRow, type GithubIssuesLedger } from "../src/github/github-issues-state.js";
+import {
+  readGithubIssuesForPoll,
+  writeGithubIssues,
+  type GithubIssueRow,
+  type GithubIssuesLedger,
+} from "../src/github/github-issues-state.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { runnerStateForPoll } from "../src/status/status-polls.js";
 import { quietHoursStatus } from "../src/scheduling/quiet-hours.js";
@@ -426,7 +431,7 @@ test("the snapshot serves the GitHub issues ledger from the stat-keyed cache wit
   // The ledger changes at the hourly scan, but both dashboards poll snapshot() every second, so
   // an unchanged file must cost one stat, not a re-read and re-parse of the whole open-issue list
   // (body excerpts and all) to fold it to five counts — the contract every other ledger's poll
-  // reader already keeps (INV-T5).
+  // reader already keeps.
   const repo = makeRepo();
   await initProject(repo, "test project");
   writeGithubIssues(repo, {
@@ -453,11 +458,16 @@ test("the snapshot serves the GitHub issues ledger from the stat-keyed cache wit
       const snap = await snapshot(repo);
       assert.equal(snap.githubIssues?.unmirrored, 1); // unchanged — served from cache
       assert.equal(reads(), 0, "no re-read of the ledger file at all");
-      // Each poll owns its data: the fold counts over the ledger's `open` list.
       assert.equal((await snapshot(repo)).githubIssues?.unmirrored, 1);
     },
     (file) => typeof file === "string" && file.endsWith(`${path.sep}state${path.sep}github-issues.json`),
   );
+
+  // Each read owns its data: the cached ledger's `open` list is copied, so emptying one read's
+  // list cannot reach the next poll's (the same ownership the runner-state cache test pins).
+  const polled = readGithubIssuesForPoll(repo);
+  if (polled) polled.open.length = 0;
+  assert.equal(readGithubIssuesForPoll(repo)?.open.length, 1, "the emptied list never reaches the cache");
 });
 
 test("a foreign-shaped GitHub issues ledger raises no githubIssues field and never throws", async () => {
@@ -472,6 +482,9 @@ test("a foreign-shaped GitHub issues ledger raises no githubIssues field and nev
 
   writeJsonFile(githubIssuesPath(repo), { repo: "acme/widgets", checkedAt: 1000, gh: "ok", open: "nope" });
   assert.equal((await snapshot(repo)).githubIssues, undefined);
+  // A list holding only unusable entries is a different case: `readGithubIssues` drops the rows it
+  // does not declare, so the ledger still reads as an empty mirror rather than no field — the arm
+  // "the snapshot counts only the well-formed rows of a ledger holding a malformed one" pins.
 });
 
 test("the snapshot counts only the well-formed rows of a ledger holding a malformed one", async () => {

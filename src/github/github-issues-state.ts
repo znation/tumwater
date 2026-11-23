@@ -7,6 +7,7 @@
  * them. */
 
 import { ensureParentDir } from "../files/files.js";
+import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { githubIssuesPath } from "../paths.js";
@@ -290,7 +291,7 @@ export function issueQueueHoldMs(queued: { recheckAfterMs?: number }, defaultMs:
 /** The GitHub figures the status surfaces show: how many fixes wait for a push to GitHub and how
  * many open issues had only retired entries. Undefined when neither holds, no ledger exists, or
  * the ledger's shape is foreign. Reads through readGithubIssuesForPoll: the snapshot calls this on
- * every poll, so the ledger is stat-cached like every other poll reader (INV-T5). */
+ * every poll, so the ledger is stat-cached like every other poll reader. */
 export function githubCloseForStatus(
   root: string,
 ): { repo: string; waitingPush: number; retiredOnly: number } | undefined {
@@ -306,20 +307,23 @@ export function githubCloseForStatus(
 // snapshot's githubIssuesForPoll polls it every second while the hourly scan rewrites it, so an
 // unchanged file costs one stat per poll instead of re-reading and re-parsing the whole open-issue
 // list — body excerpts and all — to fold it to five counts. The same contract the remote-CI and
-// parity ledgers' poll readers keep (INV-T5). writeGithubIssues is atomic (tmp + rename), so any
+// parity ledgers' poll readers keep. writeGithubIssues is atomic (tmp + rename), so any
 // write invalidates via dev/ino/mtime/size; bounded inside cachedByStat.
 const ledgerCache = new Map<string, StatKeyedValue<GithubIssuesLedger>>();
 
 /** Does this read carry what the fold reads? `readJsonFile` only checks "a plain object", so a
  * hand-edited or foreign-generation ledger can lack `open` (or hold a non-list), and the fold's
- * `open.filter` would throw out of the snapshot into the dashboard's 500. A ledger that fails the
+ * `open.filter` would throw out of the snapshot into the dashboard's 500 — and so a `null` or
+ * scalar entry inside the list throws on its `trusted` read, the same hole
+ * status-polls.ts's `liveMergeMarker` closes by filtering its records. A ledger that fails the
  * shape reads as no data — the same policy as `isRemoteCiEntry`/`isParityEntry`. */
 function isFoldableLedger(value: GithubIssuesLedger | null): value is GithubIssuesLedger {
   return (
     value !== null &&
     typeof value.repo === "string" &&
     typeof value.checkedAt === "number" &&
-    Array.isArray(value.open)
+    Array.isArray(value.open) &&
+    value.open.every((row) => isJsonObject(row))
   );
 }
 
