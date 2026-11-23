@@ -419,6 +419,33 @@ test("a director whose inbox holds only its own self-requeue is due on the min c
   }
 });
 
+test("a work role's self-requeued inbox waits its min-run clock; a fresh prompt does not", () => {
+  // Regression for the relief_wait spin (BUGS.md, mirrors GitHub issue #2): a work-role runner
+  // that ends `skipped` for want of its own merge pin re-queues its prompt (requeueUnfulfilled),
+  // and the next ~2 s poll read that queue file as fresh demand. The inbox arm cooled only the
+  // director; a work role fell through the arm entirely. A self-requeued inbox is due only on the
+  // runner's own min-run clock (`nextRunAt`), whatever that clock is.
+  const end = 1_000_000_000;
+  const r = runner("ci");
+  r.state.runs = 1;
+  r.state.lastRunEndedAt = end;
+  r.state.nextRunAt = end + 7_200_000; // ci's configured min-run interval, scheduleAtMinInterval's write
+  const selfRequeued = { inboxSelfRequeued: true };
+  assert.deepEqual(isEligible(r, end + 1_000, "abc", 1, selfRequeued), { run: false }, "the next poll");
+  assert.deepEqual(isEligible(r, end + 7_200_000, "abc", 1, selfRequeued), { run: true, reason: "inbox" }, "on the clock");
+  // Real demand is never cooled: a prompt an operator stamped after the run that re-queued
+  // (skipRunner reads inboxSelfRequeued false) still starts on the next poll.
+  assert.deepEqual(isEligible(r, end + 1_000, "abc", 1, { inboxSelfRequeued: false }), { run: true, reason: "inbox" });
+  // Nor is a held prompt starved: `tumwater wake --role <id>` reaches the runner through
+  // RoleRunner.wake, whose clearBackoff stamps nextRunAt = now, so the same held inbox is due.
+  // Real clock here, because wake() stamps Date.now(), not the fixture's fixed instant.
+  const realNow = Date.now();
+  r.state.lastRunEndedAt = realNow - 60_000;
+  r.state.nextRunAt = realNow + 7_200_000;
+  r.wake();
+  assert.deepEqual(isEligible(r, realNow + 5, "abc", 1, selfRequeued), { run: true, reason: "inbox" }, "an operator wake starts it");
+});
+
 test("fairOrder puts the director first even when it ran most recently", () => {
   const director = runner("director");
   director.state.lastRunEndedAt = 9999;

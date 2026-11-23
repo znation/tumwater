@@ -6239,3 +6239,33 @@ size, skipping pending and non-patch files" and "GET /api/salvage names each pat
 the configured sessionRetentionDays, including 0 = never pruned";
 `test/gui-client-settings.test.ts` — "renderSalvage renders one row per patch with View, Apply and
 Drop, the empty sentence, and the confirm labels".
+
+## Self-requeued prompts: a queue holding only the role's own re-queue waits its clock, on every role
+
+A run that ends `skipped` without serving its queued prompt puts that prompt back in the same
+role's queue (`requeueUnfulfilled`), stamped inside the run that just ended. A scheduling pass
+that reads the queue's mere presence as fresh demand therefore admits the run again on the next
+~2 s poll, which re-queues it again — a hot loop of no-op runs that never consults `nextRunAt`.
+Two such loops were filed (the director's on 2026-11-19, a work role's `relief_wait` spin on
+2026-11-23); the discriminator and the hold are one rule for every role.
+
+### INV-DH1: a queue holding only the role's own re-queue is due on the min-run clock, for the director and every work role alike
+
+**Guarantee.** `skipRunner` computes `inboxSelfRequeued` for any role whose inbox count is
+positive and whose state carries a `lastRunEndedAt` — true when every deliverable prompt in that
+role's queue whose name carries a `queueFileStamp` is stamped at or before the run that just
+ended (a hand-placed unstamped name yields no stamp, so it counts in the inbox and reads as
+self-requeued) — and both eligibility arms, `directorGate`'s and the work-role `inboxGate`,
+resolve such an inbox through `dueOnMinInterval` instead of admitting it. A prompt an operator
+submitted after that run ended (stamped later) reads false and is due immediately, and
+`tumwater wake --role <id>` clears the clock with `clearBackoff` (`nextRunAt = now`), so a held
+prompt is never starved — the operator's demand outranks the hold.
+
+**Binds.** `src/scheduling/skip.ts` (`skipRunner`'s `inboxSelfRequeued`),
+`src/scheduling/scheduling.ts` (`inboxGate`, `directorGate`, `dueOnMinInterval`),
+`src/inbox/inbox.ts` (`deliverablePromptStamps`).
+
+**Pinned by.** `test/scheduling.test.ts` — "a director whose inbox holds only its own self-requeue
+is due on the min clock, not back to back" and "a work role's self-requeued inbox waits its
+min-run clock; a fresh prompt does not"; `test/orchestrator-scheduling.test.ts` — "a work role's
+own self-requeued prompt waits its clock through the scheduling pass, not the poll".

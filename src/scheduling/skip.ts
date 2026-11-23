@@ -59,15 +59,15 @@ export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Pr
         (runner.state.mergeConflicts?.count ?? 0) >= MERGE_CONFLICT_LIMIT &&
         runner.state.conflictHandback === undefined
       ),
-    // The director re-queues its own unfulfilled prompt at the end of a recovery run; left
-    // ungated that re-queue re-fires the inbox arm back to back at the ~2 s poll cadence
-    // (BUGS.md hot loop). True when the inbox holds only work the director enqueued for itself
-    // — every deliverable prompt stamped at or before the run that just ended — so that inbox
-    // is due on the min-run-interval clock instead. A prompt an operator submitted since (stamped
-    // after lastRunEndedAt) reads false and runs immediately, as before. Cheap: no file reads,
-    // only the enqueue stamps already in the filenames. Reaches only the director arm.
+    // A runner re-queues its own unfulfilled prompt at the end of a recovery run
+    // (requeueUnfulfilled); left ungated that re-queue re-fires the inbox arm back to back at
+    // the ~2 s poll cadence (BUGS.md hot loops: the director's on 2026-11-19, a work role's
+    // relief_wait spin on 2026-11-23). True when the queue holds only work this runner enqueued
+    // for itself — every deliverable prompt stamped at or before the run that just ended — so
+    // that inbox is due on the min-run-interval clock instead. A prompt an operator submitted
+    // since (stamped after lastRunEndedAt) reads false and runs immediately, as before. Cheap:
+    // no new file reads, only the enqueue stamps in the filenames and the pass's stat cache.
     inboxSelfRequeued:
-      baseRoleOf(runner.role) === "director" &&
       inboxCount > 0 &&
       (() => {
         const t = runner.state.lastRunEndedAt;

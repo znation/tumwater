@@ -44,11 +44,14 @@ interface EligibilityOptions {
    * min-interval clock a `queued` outcome wrote), never earlier, so a persistently blocked
    * fast-forward cannot spin the merge queue. */
   leftoverPending?: boolean;
-  /** The director's queued prompts are all self-requeued (skip.ts computes it): every
-   * deliverable prompt in the inbox was stamped at or before the run that just ended, so
+  /** The queued prompts are all self-requeued (skip.ts computes it, for every role): every
+   * deliverable prompt in the queue was stamped at or before the run that just ended, so
    * honoring it immediately re-runs the same unfulfillable request back to back at the ~2 s
    * poll cadence (BUGS.md hot loop). Such an inbox is due only on the min-run-interval clock,
-   * like the leftover-pinned arm. Reaches only the director arm. */
+   * like the leftover-pinned arm. Reaches both arms: the director's (the 2026-11-19 2 s loop)
+   * and every work role's (the 2026-11-23 relief_wait loop). A prompt an operator submitted
+   * since the run ended (inboxSelfRequeued false) runs immediately, as before, and
+   * `tumwater wake --role <id>` clears the clock for a prompt the operator wants now. */
   inboxSelfRequeued?: boolean;
   /** The director's own queued change is still draining: its merge pin is live under the
    * conflict cap and is the sha its last queued run stashed (skip.ts computes it). A run now
@@ -115,10 +118,13 @@ function resumeGate(s: RunnerState, now: number): Eligibility | undefined {
 }
 
 /** A queued per-role prompt is due on its own existence, exactly like the director's inbox: no
- * min-gap, no backoff, no scheduled clock. The queue is the durable record of the demand. */
-function inboxGate(inboxCount: number): Eligibility | undefined {
-  if (inboxCount > 0) return { run: true, reason: "inbox" };
-  return undefined;
+ * min-gap, no backoff, no scheduled clock. The queue is the durable record of the demand —
+ * except when the queue holds only the run's own re-queue (inboxSelfRequeued), which is due
+ * only on the min-run-interval clock, exactly as in the director arm. */
+function inboxGate(s: RunnerState, now: number, inboxCount: number, opts: EligibilityOptions): Eligibility | undefined {
+  if (inboxCount <= 0) return undefined;
+  if (opts.inboxSelfRequeued) return dueOnMinInterval(s, now, "inbox");
+  return { run: true, reason: "inbox" };
 }
 
 /** The per-role interval (a slow clock) gates scheduled runs and "main moved" early wakes.
@@ -168,7 +174,7 @@ export function isEligible(
   if (runner.role === DIRECTOR_ROLE) return directorGate(s, now, inboxCount, opts);
   return (
     resumeGate(s, now) ??
-    inboxGate(inboxCount) ??
+    inboxGate(s, now, inboxCount, opts) ??
     gapGate(runner, s, now, opts) ??
     scheduledGate(s, now, mainHead, opts) ??
     { run: false }

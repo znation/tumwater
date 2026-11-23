@@ -31,6 +31,9 @@ import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 import { eventsOfType, unwritableEvents, writeEvents } from "./fixtures/log-fixtures.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
+import { roleInboxDir } from "../src/paths.js";
+import { queueFileName } from "../src/files/file-queue.js";
+import { ensureParentDir, writeTextAtomic } from "../src/files/files.js";
 import { HOUR } from "./helpers/oracles.js";
 
 // The scheduling pass's per-provider hold block (PLANS.md 2026-10-05): a storm at provider P
@@ -1234,6 +1237,36 @@ function featureRunners(config: TumwaterConfig): RoleRunner[] {
 function claimFor(key: string): NonNullable<RoleRunner["state"]["claim"]> {
   return { file: "PLANS.md", key, title: key, at: Date.now(), source: "assigned" };
 }
+
+test("a work role's own self-requeued prompt waits its clock through the scheduling pass, not the poll", async () => {
+  // The pass-level half of the relief_wait spin (BUGS.md, mirrors GitHub issue #2): the reporter's
+  // `ci` started a run every ~2 s for ~2 h, each ending `skipped` with no model call, because its
+  // re-queued prompt read as fresh demand. Real-time stamps, not the file's T0: the pass's
+  // self-requeue discriminator reads queueFileName's 13-digit stamp against state.lastRunEndedAt.
+  const root = tmpdir("tw-scheduling-self-requeue-");
+  const realNow = Date.now();
+  const ci = fakeRunner("ci", defaultConfig());
+  ci.state.runs = 1;
+  ci.state.lastRunEndedAt = realNow - 60_000; // the recovery run that just ended `skipped`
+  ci.state.nextRunAt = realNow + HOUR; // the min-interval clock that run scheduled
+  const inbox = roleInboxDir(root, "ci");
+  ensureParentDir(path.join(inbox, "f"));
+  // The prompt that run declined, re-queued at its own end: stamped at or before lastRunEndedAt.
+  writeTextAtomic(path.join(inbox, queueFileName(realNow - 61_000, 0, ".md")), "Main was reported red at commit abc");
+
+  const pass = (now: number) =>
+    pollRunnerReasons({ ...schedulingCtx(root, [ci], new Map([["ci", undefined]])), now });
+
+  const held = await pass(realNow);
+  assert.equal(held.has(ci), false, "the self-requeued inbox does not re-fire on the next poll");
+  // Once its own clock turns, the same inbox is attempted again.
+  const due = await pass(realNow + 2 * HOUR);
+  assert.equal(due.get(ci), "inbox", "due on the min-run clock, still attributed to the inbox");
+  // Real demand is never cooled: a prompt submitted after the run ends runs on the next poll.
+  writeTextAtomic(path.join(inbox, queueFileName(realNow - 60_000 + 1_000, 1, ".md")), "a fresh operator request");
+  const fresh = await pass(realNow);
+  assert.equal(fresh.get(ci), "inbox", "a prompt stamped after the run end starts immediately");
+});
 
 test("a role with a queued change is admitted on the next poll: the queue is not a scheduling gate", async () => {
   const root = await initializedRepo();
