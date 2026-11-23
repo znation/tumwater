@@ -7,7 +7,7 @@ import { backendDefaultLabel, backendDisplayName } from "../agent/backend-traits
 import type { ChainTierInfo } from "../team/team-orchestrator-info.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
-import type { RoleViewPayload } from "./role-view.js";
+import type { RoleViewPayload } from "./role-view-types.js";
 
 /** The terminal's view of one role — what `tumwater role <id>` prints, rendered as Markdown
  * from the payload role-view.ts's rolePayload collects (the same document `--json` prints).

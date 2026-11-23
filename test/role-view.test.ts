@@ -1,5 +1,6 @@
-// Unit coverage for src/roles/role-view.ts (the collector behind `tumwater role <id>`) and
-// src/roles/role-render.ts (its Markdown renderer). The collector reads only persisted state —
+// Unit coverage for src/roles/role-view.ts (the collector behind `tumwater role <id>`, which
+// fills role-view-types.ts's RoleViewPayload) and src/roles/role-render.ts (its Markdown
+// renderer). The collector reads only persisted state —
 // tumwater.json, the role's state file, the queue directories, the pause marker — so every
 // test runs against a bare fixture dir with no team, which is also the degradation claim
 // under test: a missing read yields its empty answer, never a throw.
