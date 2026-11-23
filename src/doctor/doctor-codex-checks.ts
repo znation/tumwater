@@ -14,6 +14,8 @@ import { codexWriteGuardDefinition } from "../agent/codex/codex-write-guard.js";
 import { resolvedBackendConfig } from "../config/config-views.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { envPath, isDirectory, readTextOrNull, statOrNull, treeBytes, walkFiles } from "../files/files.js";
+import { readBoundedTailText } from "../files/tail.js";
+import { ROLLOUT_TAIL_MAX_BYTES } from "../agent/codex/codex-rollout.js";
 import { formatBytes, tokenWindowLabel } from "../text/format.js";
 import { errorMessage } from "../text/text.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
@@ -181,7 +183,13 @@ export async function checkCodexModels(root: string): Promise<CheckOutcome | nul
  * source the runtime account is fed from. The newest capture (by file mtime) wins,
  * approximating the account's current state — readdir order is filesystem order, not
  * chronological, so the captures are sorted by mtime first. A missing reading is the safe
- * direction (nothing to warn about). */
+ * direction (nothing to warn about).
+ *
+ * Each rollout is read as a bounded tail window (ROLLOUT_TAIL_MAX_BYTES), never whole: a
+ * rollout is Codex's own record of a thread and grows unbounded, so decoding one whole is what
+ * put tumwater out of memory (BUGS.md, GitHub issue #1). The reading is the first match inside
+ * that window — the same regex and the same first-match rule as before, applied to the newest
+ * bytes of the file rather than to all of it. */
 function codexSessionCredits(home: string): boolean | null {
   const sessions = path.join(home, "sessions");
   if (!isDirectory(sessions)) return null;
@@ -196,9 +204,7 @@ function codexSessionCredits(home: string): boolean | null {
   });
   rollouts.sort((a, b) => b.mtimeMs - a.mtimeMs);
   for (const r of rollouts) {
-    const text = readTextOrNull(r.file);
-    if (text === null) continue;
-    const m = /"has_credits"\s*:\s*(true|false)/.exec(text);
+    const m = /"has_credits"\s*:\s*(true|false)/.exec(readBoundedTailText(r.file, ROLLOUT_TAIL_MAX_BYTES));
     if (m !== null) return m[1] === "true";
   }
   return null;

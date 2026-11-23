@@ -98,7 +98,7 @@ import { atLocalTs as tsDaysAgo, dayKey } from "./helpers/oracles.js";
 import { withEnv, setEnv } from "./helpers/env.js";
 import { fakeBins, noProcesses, readyRepo } from "./fixtures/doctor-fixtures.js";
 import { runDoctor } from "../src/doctor/doctor.js";
-import { withReadOnlyDir } from "./helpers/fs-faults.js";
+import { patchFsMethod, withReadOnlyDir } from "./helpers/fs-faults.js";
 import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
@@ -2581,6 +2581,32 @@ test("checkCodexAccount reads the newest rollout by mtime, not readdir order", a
   const credits = (await checkCodexAccount(root))!;
   assert.equal(credits.level, "warn");
   assert.match(credits.detail, /has_credits: true/);
+});
+
+test("checkCodexAccount reads has_credits from a grown rollout's tail, never the file whole", async () => {
+  const { root, home } = codexRowFixture();
+  const sessions = path.join(home, "sessions", "2026-10-23");
+  fs.mkdirSync(sessions, { recursive: true });
+  // A rollout is Codex's own record of a thread and grows without bound — a real home holds
+  // files of hundreds of MB, and decoding one whole is what put tumwater out of memory. The
+  // credit reading sits at the file's end, so a bounded tail read finds it; the patch forbids
+  // the whole-file read outright, so a reader that regressed to one fails here.
+  const file = path.join(sessions, "rollout-grown.jsonl");
+  const filler = Array.from({ length: 5000 }, (_, i) =>
+    JSON.stringify({ timestamp: "2026-10-23T00:00:00.000Z", type: "response_item", payload: { type: "reasoning", id: `r-${i}`, pad: "p".repeat(60) } }),
+  ).join("\n");
+  fs.writeFileSync(file, `${filler}\n{"payload":{"type":"token_count","rate_limits":{"credits":{"has_credits":true}}}}\n`);
+  const undo = patchFsMethod("readFileSync", (orig) => (...args: unknown[]) => {
+    if (String(args[0]) === file) throw new Error("checkCodexAccount read the rollout whole");
+    return orig(...args);
+  });
+  try {
+    const credits = (await checkCodexAccount(root))!;
+    assert.equal(credits.level, "warn");
+    assert.match(credits.detail, /has_credits: true/);
+  } finally {
+    undo();
+  }
 });
 
 test("checkCodexLeaks names each leaked path and ignores .system", async () => {

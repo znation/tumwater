@@ -15,10 +15,20 @@
 import fs from "node:fs";
 import path from "node:path";
 import { walkFiles } from "../../files/files.js";
+import { readBoundedTailText } from "../../files/tail.js";
 import { isJsonObject, nonNegativeNumber, objectOrEmpty, optionalString, parseJsonObject } from "../../files/json-object.js";
 import { windowTypeName } from "./codex-stream.js";
 
 type Json = Record<string, unknown>;
+
+/** The bytes a rollout read may hold at once. A rollout is Codex's own JSONL record of one
+ * thread and it grows unbounded — a heavy operator's home runs to hundreds of MB — so every
+ * reader of one takes a tail window, never the file: a whole-file decode of a rollout that big
+ * is what put tumwater out of memory at startup (BUGS.md, GitHub issue #1). One turn's records
+ * (`task_started` .. `task_complete`, the trailing `token_count`) sit far inside this window, so
+ * a tail read is semantically the same read for both callers; a block larger than the window
+ * simply misses its own `task_started`, and each caller's documented miss path takes over. */
+export const ROLLOUT_TAIL_MAX_BYTES = 1024 * 1024;
 
 /** A codex thread id (a UUID format, e.g. `01a15c9d-6762-7931-814e-a3e6e64c1b51`). The
  * stream mints it in `thread.started`; the pre-spawn ledger record carries the session name
@@ -234,6 +244,19 @@ export function rolloutLines(text: string, opts: { sinceTurnStart?: string; requ
     return { lines: [] };
   }
   return buildRolloutLines(records, requestedModel);
+}
+
+/** Read ONE turn's rollout records out of `file` with a bounded read: the file's tail window
+ * (`maxBytes`, `ROLLOUT_TAIL_MAX_BYTES` unless the caller names another), never the whole file.
+ * The two rollout readers' shared step — a rollout grows with its thread, so a whole-file decode
+ * is what put tumwater out of memory (BUGS.md, GitHub issue #1), and the block each reader wants
+ * is at the file's end either way. */
+export function readRolloutLines(
+  file: string,
+  opts: { sinceTurnStart?: string; requestedModel: string; maxBytes?: number },
+): RolloutLines {
+  const { maxBytes = ROLLOUT_TAIL_MAX_BYTES, ...read } = opts;
+  return rolloutLines(readBoundedTailText(file, maxBytes), read);
 }
 
 /** Locate the rollout file of `$CODEX_HOME` that names the session `id`: the first

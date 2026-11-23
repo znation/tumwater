@@ -5,6 +5,86 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A Codex home's multi-hundred-MB rollout files are read whole into the heap, so `tumwater run --gui` OOMs within seconds of startup (mirrors GitHub issue #1; found by the director role 2026-11-22), fixed 2026-11-23 by the bugfix role
+
+**Symptom.** `tumwater run --gui --port 7181` on 0.9.0 (build `9efbd3df`, node v24.19.0, Linux x86_64)
+prints the two startup lines and the `tumwater started` event, then dies on its own ~12 s later with
+`FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory`, exit code 1. The
+gc log shows the heap already at 4047 MB on the first scavenge it prints (default ~4 GB limit), and the
+native trace's last V8 frame is `v8::String::NewFromUtf8(isolate, char const*, NewStringType, int)` — a
+single very large UTF-8 string being materialized, not a slow leak (reporter's trace, GitHub issue #1).
+
+**Reproduce.** Not reproduced locally: the reporter's 0.9.0 build is not runnable here and this machine's
+`~/.codex` is too small to trip it — measured today, 844 MB overall but only 8.6 MB under `sessions/`, 38
+`rollout-*.jsonl` files and none over 20 MB — so everything below is code reading plus the reporter's
+trace, and a repro must synthesize the file. The shape a fix run
+can build offline: point the team's codex home at a scratch directory whose `sessions/`
+hierarchy holds one `rollout-<time>-<uuid>.jsonl` of a few hundred MB of plausible jsonl, with a codex
+seam configured, and watch the reader's RSS / heap — `node --max-old-space-size=256` turns the same read
+into a fast, cheap OOM that pins the site. BUGS-FIXED.md's entry "Codex runs default to the operator's
+own `~/.codex`, filling it with team sessions, part 1/2" measured that very home at 2.9 GB with 701 MB
+under `sessions/`, so these files are routinely tens-to-hundreds of MB on a real operator machine.
+
+**Cause.** Unbounded whole-file reads of Codex rollouts. Two survive on main's tip:
+`afterRun`'s usage fallback in `src/agent/codex/codex-backend.ts` (`text = fs.readFileSync(rollout,
+"utf8")`, then `rolloutLines(text, …)`, whose `text.split("\n")` at `src/agent/codex/codex-rollout.ts`
+makes a second full copy plus one string per line — several times the file's bytes in heap at once), and
+`codexSessionCredits` in `src/doctor/doctor-codex-checks.ts`, which `walkFiles` over `<home>/sessions`,
+then `readTextOrNull(r.file)` every `rollout-*.jsonl` whole, newest-mtime first, until one matches the
+`"has_credits"` regex (the same newest-by-mtime order its own test pins). Neither statures the file or
+bounds the read. A third site — and the one the
+reporter's build actually had uncapped — is the Codex hook-trust lookup: at `9efbd3df`
+`lookupCodexHookTrust` and `codexHookTrust` in `src/agent/codex/codex-hook-trust.ts` accumulated the
+child's stdout with `buffer += chunk` and `out += chunk` with no cap; `5409d5e9b` bound them
+(`TRUST_PROBE_MAX_OUTPUT_BYTES` 1 MiB + `captureCappedOutput`) and that commit is **not** an ancestor of
+`9efbd3df` (`git merge-base --is-ancestor 5409d5e9b 9efbd3df` → false), so the reporter's build was
+missing it. `grep -n "+= chunk"` over that build names those two as its only accumulating sites with no
+cap of any kind; every other one already carried a byte ceiling or kept only a re-sliced tail, then and at
+main's tip — `EXEC_MAX_BUFFER` in
+`src/git/git-run.ts`, `opts.maxBuffer` in `src/process/process-group.ts`, `maxOutputBytes` in
+`src/process/bounded-probe.ts` (`src/doctor/doctor-probe.ts` in that build), `captureCappedOutput` in
+`src/process/process.ts`, `MAX_NATIVE_LINE_CHARS` (16 MiB per line) + a 64 KB stderr tail in
+`src/agent/agent-stream.ts`, the body cap in `src/gui/gui-http-body.ts`, and the line-framed
+`this.buffer` in `src/pi/pi-stream.ts`, which keeps only the trailing partial line. `indexRollouts` in `src/agent/codex/codex-rollout.ts` walks names
+only — it never reads a rollout. Which site fired on the reporter's machine is not established: all three
+are on the Codex path and the reporter did not say whether any seam routes to codex. The trust lookup is
+the best fit for the timing — it runs in the backend's `prepare`, i.e. at the start of the first codex
+run, where `afterRun` needs a finished run and `codexSessionCredits` runs only from doctor
+(`checkCodexAccount` in `src/doctor/doctor.ts`, not a startup gate: the dashboard's Settings view is what
+fetches `/api/doctor`). The startup gate does touch Codex's home (`seedCodexAccount` → `probeLoginStatus`
+in `src/agent/codex/codex-account.ts`, `spawnSync codex login status`), but `spawnSync` carries its own
+1 MiB default `maxBuffer` and a `null` return, so it cannot balloon the heap.
+
+**Notes for the fixer.** One theme: no Codex rollout is ever materialized whole. (a) `afterRun` already
+documents that the reader "selects the last block, this run's" from the file, so a tail read is
+semantically correct — `readTailText` / `readTailTextWithEnd` in `src/files/tail.ts` is the existing
+bounded reader, or gate on `statOrNull(rollout)` size and fall through to the existing `fallback()` above
+a ceiling. (b) `codexSessionCredits` needs one regex hit, not the file: scan incrementally with
+`forEachTailChunk` / `readCompleteLines` (same module), or skip a rollout above a stated byte ceiling and
+keep the loop's "newest match wins" order; state the chosen bound in the function's doc comment. (c)
+Keep the fix to those two reads. The reporter's last V8 frame is `NewFromUtf8` on a whole-file decode, and
+the `+= chunk` sites `grep -rn "+= chunk" src` finds on main are all bounded or not buffers at all — the
+trust probe's `buffer += chunk` behind a byte-count check against `TRUST_PROBE_MAX_OUTPUT_BYTES`,
+`captured[stream] += chunk` behind `captureCappedOutput`'s `maxBuffer` in `src/process/process.ts`, and the
+three `+= chunk.length` counters in `src/gui/gui-http-body.ts` that append nothing. `src/agent/agent-stream.ts`'s
+two `+= text` buffers are re-sliced in place too (the 16 MiB `MAX_NATIVE_LINE_CHARS` native line and the
+64 KB stderr tail). The one accumulation with no byte
+cap is `this.buffer += chunk` in `src/pi/pi-stream.ts`'s `feed`, which keeps only the trailing partial line
+(it has no newline); leave it alone unless the repro lands there, and if it does, say so and raise it as its
+own entry rather than widening this fix. If a scratch `CODEX_HOME` with a huge rollout does not reproduce the crash, say so in the
+record rather than guessing: the reporter's stack would then need a heap snapshot
+(`--heapsnapshot-signal=SIGUSR2`) follow-up, which is a question for the operator, not a guess here.
+Tests go where these readers are tested today: `test/codex-rollout.test.ts`
+(`reading without a turn id takes the last block — the just-finished run`), `test/codex-run.test.ts` for
+the `afterRun` fallback, and `test/doctor-checks.test.ts`
+(`checkCodexAccount warns when the account has credits and reads ok otherwise`, whose fixture home already
+writes rollout files and orders them by mtime). Drive them with a fixture rollout a few KB and an injected
+byte ceiling, never a real multi-hundred-MB file, and never a real model.
+
+**Fix.** One reader for both sites: `readBoundedTailText` in `src/files/tail.ts` walks a file backwards with `forEachTailChunk`, stops at the first chunk that reaches its byte bound, and drops the leading partial line of a windowed read, so a reader that parses every line it receives spends a constant heap. `ROLLOUT_TAIL_MAX_BYTES` (1 MiB) is that bound for rollouts, named once in `src/agent/codex/codex-rollout.ts`, where `readRolloutLines` now composes the bounded read with `rolloutLines`; `afterRun` in `src/agent/codex/codex-backend.ts` calls it instead of `fs.readFileSync`, and `codexSessionCredits` in `src/doctor/doctor-codex-checks.ts` runs its `has_credits` regex over the same window instead of `readTextOrNull`. A block larger than the window misses its own opening record and takes each caller’s documented miss path (the usage fallback; no credit reading) rather than a stale figure.
+
+**Validation gap:** no-fake — the machine’s `~/.codex` holds no rollout near the size that trips it, so confirming the fix needed a fixture rollout past the tail scan’s chunk threshold plus a patched `fs.readFileSync` that throws for the rollout path — the only way to show a whole-file read is gone without a real model or a hundreds-of-MB file.
+
 ### The merge gate's red-main exemption can fail to fire, so a change that adds no new failures is rejected while main is red (mirrors GitHub issue #5; found by the director role 2026-11-22) — fixed 2026-11-23 by the bugfix role
 
 With main red on the no-repro count guard (`test_the record count does not grow`: the no-repro tag grew past its baseline), an operator watched role merges rejected citing that same test - the one main already fails - and 16 merge pins sat undrained until the fleet spun. The gate's own note (`describeMainRed` in src/baseline/main-red.ts) promises "changes that add no new failures still merge"; the note and the behavior disagree.

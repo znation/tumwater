@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { findRollout, rolloutLines, type RolloutLines } from "../src/agent/codex/codex-rollout.js";
+import { findRollout, readRolloutLines, rolloutLines, type RolloutLines } from "../src/agent/codex/codex-rollout.js";
 import { codexCaptures, codexTurnContext } from "./fixtures/codex-events.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -165,5 +165,57 @@ test("the reading never surfaces the account fields", () => {
   for (const line of result.lines) {
     assert.ok(!line.includes("creator_user_id"), "no creator_user_id value leaks");
     assert.ok(!line.includes("creator_account_id"), "no creator_account_id value leaks");
+  }
+});
+
+/** A filler rollout head: `count` well-formed but record-less lines, the shape of the hundreds
+ * of transcript and response records a long thread appends before the turn being read. */
+function fillerHead(count: number): string {
+  return Array.from({ length: count }, (_, i) =>
+    JSON.stringify({ timestamp: "2026-10-21T00:00:00.000Z", type: "response_item", payload: { type: "reasoning", id: `r-${i}`, pad: "p".repeat(60) } }),
+  ).join("\n");
+}
+
+test("readRolloutLines reads a long rollout's turn from its tail window, not the whole file", () => {
+  const home = tmpdir();
+  const file = path.join(home, "rollout-long.jsonl");
+  try {
+    // A thread's file grows with every run: a head of filler records then the turn's block, so
+    // the reading must come from the window the tail read hands over.
+    const turn = [
+      JSON.stringify({ type: "event_msg", payload: { type: "task_started", turn_id: FIRST } }),
+      codexTurnContext("gpt-6-luna"),
+      JSON.stringify({
+        type: "token_usage_record",
+        payload: { turn_id: FIRST, turn_token_usage: { input_tokens: 1200, cached_input_tokens: 200, cache_write_input_tokens: 0, output_tokens: 55 } },
+      }),
+      JSON.stringify({ type: "event_msg", payload: { type: "task_complete", turn_id: FIRST } }),
+    ].join("\n");
+    fs.writeFileSync(file, `${fillerHead(400)}\n${turn}\n`);
+    const usage = read(readRolloutLines(file, { sinceTurnStart: FIRST, requestedModel: "gpt-6-luna", maxBytes: 2048 })).find((e) => e.type === "run_usage")!;
+    assert.equal(usage.input, 1200 - 200, "the turn's own usage reads from the tail window");
+    assert.equal(usage.output, 55);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a turn larger than the read window misses its task_started and reads nothing", () => {
+  const home = tmpdir();
+  const file = path.join(home, "rollout-huge-turn.jsonl");
+  try {
+    // The documented miss path: the window holds the turn's tail records but not its opening
+    // task_started, so sawTurn stays false and there is no reading — the caller's fallback takes
+    // over rather than reporting a thread total as this run's.
+    // The opening task_started is written at the file's own start, far outside a 64-byte window,
+    // and the usage record at its end: a reader that bounded the read finds no turn and reports
+    // nothing, a reader that took the file whole would report this figure as the run's own.
+    fs.writeFileSync(
+      file,
+      `${JSON.stringify({ type: "event_msg", payload: { type: "task_started", turn_id: FIRST } })}\n${fillerHead(400)}\n${JSON.stringify({ type: "token_usage_record", payload: { turn_id: FIRST, turn_token_usage: { input_tokens: 1200, output_tokens: 55 } } })}\n`,
+    );
+    assert.deepEqual(readRolloutLines(file, { sinceTurnStart: FIRST, requestedModel: "gpt-6-luna", maxBytes: 64 }), { lines: [] });
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
   }
 });

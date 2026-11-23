@@ -17,7 +17,6 @@
  * the notes path in its environment (the `tumwater-notes` command on PATH reads it), as the
  * pi and claude adapters do. */
 
-import fs from "node:fs";
 import { loadConfigSafe } from "../../config/config.js";
 import { resolvedBackendConfig } from "../../config/config-views.js";
 import { backendRunEnv } from "../../process/run-marker.js";
@@ -39,7 +38,7 @@ import { codexArgs, codexEffort } from "./codex-args.js";
 import { codexEnv } from "./codex-env.js";
 import { codexHookTrust } from "./codex-hook-trust.js";
 import { codexHookArg, codexHookTrustArg, codexWriteGuardDefinition } from "./codex-write-guard.js";
-import { THREAD_ID_RE, findRollout, rolloutLines } from "./codex-rollout.js";
+import { THREAD_ID_RE, findRollout, readRolloutLines } from "./codex-rollout.js";
 import { codexTranslator, type CodexStreamTranslator } from "./codex-stream.js";
 
 /** The oldest codex CLI the team targets, the sibling of `OPENCODE_MIN_VERSION`
@@ -279,16 +278,11 @@ export const codexBackend: AgentBackend = {
     if (home === undefined || id === undefined) return fallback();
     const rollout = findRollout(home, id);
     if (rollout === null) return fallback();
-    let text: string;
-    try {
-      text = fs.readFileSync(rollout, "utf8");
-    } catch {
-      return fallback();
-    }
-    // The stream never exposes the turn id — only the thread id that names the rollout file
+    // The rollout is read as a bounded tail window, never whole — see readRolloutLines. The
+    // stream never exposes the turn id — only the thread id that names the rollout file
     // (real captures' `task_started.turn_id` is a different UUID), so the reader selects the
     // last block, this run's, from the file the thread id located.
-    const { lines, switchedTo } = rolloutLines(text, {
+    const { lines, switchedTo } = readRolloutLines(rollout, {
       requestedModel: run.config.model ?? "",
     });
     if (lines.length === 0) return fallback();

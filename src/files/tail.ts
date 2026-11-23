@@ -155,6 +155,36 @@ export function readTailTextWithEnd(
   const completeEnd = lastNl >= 0 ? coveredEnd - (raw.length - 1 - lastNl) : coveredEnd - raw.length;
   return { text: raw.toString("utf8"), coveredEnd: completeEnd };
 }
+/** Read a file's tail with a hard bound on the bytes returned, for a reader that parses every
+ * line it receives (a JSONL scanner, a regex sweep): the last `maxBytes` of the file with the
+ * leading partial line dropped, since that window starts mid-line — or the whole file when it is
+ * at or under `maxBytes`. Without it such a reader decodes a multi-hundred-MB log whole and the
+ * process runs out of memory. The returned text is never longer than `maxBytes`; the scan that
+ * fills the window stops at the first chunk that reaches the bound, so the read costs about the
+ * same. Returns `""` for a missing, empty or unreadable file, and for a window holding no whole
+ * line. Prefer it over `readTailText` when the caller has only a byte bound, no stop condition of
+ * its own. */
+export function readBoundedTailText(file: string, maxBytes: number): string {
+  const parts: Buffer[] = [];
+  let have = 0;
+  let coveredEnd = 0;
+  forEachTailChunk(file, (chunk, end) => {
+    parts.unshift(chunk);
+    have += chunk.length;
+    coveredEnd = end;
+    return have >= maxBytes; // stop as soon as the window is in hand.
+  });
+  const raw = Buffer.concat(parts);
+  if (raw.length === 0) return "";
+  // The small-file leg of forEachTailChunk hands over the whole file in one chunk however small
+  // the bound, so trim to it here rather than return more than the caller bounded.
+  const window = raw.length > maxBytes ? raw.subarray(raw.length - maxBytes) : raw;
+  // A window reaching the scan's EOF starts at the file's own start: no torn head to drop.
+  if (window.length >= coveredEnd) return window.toString("utf8");
+  const cut = window.indexOf(10);
+  return cut === -1 ? "" : window.subarray(cut + 1).toString("utf8");
+}
+
 /** Per-file state for a consumer that polls an append-only log run by run and only wants
  * the bytes appended since its last visit: where it stopped reading (dev/ino guard against
  * rotation, offset always at a line boundary) plus its accumulated value. */

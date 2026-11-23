@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { followFile, forEachTailChunk, readCompleteLines, withTail, type TailState } from "../src/files/tail.js";
+import { followFile, forEachTailChunk, readBoundedTailText, readCompleteLines, withTail, type TailState } from "../src/files/tail.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { vanishOnOpen, vanishOnReadFile } from "./helpers/fs-faults.js";
 import { sleep, waitFor } from "./helpers/wait.js";
@@ -313,4 +313,34 @@ test("forEachTailChunk delivers nothing when rotation removes the file between s
       restore();
     }
   }
+});
+
+// readBoundedTailText: the byte-bound twin of readTailText for a reader that parses every line
+// it receives. Its reason for existing: a Codex rollout home holds multi-hundred-MB JSONL files
+// and a whole-file decode of one is what put the process out of memory (BUGS.md, GitHub #1).
+test("readBoundedTailText returns a small file whole and a large file's last maxBytes, minus its torn first line", () => {
+  const dir = tmpdir();
+  const small = path.join(dir, "small.jsonl");
+  fs.writeFileSync(small, "a\nb\n");
+  assert.equal(readBoundedTailText(small, 4096), "a\nb\n", "a file under the bound is handed over whole");
+
+  // Past the tail scan's small-file threshold the read is chunked from EOF, so the window's
+  // first line is a fragment: 2000 bytes of filler then the two records the caller wants.
+  const big = path.join(dir, "big.jsonl");
+  const filler = Array.from({ length: 300 }, (_, i) => `{"n":${i},"pad":"${"p".repeat(40)}"}`).join("\n");
+  fs.writeFileSync(big, `${filler}\n{"want":"first"}\n{"want":"last"}\n`);
+  const window = readBoundedTailText(big, 64);
+  assert.ok(window.length <= 64, `the bound holds: ${window.length} bytes`);
+  // The 64-byte window starts inside the filler's last record and ends at EOF, so exactly the
+  // two records after that fragment come back: 17 + 16 bytes.
+  assert.equal(window, '{"want":"first"}\n{"want":"last"}\n', "only whole lines of the newest bytes come back");
+});
+
+test("readBoundedTailText bounds a single-line file at or under the bound and returns nothing above", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "one-line.jsonl");
+  fs.writeFileSync(file, "x".repeat(20_000)); // one line, no newline at all
+  assert.equal(readBoundedTailText(file, 1000), "", "a window holding no whole line is no data");
+  const missing = readBoundedTailText(path.join(dir, "nope.jsonl"), 1000);
+  assert.equal(missing, "", "a missing file is no data, like a missing log");
 });

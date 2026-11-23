@@ -423,6 +423,35 @@ append log reports finished" (openAppendLog sets the flag on both a destroy and 
 neither written nor ended again at settle" (the raw and native writes are skipped and the settle
 flush does not end a dead stream twice).
 
+### INV-B11: a Codex rollout is read as a bounded tail window, never decoded whole
+
+**Guarantee.** Every reader of a `$CODEX_HOME/sessions/**/rollout-*.jsonl` takes the file's last
+`ROLLOUT_TAIL_MAX_BYTES` (1 MiB), not the file: `readBoundedTailText` walks the file backwards in
+tail-scan chunks, stops at the first chunk that reaches the bound, and drops the leading partial
+line of a windowed read. A rollout is Codex's own JSONL record of one thread and grows with every
+run in it — a heavy operator's home holds hundreds of MB — so a whole-file `readFileSync` plus
+`split("\n")` materializes several times the file's bytes at once and put tumwater out of memory
+seconds after startup. Both readers want the end of the file anyway (the adapter selects the last
+`task_started` block; the doctor's credit regex hits a trailing `token_count`), so the window is
+the same reading. When the block a reader wants is larger than the window it misses its own
+opening record and takes that reader's documented miss path — the usage fallback, or no credit
+reading — rather than reporting a stale figure as this run's.
+
+**Binds.** `src/files/tail.ts` (`readBoundedTailText`, `forEachTailChunk`),
+`src/agent/codex/codex-rollout.ts` (`ROLLOUT_TAIL_MAX_BYTES`, `readRolloutLines`),
+`src/agent/codex/codex-backend.ts` (`afterRun`), `src/doctor/doctor-codex-checks.ts`
+(`codexSessionCredits`).
+
+**Pinned by.** `test/tail.test.ts` — "readBoundedTailText returns a small file whole and a large
+file's last maxBytes, minus its torn first line" and "readBoundedTailText bounds a single-line
+file at or under the bound and returns nothing above"; `test/codex-rollout.test.ts` —
+"readRolloutLines reads a long rollout's turn from its tail window, not the whole file" and "a
+turn larger than the read window misses its task_started and reads nothing"; `test/codex-run.test.ts` —
+"afterRun reads a grown rollout's usage from its tail, with no whole-file read of it" (it patches
+`fs.readFileSync` to throw for the rollout path, so a return to the whole-file read fails); and
+`test/doctor-checks.test.ts` — "checkCodexAccount reads has_credits from a grown rollout's tail,
+never the file whole" (same patch).
+
 ## Sibling result shapes a classifier treats alike
 
 When a classifier groups outcomes into classes, every result shape that belongs to a class must

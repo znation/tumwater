@@ -11,6 +11,7 @@ import { runAgent } from "../src/agent/agent-run.js";
 import { readSessions, recordSession } from "../src/agent/session-ledger.js";
 import { codexBackend, setCodexTrustLookupTimeoutMs } from "../src/agent/codex/codex-backend.js";
 import { codexTranslator } from "../src/agent/codex/codex-stream.js";
+import { patchFsMethod } from "./helpers/fs-faults.js";
 import { defaultConfig } from "../src/config/config.js";
 import { suiteRerunWarning, type ToolCallStart } from "../src/review/suite-rerun.js";
 import type { PiRunOptions } from "../src/agent/agent-run.js";
@@ -470,4 +471,55 @@ test("afterRun with no session id falls back to the stream usage and flags it pa
   const lines = codexBackend.afterRun!(run, { args: [], env: {} }, translator);
   assert.deepEqual(lines, []);
   assert.ok(translator.warnings().includes("codex_usage_partial"), translator.warnings().join(", "));
+});
+
+/** A rollout head long enough to sit past the tail scan's small-file threshold (8 KiB), so the
+ * read of it must go through the chunked window, never `fs.readFileSync`. */
+/** A turn_context line naming the model that actually ran. */
+function codexTurnContextLine(model: string): string {
+  return JSON.stringify({ timestamp: "2026-10-21T00:00:00.000Z", type: "turn_context", payload: { type: "turn_context", turn_id: "turn-a", model } });
+}
+
+function rolloutFiller(count: number): string {
+  return Array.from({ length: count }, (_, i) =>
+    JSON.stringify({ timestamp: "2026-10-21T00:00:00.000Z", type: "response_item", payload: { type: "reasoning", id: `r-${i}`, pad: "p".repeat(60) } }),
+  ).join("\n");
+}
+
+test("afterRun reads a grown rollout's usage from its tail, with no whole-file read of it", () => {
+  const root = tmpdir();
+  const home = path.join(root, "codex-home");
+  codexResumeRoot(root, home);
+  const rollout = path.join(home, "sessions", "2026-10-21", `rollout-0000-${THREAD_ID}.jsonl`);
+  fs.mkdirSync(path.dirname(rollout), { recursive: true });
+  fs.writeFileSync(
+    rollout,
+    [
+      rolloutFiller(400),
+      JSON.stringify({ type: "event_msg", payload: { type: "task_started", turn_id: "turn-a" } }),
+      codexTurnContextLine("gpt-6-luna"),
+      JSON.stringify({
+        type: "token_usage_record",
+        payload: { turn_id: "turn-a", turn_token_usage: { input_tokens: 1000, cached_input_tokens: 300, cache_write_input_tokens: 0, output_tokens: 40 } },
+      }),
+    ].join("\n") + "\n",
+  );
+  const run = codexRun(root) as unknown as Parameters<NonNullable<AgentBackend["afterRun"]>>[0];
+  const translator = codexTranslator({});
+  // A rollout is Codex's record of the whole thread and grows without bound, so afterRun must
+  // never decode it whole: the only whole-file read of it is fs.readFileSync, and with that call
+  // forbidden for this path the reading still comes out exact.
+  const undo = patchFsMethod("readFileSync", (orig) => (...args: unknown[]) => {
+    if (String(args[0]) === rollout) throw new Error("afterRun read the rollout whole");
+    return orig(...args);
+  });
+  try {
+    const lines = codexBackend.afterRun!(run, { args: [], env: {}, sessionId: THREAD_ID }, translator).map((l) => JSON.parse(l) as Record<string, unknown>);
+    const usage = lines.find((e) => e.type === "run_usage")!;
+    assert.equal(usage.input, 700, "the tail window holds the turn's own usage");
+    assert.equal(usage.output, 40);
+    assert.ok(!translator.warnings().includes("codex_usage_partial"), translator.warnings().join(", "));
+  } finally {
+    undo();
+  }
 });
