@@ -124,11 +124,20 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   // and fail rows (toggleDoctorProblems, gui-client-settings), without rerunning the checks.
   // The Salvaged patches card's search box: the browser twin of tumwater salvage --grep — the
   // trimmed text goes to setSalvageFilter, which repaints and refetches (gui-client-settings).
+  // The GitHub-issues card's two filter controls are its siblings in the same listener, so one
+  // repaint follows a change to either: the picker keeps the search text and the search box keeps
+  // the picker's state. The search applies on the control's own change (Enter or blur), the
+  // trigger #histgrep uses — not per keystroke, which is what #backloggrep does and which would
+  // spend a request per character.
   document.addEventListener("change", (ev) => {
     const box = clickClosest(ev, "input[data-action='doctor-problems']");
     if (box) toggleDoctorProblems(box.checked);
     const grep = clickClosest(ev, "input[data-action='salvage-grep']");
     if (grep) setSalvageFilter(grep.value.trim());
+    const issState = clickClosest(ev, "select[data-action='issues-state']");
+    if (issState) setIssuesFilter({ state: issState.value, grep: currentIssuesFilter().grep });
+    const issGrep = clickClosest(ev, "input[data-action='issues-grep']");
+    if (issGrep) setIssuesFilter({ state: currentIssuesFilter().state, grep: issGrep.value.trim() });
   });
   // ---- global actions: alert and tile buttons, role names anywhere, questions ----
   // run-act:start

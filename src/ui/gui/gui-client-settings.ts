@@ -25,7 +25,8 @@
  * two-click Retire button (POST /api/retire); a fifth, "GitHub issues", lists the GitHub-issues
  * mirror (GET /api/issues, the same read `tumwater issues` prints) — never a `gh` call, only the
  * ledger the hourly scan wrote — with the mirror's counts, each issue's trust and mirror state and
- * its age, and no action. */
+ * its age, a search box and a state picker that narrow the rows through the endpoint's own `q` and
+ * `state` parameters, and no action beyond reading one issue's detail. */
 export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // One home for turning a thrown value into the message a flash shows: the fetch/parse/post
   // helpers throw the server's JSON-decoded value, which for the server's own errors is an
@@ -542,6 +543,49 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // which renumbers when a patch is dropped.
   let lastIssues = null;
   let issuesOpen = null;
+  // The card's own filter, kept here and never read back out of the payload: the endpoint echoes
+  // its state when one was asked for, but the controls must keep whatever the operator typed across
+  // every repaint and every later open of the Settings view. Each half is "" when unset, so an
+  // empty filter means the whole mirror, exactly like running the CLI with no flag.
+  let issuesFilter = { state: "", grep: "" };
+  // One normalization for both halves, so a missing key, a null, or a control that has never
+  // been touched all land on the same empty string rather than undefined leaking into a path.
+  function issuesFilterValue(f) {
+    return { state: f && f.state ? String(f.state) : "", grep: f && f.grep ? String(f.grep) : "" };
+  }
+  function issuesFilterOn(f) {
+    return f.state !== "" || f.grep !== "";
+  }
+  // The current filter, for the boot's change delegate: a change to one control keeps the other
+  // half, so the picker and the search box cannot drift apart across repaints.
+  function currentIssuesFilter() {
+    return issuesFilter;
+  }
+  // The four states the picker offers: the empty value is the endpoint's no-state case, so the
+  // All states row asks for the whole mirror instead of a fourth state the server would refuse.
+  const ISSUE_STATE_CHOICES = [["", "All states"], ["open", "Open"], ["closed", "Closed"], ["lost", "Lost"]];
+  // The card's controls row: the state picker and the search box, painted from issuesFilter and
+  // never from the payload, so a repaint keeps what the operator chose. The search applies on the
+  // control's own change (Enter or blur), the trigger #histgrep uses in the History view.
+  function issuesControlsHtml(filter) {
+    return "<div class='settings-row'><label><span class='sr-only'>State</span>" +
+      "<select class='field' data-action='issues-state'>" + ISSUE_STATE_CHOICES.map((c) =>
+        "<option value='" + c[0] + "'" + (filter.state === c[0] ? " selected" : "") + ">" + c[1] + "</option>").join("") +
+      "</select></label>" +
+      "<label><span class='sr-only'>Search</span>" +
+      "<input class='field' data-action='issues-grep' type='search' placeholder='Search issues…'" +
+      " autocomplete='off' value='" + esc(filter.grep) + "'></label></div>";
+  }
+  // The read the filter asks for: only the non-empty halves go into the query, so an empty filter
+  // is exactly /api/issues with no bare "?". q is encoded because grepIssueRows takes the raw
+  // substring, spaces and metacharacters included; state needs no encoding because the picker can
+  // only carry a value from ISSUE_STATES.
+  function issuesFilterPath(filter) {
+    const parts = [];
+    if (filter.state) parts.push("state=" + filter.state);
+    if (filter.grep) parts.push("q=" + encodeURIComponent(filter.grep));
+    return "/api/issues" + (parts.length ? "?" + parts.join("&") : "");
+  }
   function issuesHeaderSpan(d) {
     if (!d.read) return "";
     const closed = d.closedCount || 0;
@@ -565,7 +609,9 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     if (r.wasClosed === true) return "closed " + fmtAgo(at);
     return "updated " + fmtAgo(at);
   }
-  function renderIssues(d, open) {
+  function renderIssues(d, open, filter) {
+    const f = issuesFilterValue(filter);
+    const filtered = issuesFilterOn(f);
     const rows = (d.issues || []).map((r) => {
       const isOpen = issuesSlotOpen(open, r.position);
       return "<div class='settings-row'><strong>" + r.position + ". #" + r.number + " " +
@@ -585,12 +631,32 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       ? "<p class='empty'>gh " + esc(d.gh) + (d.reason ? ": " + esc(d.reason) : "") + "</p>" : "";
     let body;
     if (d.empty) body = "<div class='empty'>the GitHub issues mirror has not been read yet</div>";
-    else body = rows || "<div class='empty'>no issues to show</div>";
-    return "<div class='settings-row'><strong>GitHub issues</strong><span>" + issuesHeaderSpan(d) +
-      "</span></div>" + gate + body;
+    // A filtered empty list says the filter missed, not that the mirror holds nothing; the
+    // no-filter copy keeps its old words for the operator who never narrowed the card.
+    else body = rows || "<div class='empty'>" +
+      (filtered ? "no issues match this filter" : "no issues to show") + "</div>";
+    // Under a filter the header row names how many rows were kept out of how many exist. The
+    // denominator is the whole mirror's three counts (INV-DE3), never a count of the kept rows,
+    // and an unread mirror names no counts at all, so no sentence either.
+    const showing = filtered && d.read
+      ? "<span>Showing " + (d.issues || []).length + " of " +
+        ((d.openCount || 0) + (d.closedCount || 0) + (d.upstreamClosedCount || 0)) +
+        " issues matching this filter.</span>"
+      : "";
+    return issuesControlsHtml(f) +
+      "<div class='settings-row'><strong>GitHub issues</strong><span>" + issuesHeaderSpan(d) +
+      "</span>" + showing + "</div>" + gate + body;
   }
   function paintIssues() {
-    if (lastIssues) $("issuescard").innerHTML = renderIssues(lastIssues, issuesOpen);
+    if (lastIssues) $("issuescard").innerHTML = renderIssues(lastIssues, issuesOpen, issuesFilter);
+  }
+  // The two filter controls' one entry point: store the filter, repaint the cached document at
+  // once so the controls hold what the operator typed, then refetch the narrowed list. A card
+  // that has never fetched repaints nothing and reads once — there is no cached document to show.
+  function setIssuesFilter(next) {
+    issuesFilter = issuesFilterValue(next);
+    if (lastIssues) paintIssues();
+    return fetchIssues();
   }
   // Whether the open slot belongs to this row: the position alone, because the mirror numbers its
   // rows over the whole list and a refetch of the same ledger never renumbers them.
@@ -637,7 +703,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   async function fetchIssues() {
     buildSettingsView();
     try {
-      lastIssues = await getJson("/api/issues");
+      lastIssues = await getJson(issuesFilterPath(issuesFilter));
       paintIssues();
     } catch (err) {
       $("issuescard").innerHTML = errorPanel("GitHub issues could not load", err, "empty");

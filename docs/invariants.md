@@ -5952,7 +5952,10 @@ state filter, so `?state=open|closed|lost` divides the rows exactly as `--open`/
 does, the endpoint accepting exactly `ISSUE_STATES` — the one list the `IssueState` type is derived
 from, so a state can reach one front end's filter and never be refused by the other — and any other
 value is a 400 (`state must be one of open, closed, lost (got "…")`) rather than a list. `q` runs through
-`grepIssueRows`, the `--grep` predicate. The detail read is the same pair over one rule:
+`grepIssueRows`, the `--grep` predicate. The card's own search box and state picker send only those
+same two parameters (`?q=`, `?state=`) and paint themselves from the card's own filter, never from
+the payload's echoed `state`, so the picker cannot be preselected by a reply and a filtered frame
+still numbers its rows by the whole list and divides them by the whole mirror's counts. The detail read is the same pair over one rule:
 `tumwater issues --show <n>` (`cmdIssuesShow`) and `GET /api/issues-show?position=<n>`
 (`handleIssuesShow`) both number the position with `issueAtPosition`, so position N names the same
 issue on both surfaces whatever filter the list request carried — a detail read takes no filter at
@@ -5977,8 +5980,10 @@ re-export), `src/github/github-issues-render.ts` (`issueRows`, `issuesHeader`, `
 `grepIssueRows`, `issuesJson`, `issueAtPosition`, `renderIssueDetail`),
 `src/cli/cli-query-commands.ts` (`cmdIssuesShow`),
 `src/ui/gui/gui-client-settings.ts` (`renderIssues`, `paintIssues`,
-`fetchIssues`, `issueViewClick`), `src/ui/gui/gui-client-boot.ts` (the Settings-open fetch sequence
-and the `button[data-action='issues-view']` delegate).
+`fetchIssues`, `issueViewClick`, `issuesFilter`, `setIssuesFilter`), `src/ui/gui/gui-client-boot.ts` (the Settings-open fetch
+sequence, the `button[data-action='issues-view']` delegate, and the
+`select[data-action='issues-state']` / `input[data-action='issues-grep']` change delegates that
+call `setIssuesFilter`).
 
 **Pinned by.** `test/gui-issues.test.ts` — "GET /api/issues answers the whole mirror with its ledger
 counts and ascending positions", "GET /api/issues with no ledger answers read:false and creates
@@ -5992,7 +5997,11 @@ state= together narrow the list and echo the state" and "the live server routes 
 the mirror read and refuses POST"; `test/gui-client-settings.test.ts` — "renderIssues states the
 mirror's counts in tumwater issues' words and numbers every row", "renderIssues keeps the header
 counts at the whole mirror whatever rows arrived, and says an empty mirror in words" and
-"fetchIssues builds the card and fills it from GET /api/issues; a failed fetch is the error panel".
+"fetchIssues builds the card and fills it from GET /api/issues; a failed fetch is the error panel",
+"renderIssues paints the state picker and search box from the filter it is given, never from the
+payload", "an empty list under a filter says the filter missed, and no-filter and unread keep their
+own copies", "setIssuesFilter repaints the cached document before the narrowed read settles, then
+requests it" and "a filtered card's View button still reads its whole-list position".
 The detail pair is pinned by `test/github-issues-render.test.ts` — "issueAtPosition answers the
 issue the whole list numbers at that position", "issueAtPosition's miss names the whole list count
 and its valid range on both front ends" and "issueAtPosition of a mirror never read is the empty

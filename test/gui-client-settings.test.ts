@@ -34,8 +34,10 @@ interface SettingsFns {
   salvageViewClick(position: string): Promise<void>;
   paintSalvage(): void;
   renderRetirable(d: unknown, armed: (role: string) => boolean): string;
-  renderIssues(d: unknown, open?: unknown): string;
+  renderIssues(d: unknown, open?: unknown, filter?: unknown): string;
   fetchIssues(): Promise<void>;
+  setIssuesFilter(next: { state?: string; grep?: string }): Promise<void>;
+  currentIssuesFilter(): { state: string; grep: string };
   issueViewClick(position: string): Promise<void>;
   paintIssues(): void;
   fetchRetirable(): Promise<void>;
@@ -56,7 +58,7 @@ interface SettingsFns {
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "err-message", "settings-view", "format"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderSalvage", "fetchSalvage", "setSalvageFilter", "salvageApplyClick", "salvageDropClick", "salvageViewClick", "paintSalvage", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "renderIssues", "fetchIssues", "issueViewClick", "paintIssues", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderSalvage", "fetchSalvage", "setSalvageFilter", "salvageApplyClick", "salvageDropClick", "salvageViewClick", "paintSalvage", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "renderIssues", "fetchIssues", "setIssuesFilter", "currentIssuesFilter", "issueViewClick", "paintIssues", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "archiveBacklogClick", "resyncInstallClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton", "paintArchiveBacklogButton"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -1168,8 +1170,8 @@ test("renderIssues states the mirror's counts in tumwater issues' words and numb
   const { renderIssues } = settingsScope();
   const html = renderIssues(ISSUES_DOC(now));
   // The card's own header row, in the CLI's counting words over the whole mirror: two open, one
-  // closed by tumwater, no upstream clause while that count is 0.
-  assert.match(html, /^<div class='settings-row'><strong>GitHub issues<\/strong><span>znation\/proj \(main\): 2 open, 1 closed by tumwater, checked 3h ago<\/span><\/div>/);
+  // closed by tumwater, no upstream clause while that count is 0. The controls row sits above it.
+  assert.match(html, /^<div class='settings-row'><label><span class='sr-only'>State<\/span><select class='field' data-action='issues-state'><option value='' selected>All states<\/option><option value='open'>Open<\/option><option value='closed'>Closed<\/option><option value='lost'>Lost<\/option><\/select><\/label><label><span class='sr-only'>Search<\/span><input class='field' data-action='issues-grep' type='search' placeholder='Search issues…' autocomplete='off' value=''><\/label><\/div><div class='settings-row'><strong>GitHub issues<\/strong><span>znation\/proj \(main\): 2 open, 1 closed by tumwater, checked 3h ago<\/span><\/div>/);
   assert.equal(html.match(/closed upstream/g), null, "a zero upstream-close count keeps its clause out");
   // Each row: its whole-list position and issue number, the title linked to GitHub and escaped.
   assert.match(html, /<strong>1\. #4 <a rel='noopener' target='_blank' href='https:\/\/github\.com\/znation\/proj\/issues\/4'>Fourth &amp; &lt;b&gt;bold&lt;\/b&gt;<\/a><\/strong>/);
@@ -1202,11 +1204,19 @@ test("renderIssues keeps the header counts at the whole mirror whatever rows arr
   assert.match(unread, /<div class='empty'>the GitHub issues mirror has not been read yet<\/div>/);
   assert.match(unread, /<strong>GitHub issues<\/strong><span><\/span><\/div>/);
   assert.doesNotMatch(unread, /znation/, "an unread mirror names no repo");
-  assert.doesNotMatch(unread, /open/, "an unread mirror names no counts");
-  // A filtered frame that keeps nothing still states the whole mirror's counts (INV-DE3).
+  // The picker's own option values name states, so the counts guard reads the counts' shape — a
+  // number before "open," — never the bare word.
+  assert.doesNotMatch(unread, /\d+ open,/, "an unread mirror names no counts");
+  assert.doesNotMatch(unread, /Showing/, "an unread mirror names no matching-issues sentence");
+  // A filtered frame that keeps nothing still states the whole mirror's counts (INV-DE3). The
+  // filter is the card's own, never the payload's echoed `state`: an endpoint reply that carries
+  // state="closed" but reaches the card with no filter set still says All states, names no
+  // matching-issues sentence, and keeps the unfiltered empty copy.
   const filtered = renderIssues({ ...ISSUES_DOC(now), issues: [], state: "closed" });
   assert.match(filtered, /: 2 open, 1 closed by tumwater, checked 3h ago<\/span>/);
   assert.match(filtered, /<div class='empty'>no issues to show<\/div>/);
+  assert.match(filtered, /<option value='' selected>All states<\/option>/, "the payload's echoed state never preselects the picker");
+  assert.doesNotMatch(filtered, /Showing/, "an unfiltered read names no matching-issues sentence");
 });
 
 test("renderIssues prints a not-ok gh gate line with the ledger's reason, and the CLI's unknown-age words", () => {
@@ -1367,4 +1377,139 @@ test("fetchIssues builds the card and fills it from GET /api/issues; a failed fe
   });
   await fetchFail();
   assert.equal(els.issuescard!.innerHTML, "<div>GitHub issues could not load /api/issues failed: HTTP 500 — broken ledger</div>");
+});
+
+// The card's two filter controls (the search box and the state picker): the card paints them from
+// its own issuesFilter, and setIssuesFilter is the one entry point both controls go through. The
+// expectations come from what GET /api/issues is pinned to answer for ?state= and ?q= in
+// test/gui-issues.test.ts — the denominators are the whole mirror's counts (INV-DE3) and the
+// positions stay the whole list's (INV-DE6) — never read back out of the code under test.
+
+test("renderIssues paints the state picker and search box from the filter it is given, never from the payload", () => {
+  const { renderIssues } = settingsScope();
+  const now = Date.now();
+  // The filter's own halves decide every control: the picker marks the asked state, the search box
+  // carries the typed text, and the counts sentence names the kept rows over the whole mirror
+  // (2 open + 1 closed by tumwater + 0 closed upstream = 3).
+  const html = renderIssues({ ...ISSUES_DOC(now), issues: [], state: "lost" }, null, { state: "lost", grep: "login" });
+  assert.match(html, /<option value='lost' selected>Lost<\/option>/);
+  assert.doesNotMatch(html, /<option value='' selected>/, "only one option is selected");
+  assert.match(html, /data-action='issues-grep' type='search' placeholder='Search issues…' autocomplete='off' value='login'/);
+  assert.match(html, /<span>Showing 0 of 3 issues matching this filter\.<\/span>/);
+  // The whole-mirror counts stay beside it, untouched by the filter (INV-DE3).
+  assert.match(html, /<strong>GitHub issues<\/strong><span>znation\/proj \(main\): 2 open, 1 closed by tumwater, checked 3h ago<\/span>/);
+  // Two kept rows of the same mirror count 2 of 3, and each keeps its whole-list position: the
+  // filter never renumbers (INV-DE6), so a row's View still addresses the same issue.
+  const kept = renderIssues({ ...ISSUES_DOC(now), issues: ISSUES_DOC(now).issues.slice(0, 2) }, null, { state: "", grep: "e" });
+  assert.match(kept, /<span>Showing 2 of 3 issues matching this filter\.<\/span>/);
+  assert.match(kept, /<strong>2\. #7 Seventh<\/strong>/);
+  assert.match(kept, /<option value='' selected>All states<\/option>/, "a grep-only filter selects All states");
+  // Search text reaching the DOM is escaped, so a quote or a tag cannot end the value attribute.
+  const quote = renderIssues(ISSUES_DOC(now), null, { state: "", grep: `a"b<c` });
+  assert.match(quote, /value='a&quot;b&lt;c'/);
+});
+
+test("an empty list under a filter says the filter missed, and no-filter and unread keep their own copies", () => {
+  const { renderIssues } = settingsScope();
+  const now = Date.now();
+  // A filter that kept nothing: the header row still paints, and the empty sentence names the
+  // filter, not an empty mirror.
+  const missed = renderIssues({ ...ISSUES_DOC(now), issues: [] }, null, { state: "closed", grep: "nope" });
+  assert.match(missed, /<div class='empty'>no issues match this filter<\/div>/);
+  assert.match(missed, /<strong>GitHub issues<\/strong>/, "the header row stays under a filtered empty list");
+  // The same document with no filter keeps today's copy.
+  const clear = renderIssues({ ...ISSUES_DOC(now), issues: [] }, null, { state: "", grep: "" });
+  assert.match(clear, /<div class='empty'>no issues to show<\/div>/);
+  assert.doesNotMatch(clear, /no issues match this filter/);
+  // A mirror never read names that state whatever the filter holds — it wins over both sentences,
+  // and an unread mirror has no whole-mirror counts to divide, so no matching-issues sentence.
+  const unread = renderIssues({ read: false, empty: true, openCount: 0, closedCount: 0, upstreamClosedCount: 0, issues: [] }, null, { state: "open", grep: "x" });
+  assert.match(unread, /<div class='empty'>the GitHub issues mirror has not been read yet<\/div>/);
+  assert.doesNotMatch(unread, /no issues match this filter/);
+  assert.doesNotMatch(unread, /Showing/);
+});
+
+test("setIssuesFilter repaints the cached document before the narrowed read settles, then requests it", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard", "retirecard", "briefcard", "issuescard"]) els[id] = { innerHTML: "", dataset: {} };
+  const now = Date.now();
+  const fetched: string[] = [];
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const { fetchIssues, setIssuesFilter, currentIssuesFilter } = settingsScope({
+    $: (id: string) => els[id],
+    getJson: async (path: string) => {
+      fetched.push(path);
+      // Only the narrowed read is held open, so the card's immediate repaint is observable.
+      if (path === "/api/issues?state=closed") await gate;
+      return ISSUES_DOC(now);
+    },
+  });
+  await fetchIssues();
+  // The narrowed read is held open: the card must already hold the filter it typed.
+  const pending = setIssuesFilter({ state: "closed", grep: "" });
+  const card = els.issuescard!.innerHTML;
+  assert.match(card, /<option value='closed' selected>Closed<\/option>/, "the picker repaints from the cached document at once");
+  assert.deepEqual(currentIssuesFilter(), { state: "closed", grep: "" });
+  release();
+  await pending;
+  assert.deepEqual(fetched, ["/api/issues", "/api/issues?state=closed"], "one narrowed read follows the repaint");
+  // Each half alone, both halves, and an empty filter: the path carries only the non-empty halves,
+  // and never a bare "?". q is encoded because grepIssueRows takes the raw substring.
+  await setIssuesFilter({ state: "", grep: "a b" });
+  await setIssuesFilter({ state: "open", grep: "x" });
+  await setIssuesFilter({});
+  assert.deepEqual(fetched.slice(1), [
+    "/api/issues?state=closed",
+    "/api/issues?q=a%20b",
+    "/api/issues?state=open&q=x",
+    "/api/issues",
+  ]);
+  // The controls hold what was typed, across the read that followed it.
+  assert.match(els.issuescard!.innerHTML, /data-action='issues-grep'[\s\S]*?value=''/);
+});
+
+test("setIssuesFilter on a card that has never fetched refetches only, and the boot routes both controls through it", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "issuescard"]) els[id] = { innerHTML: "", dataset: {} };
+  const fetched: string[] = [];
+  const { setIssuesFilter } = settingsScope({
+    $: (id: string) => els[id],
+    getJson: async (path: string) => {
+      fetched.push(path);
+      return { read: false, empty: true, openCount: 0, closedCount: 0, upstreamClosedCount: 0, issues: [] };
+    },
+  });
+  await setIssuesFilter({ state: "lost", grep: "gone" });
+  assert.deepEqual(fetched, ["/api/issues?state=lost&q=gone"], "no cached document means no repaint before the read");
+  // The boot's change delegate already carries the Health card's checkbox; the two filter controls
+  // are its siblings in the same listener, each keeping the other half of the filter.
+  assert.match(GUI_CLIENT_BOOT_JS, /input\[data-action='doctor-problems'\][\s\S]*?select\[data-action='issues-state'\][\s\S]*?input\[data-action='issues-grep'\]/);
+  assert.match(GUI_CLIENT_BOOT_JS, /setIssuesFilter\(\{ state: issState\.value, grep: currentIssuesFilter\(\)\.grep \}\)/);
+  assert.match(GUI_CLIENT_BOOT_JS, /setIssuesFilter\(\{ state: currentIssuesFilter\(\)\.state, grep: issGrep\.value\.trim\(\) \}\)/);
+});
+
+test("a filtered card's View button still reads its whole-list position", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "salvagecard", "retirecard", "briefcard", "issuescard"]) els[id] = { innerHTML: "", dataset: {} };
+  const now = Date.now();
+  const fetched: string[] = [];
+  const { setIssuesFilter, issueViewClick } = settingsScope({
+    $: (id: string) => els[id],
+    getJson: async (path: string) => {
+      fetched.push(path);
+      if (path.startsWith("/api/issues-show")) return { position: 3, number: 2, title: "Second", text: "issue 3: #2 — Second\n  closed 30m ago: abc1234" };
+      // The narrowed reply: only the closed row survives the server's filter, still numbered 3.
+      return { ...ISSUES_DOC(now), issues: ISSUES_DOC(now).issues.slice(2), state: "closed" };
+    },
+  });
+  await setIssuesFilter({ state: "closed", grep: "" });
+  assert.equal(fetched[0], "/api/issues?state=closed");
+  const card = els.issuescard!.innerHTML;
+  assert.match(card, /<span>Showing 1 of 3 issues matching this filter\.<\/span>/);
+  assert.match(card, /<strong>3\. #2 /, "a filtered row keeps its whole-list position");
+  await issueViewClick("3");
+  assert.deepEqual(fetched.slice(1), ["/api/issues-show?position=3"]);
+  assert.match(els.issuescard!.innerHTML, /<pre class='mono'>issue 3: #2 — Second[\s\S]*closed 30m ago: abc1234<\/pre>/);
+  assert.match(els.issuescard!.innerHTML, /Showing 1 of 3 issues matching this filter\./, "the detail opens above the filtered list");
 });

@@ -759,7 +759,12 @@ stale settings.
   because the dashboard never forces. Its `GitHub issues` card reads the mirror's ledger file
   through `GET /api/issues` — the browser twin of `tumwater issues`, the same read and the same
   numbering — naming the mirror's counts and each issue's number, title, trust, mirror state and
-  age, and each row's `View` button reads that one issue's whole detail through
+  age. A search box and a state picker above the rows narrow the list through the same `?q=` and
+  `?state=open|closed|lost` parameters the CLI's `--grep` and `--open`/`--closed`/`--lost` flags
+  use, so no shell is needed to find a closed issue; the counts beside them stay whole-mirror, and
+  the `Showing N of M issues matching this filter.` line names what the filter kept. A row's
+  position — the number its `View` button reads — is the unfiltered `tumwater issues --show <n>`
+  position whatever filter is in effect. Each row's `View` button reads that one issue's whole detail through
   `GET /api/issues-show?position=<n>` — the twin of `tumwater issues --show <n>` — so an operator
   reads why the team left an issue alone (declined and its reason, fixed by a sha, waiting for a
   push, closed upstream) and its body excerpt in the browser, in the CLI's own words, without
