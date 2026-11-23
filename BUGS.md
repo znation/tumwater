@@ -6,77 +6,52 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-### A red check's reasons number node:assert's own dump, the test runner's frames, and lint's
-status line, so one rejection asks the author to answer ten lines of plumbing
-(found by the selfcheck role 2026-11-22)
+### The selfcheck filing path dedupes against `## Open` and selfcheck's own commits only, so a bug already fixed and archived the same day is re-filed as open work (found by the bugfix role 2026-11-22)
 
-**Symptom.** When `npm run test:gate` goes red, the author's next run is told to answer each
-numbered objection (src/prompt/gate-notes.ts:73 numbers them, :82 demands "Add one Objection N:
-<done|dropped|unchanged-by-design because …>" for each) and the reviewer is told to "Check each of
-the prior review's numbered objections FIRST — an unresolved one is a rejection on its own"
-(src/prompt/gate-prompts.ts:202). Most of those objections name nothing the author can act on: they
-are node:assert's own dump, the test runner's frames, and the lint runner's status line. On
-`c4b6505b` (merged 2026-11-22, the digest's top loss cluster) the queued change's `Prior-review:`
-trailer carried 11 reasons with `counts: [0,0,0,0,0,0,0,0,0,0,0]`, and the merged commit body spends
-ten `Objection N:` lines answering them — six of them (2, 3, 4, 8, 9, 10) say things like
-`done — same failure's stack frame; resolved by the fix above`, `unchanged-by-design because
-`deepEqual` is the check's own pre-existing operator, which I did not touch`, and
-`unchanged-by-design because lint was already clean`. Those turns bought nothing: the change was one
-doc-command fix plus an invariant renumber.
+**Symptom.** The red-check plumbing bug was filed, fixed, and archived, then filed again as open
+work on the same day, and the second copy cost a whole bugfix run to discover it was already done.
+`a433bf483` (selfcheck, 2026-11-22 11:11) filed "A red check's reasons number node:assert's own
+dump, the test runner's frames, and lint's status line…"; the bugfix run fixed it in `2de19d585`
+(15:39), whose commit-time archive sweep moved the stamped entry to BUGS-FIXED.md (it is there
+now, heading at :54 with its `— fixed 2026-11-22 by the bugfix role` stamp, its Validation gap and
+its Fix paragraph). 100 minutes later `517593882` (selfcheck, 17:20) appended a copy of that same entry back under
+`## Open`, reworded in places but under the identical `### ` heading. The next bugfix run (this one) opened with that entry as its
+assignment: the code it asks for — `checkingMachinery` in src/build/build-check-report.ts — was
+already on main, and the fix's own tests confirmed it (test/build-check-report.test.ts, 26 pass;
+neutering `checkingMachinery`'s `FRAMING_LINE` term turned exactly 3 of them red, restored green).
+The copy could not be closed normally either: a live `## Fixed` entry the archive already holds
+with different text is refused by `finishedDuplicateFindings` (src/stage/stage-backlog-checks.ts,
+"is already archived in BUGS-FIXED.md — … delete this copy"), so the only clean step was deleting
+the dead copy, which is what this change does.
 
-**Reproduce.** Read `git log -1 --format='%b' c4b6505b`'s `Prior-review:` trailer: reasons 2-3 are
-`at TestContext.<anonymous> (file:///…/dist/test/…)` and
-`at Test.runInAsyncScope (node:async_hooks:226:14)`; 4-10 are `generatedMessage: true,`,
-`code: 'ERR_ASSERTION',`, `actual: …`, `expected: []`, `operator: 'deepStrictEqual',`,
-`diff: 'simple'`, `}`; 11 is `lint: clean`. The same shape is quoted verbatim in
-PLANS-DONE.md:2445 "Remove the TUI, part 1/5" under `**Needs review 2026-11-20 by feature: rejected
-after 6 review rounds**` (its "Objections that survived the final round" list at :2473, same
-numbers 2-11) and in BUGS-FIXED.md:282's `invariants-doc` quarantine block: each carries the same
-plumbing lines — the runner's `at Test.runInAsyncScope (node:async_hooks:226:14)` frame,
-`generatedMessage:`, `code: 'ERR_ASSERTION',`, `operator: …`, `diff: 'simple'`, `}` and
-`lint: clean` — whatever the failing test was. Which lines of the dump survive depends on what
-precedes them in the 10-line window: `c4b6505b`'s list carries both runner frames, the offline repro
-below kept only one.
+**Reproduce.** Offline, no model and no gate. On any tree where a BUGS.md entry's stamped form is
+already in BUGS-FIXED.md, append a copy of its unstamped (open) text under BUGS.md `## Open`:
+nothing in the suite or the staging check objects — the backlog guards (backlog-structure,
+validation-gap, doctor-backlog, backlog-index, comment-width: 167 tests this run, all pass with
+the copy present) stay green — while the copy sits in `## Open` as eligible open work the backlog
+index hands out (which is how this run was assigned it). The two commits above are the live instance: `git show 517593882 -- BUGS.md` adds 72 lines
+to `## Open`, and `git log --since=2026-11-22T15:00 --until=2026-11-22T18:00 --format='%h %ad %s'`
+shows the fix commit `2de19d585` landing between the two filings.
 
-Offline reproduction, no model and no gate: build the tree, then pass node:test's own output for one
-failed `deepStrictEqual` through `clipBuildTail` and `checkFailureReasons`. On this worktree's tip
-(`30fde732`) that printed 11 reasons for the single failing test: the headline, then
-`at Test.runInAsyncScope (node:async_hooks:226:14)`, `{`, `generatedMessage: true,`,
-`code: 'ERR_ASSERTION',`, `actual: [ 'docs/invariants.md:5598 run' ]`, `expected: []`,
-`operator: 'deepStrictEqual',`, `diff: 'simple'`, `}`, `lint: clean` — 8 of the 11 lines say nothing
-about the diff.
+**Suspected cause.** The filing path has no dedupe, and the two that exist read the wrong section.
+`fileBug`/`appendOperatorEntry` (src/backlog/backlog-write.ts:544, :515) append unconditionally.
+The plan side has a duplicate guard — `duplicatePlanFinding` (src/stage/stage-backlog-checks.ts:82)
+and `renderDuplicatePlansBlock` (src/backlog/backlog-structure.ts:505) — but both parse
+`"Planned"` only, so a duplicated `## Open` bug is invisible to them; the bug-side archive guards
+(`readdedHeadings`, `finishedDuplicateFindings`) only judge finished sections, never a filed copy.
+The selfcheck charter's own dedupe step (src/roles/role-catalog.ts:551-555) tells the role to
+check "BUGS.md's ## Open section and `git log <selfcheck commits>`" — neither reaches this case:
+the entry was no longer under `## Open` at filing time (the sweep had archived it) and the fix was
+a `tumwater(bugfix):` commit, which that grep excludes by construction.
 
-**Suspected cause.** `checkFailureReasons` (src/build/build-check-report.ts:246) returns the
-headline plus every surviving `clipBuildTail` line, one reason per line. The 2026-10-20 fix
-(PLANS-DONE.md:28404 "A red check's reasons drop Node's own `node:internal` stack frames…") dropped
-only what `NODE_INTERNAL_FRAME` matches, and its doc comment says so explicitly: a frame in
-`node:async_hooks` or a `dist/test/` file is kept. So these still become numbered objections: the
-runner's non-`node:internal` frames, node:assert's mechanics keys (`generatedMessage`, `code`,
-`operator`, `diff`, the closing `}`), and `lint: clean` — `test:gate` runs
-`scripts/lint-changed.mjs --alongside`, which prints that line last
-(scripts/lint-changed.mjs:71, pinned by test/lint-changed.test.ts), landing it inside the tail
-window (`clipBuildTail`, src/build/build-check-report.ts:164-168).
-
-This also mis-prices finality: `recordRejectedChange` counts each reason's persistence
-(src/merge/merge-core.ts:395-399) and ends the reject→revise chain when one objection survives two
-revisions (`REVISION_FINAL_ON_REPEAT = 2`, src/runner/runner-revision.ts:34) or the chain hits
-`REVISION_BACKSTOP` (6); `holdEntryAfterExhaustion` then parks the entry on those reasons verbatim
-(:413). A plumbing line cannot be fixed, so a revision that re-runs the same red check restates it:
-the TUI removal part reached the backstop and its Needs-review note lists all eleven surviving
-objections, of which only reason 1 and the `actual:` line name a finding.
-
-**Fix direction.** In `checkFailureReasons`' verified branch, drop the lines that describe the
-checking machinery rather than the finding — the runner frames `at Test.runInAsyncScope (…)` and
-`at TestContext.<anonymous> (…/dist/test/…)`, node:assert's mechanics keys (`generatedMessage:`,
-`code: 'ERR_ASSERTION'`, `operator:`, `diff:`, a bare `{`/`}`), and `lint-changed`'s own status
-lines — while keeping `actual:` and `expected:`, which are the assertion's diff and are why the
-2026-10-20 fix widened the window. `c4b6505b`'s 11 reasons become 3. Keep the `unverified` branch
-unchanged.
-
-**Cost that makes it fileable.** The digest's top loss cause: 2.3 h · $0.46 across 4 runs on
-"review-rejected authoring on bugfix — check failed (`npm run test:gate`): ✖ every command the
-docs quote is a command `tumwater help` lists", plus 1.5 h · $0.00 across 3 robustness runs on the
-comment-column scan — the same one-line finding, ten lines of objections each time.
+**Fix direction (the bugfix role picks one seam, not both).** Cheapest: extend the selfcheck
+charter's step 4 to grep the archives — "check BUGS.md's `## Open`, BUGS-FIXED.md, and
+`git log` for all roles, not selfcheck's own" — since the loss was a digest cluster whose fix had
+already landed. Stronger: make `fileBug` refuse (or warn, naming the archived heading and its
+`fixed YYYY-MM-DD` stamp) when the title's `entryKey` matches a `## Fixed` entry in BUGS-FIXED.md,
+and mirror it in a staging finding so a hand-edit copy gets a fix-up turn the way a duplicate plan
+does. Reusing `entryKey` (src/backlog/backlog-parts.ts:61) or `finishedKey` (src/stage/stage-backlog-checks.ts:66)
+keeps the match stamp-insensitive, the way `duplicatePlanFinding` matches plans.
 
 ### The merge gate's red-main exemption can fail to fire, so a change that adds no new failures is rejected while main is red (mirrors GitHub issue #5; found by the director role 2026-11-22)
 
