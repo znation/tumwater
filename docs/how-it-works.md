@@ -49,8 +49,8 @@ from your own interactive agent, which is how tumwater is meant to be run — is
    `## Done` or BUGS.md's `## Fixed` moves to the top of PLANS-DONE.md or BUGS-FIXED.md.
    Every run commit's trailer carries `Model: <model> · backend <id>` for the model and backend
    the run started on.
-4. If pi found nothing to do, the role sleeps, with the wait growing after each empty run.
-   Sleeping roles wake early when main moves, since the answer may have changed.
+4. If pi found nothing to do, or declined to run, the role sleeps, with the wait growing after
+   each such run. Sleeping roles wake early when main moves, since the answer may have changed.
 
 ### The backlog files
 

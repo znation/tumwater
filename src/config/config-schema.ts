@@ -172,7 +172,8 @@ export interface FallbackModelConfig {
   extraUsage?: boolean;
 }
 
-/** Idle backoff: how long a role sleeps after a run that changed nothing. */
+/** Idle backoff: how long a role sleeps after an unproductive run — one that changed nothing,
+ * or declined to run (`skipped`). */
 export interface BackoffConfig {
   /** Seconds to sleep after the first no-change run. */
   initialSeconds: number;

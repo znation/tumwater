@@ -70,7 +70,7 @@ Identifiers keep these words as precise internal terms, though the text users re
 - **harness**: the tumwater program itself, as opposed to the agents it runs.
 - **slot**: a counted lease on a limited resource, such as a workspace, a merge or a provider.
 - **hold**: a condition that keeps a role or backlog entry from being picked.
-- **backoff**: the growing delay a role sleeps after a failed or empty run.
+- **backoff**: the growing delay a role sleeps after a failed, empty, or declined run.
 - **drain**: stop starting new work and let current work finish.
 - **reclaim**: delete idle workspaces to free disk.
 - **director**: the role that handles your messages first; it keeps running through a team pause.

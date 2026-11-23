@@ -123,9 +123,10 @@ export function nextBackoffSeconds(current: number, ladder: BackoffConfig): numb
 }
 
 /** Advance the role's shared backoffSeconds on `ladder` and schedule its next run after it.
- * Every backing-off outcome (an unproductive run, a failed one, a deliberate stop, and the
- * quiet-kill fallback) funnels through here, so the seconds→ms conversion and the rule that
- * each ladder advances from the current value apply identically in all four arms. */
+ * Every backing-off outcome (an unproductive run, a declined skip, a failed one, a deliberate
+ * stop, and the quiet-kill fallback) funnels through here, so the seconds→ms conversion and
+ * the rule that each ladder advances from the current value apply identically in all five
+ * arms. */
 export function scheduleBackoff(s: RunnerState, ladder: BackoffConfig): void {
   s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, ladder);
   s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
@@ -142,9 +143,9 @@ export function scheduleAtMinInterval(s: RunnerState, cfg: { minRunIntervalSecon
 /** Reset the shared backoff ladder to zero, then schedule the next run at the role's
  * minimum interval: the "a completed run re-arms the idle ladder from the bottom and comes
  * back promptly" clock the three reset arms in run-apply.ts share. Composes scheduleAtMinInterval,
- * so the min-interval cadence and the reset cannot drift. The skipped arm runs on the min
- * interval without resetting and the cut_off arm resumes plus min interval; neither resets,
- * so both stay on scheduleAtMinInterval directly. */
+ * so the min-interval cadence and the reset cannot drift. Only the cut_off arm and the
+ * director's skip arm stay on scheduleAtMinInterval directly, and neither resets: cut_off
+ * resumes a compacted session promptly, and the director runs on inbox demand. */
 export function scheduleResetToMinInterval(s: RunnerState, cfg: { minRunIntervalSeconds: number }): void {
   s.backoffSeconds = 0;
   scheduleAtMinInterval(s, cfg);
