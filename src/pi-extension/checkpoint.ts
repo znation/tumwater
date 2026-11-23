@@ -421,6 +421,9 @@ export default function (
         event: {
           turnIndex?: number;
           preparation?: BeforeCompactPreparation;
+          /** Boundary events only: the draft entries the handlers before this one proposed at
+           * the same boundary (pi's `emitBoundary` chains them onto the event). */
+          entries?: unknown;
           context?: { contextEntries?: unknown };
         },
         ctx?: CompactCtx,
@@ -452,6 +455,13 @@ export default function (
         // request stays queued for a boundary that carries a context.
         const firstKeptEntryId = checkpointKeptEntryId(entries, CHECKPOINT_KEEP_RECENT_TOKENS);
         if (firstKeptEntryId === null) return undefined;
+        // pi's boundary contract (`extensions/runner.js` `emitBoundary`): a handler sees the
+        // entries the handlers before it proposed in `event.entries`, and its own `entries`
+        // result *replaces* that field — so the draft must restate them. Returning only the
+        // compaction entry would drop the earlier handler's work at this boundary: context-shake
+        // registers its `turn_end` handler before this one (its name leads the load order in
+        // src/pi/pi-args.ts), and a checkpoint at the same boundary would silently discard the
+        // `context_edit` entries it proposed.
         const cwd = typeof ctx?.cwd === "string" ? ctx.cwd : process.cwd();
         // Two git spawns at most (the design's budget): the worktree's status and diff-stat.
         const gitStatus = await gitReading(pi.exec, ["status", "--short"], cwd);
@@ -467,8 +477,10 @@ export default function (
         state.requested = false;
         state.fields = null;
         // `details` records the call counts the design's audit and A/B read off the entry.
+        const proposed: unknown[] = Array.isArray(event.entries) ? event.entries : [];
         return {
           entries: [
+            ...proposed,
             {
               type: "compaction",
               summary: summary ?? "",

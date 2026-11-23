@@ -282,6 +282,27 @@ test("a requested checkpoint is written as the turn_end boundary draft, once", a
   assert.equal(again, undefined, "the queued request is cleared after it is written");
 });
 
+test("the checkpoint's draft restates the entries a prior boundary handler proposed", async () => {
+  // pi's `emitBoundary` chains entries onto the event and lets each handler's `entries` result
+  // replace them, so a handler that returns only its own draft drops the earlier handlers' work
+  // at that boundary (context-shake registers its `turn_end` handler before checkpoint's).
+  const fake = fakePi();
+  checkpoint(fake as never);
+  for (let i = 0; i < 10; i++) await fake.handlers.turn_end!({});
+  const tool = fake.tool as { execute: (id: string, p: { done: string }) => Promise<unknown> };
+  await tool.execute("t", { done: "d" });
+  const shakeDraft = { type: "context_edit", targetId: "r", replacement: { content: "elided" } };
+  const drafted = (await fake.handlers.turn_end!(
+    { entries: [shakeDraft], context: { contextEntries: [projected("e1", [userChars(40)])] } },
+    { cwd: "/w" },
+  )) as { entries: Array<{ type: string }> };
+  assert.deepEqual(
+    drafted.entries.map((e) => e.type),
+    ["context_edit", "compaction"],
+    "the earlier handler's draft survives the checkpoint's entry, in proposal order",
+  );
+});
+
 test("a boundary whose context offers no cut point drafts nothing and keeps the request", async () => {
   const fake = fakePi();
   checkpoint(fake as never);
