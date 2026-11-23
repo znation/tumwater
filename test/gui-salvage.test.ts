@@ -10,6 +10,7 @@ import {
 } from "../src/gui/gui-endpoint-commands.js";
 import { salvageDir, salvagePendingDir } from "../src/paths.js";
 import { makeRepo, sh, headSha, tmpdir, runningAsRoot, writeConfig } from "./fixtures/repo-fixtures.js";
+import { startLocalGui } from "./fixtures/gui-fixtures.js";
 import { captureJson, fakeReq } from "./fakes/fake-res.js";
 
 // The dashboard's salvaged workspace patch endpoints (src/gui/gui-salvage-commands.ts): the
@@ -168,6 +169,42 @@ test("GET /api/salvage with no salvage dir answers the empty list, creating noth
   assert.equal(filtered.captured.status, 200);
   assert.deepEqual(filtered.data, { patches: [], total: 0 });
   assert.equal(fs.existsSync(salvageDir(repo)), false, "a filtered list never creates the salvage dir");
+});
+
+interface SalvageListBody {
+  patches: { position: number; file: string }[];
+  total: number;
+}
+
+// The card's own request path (src/ui/gui/gui-client-settings.ts fetches `/api/salvage` and
+// `/api/salvage?q=<encoded>`): the route must hand the URL's own query to the handler, not a
+// bare empty URLSearchParams, so the filter survives the socket. Everything below is derived
+// from the seed order, not read back from a previous response.
+test("the live server routes GET /api/salvage to the listing and carries ?q= through to it", async () => {
+  const repo = makeRepo();
+  seedSalvage(repo);
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const all = (await (await fetch(base + "/api/salvage")).json()) as SalvageListBody;
+    // The whole list, oldest first, numbered 1 and 2 — the route passed the repo root through.
+    assert.deepEqual(
+      all.patches.map((p) => [p.position, p.file]),
+      [[1, "a.patch"], [2, "b.patch"]],
+    );
+    assert.equal(all.total, 2);
+    // ?q=NEWER reaches the handler: only b.patch's body carries the word, and the kept row keeps
+    // the position it holds in the unfiltered list. A route that dropped the query would answer
+    // both rows here.
+    const filtered = (await (await fetch(base + "/api/salvage?q=NEWER")).json()) as SalvageListBody;
+    assert.deepEqual(filtered.patches.map((p) => [p.position, p.file]), [[2, "b.patch"]]);
+    assert.equal(filtered.total, 2, "a filtered listing still answers the whole-list count");
+    // The read stays read-only over the socket: a known path with the wrong method is the 404
+    // every other GET route answers.
+    const post = await fetch(base + "/api/salvage", { method: "POST" });
+    assert.equal(post.status, 404, "the listing has no POST twin");
+  } finally {
+    server.close();
+  }
 });
 
 test("GET /api/salvage-show reads a kept patch back with the CLI's --show fields, addressing the list position", async () => {
