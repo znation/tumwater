@@ -684,16 +684,22 @@ test("mid-run tumwater.json edits steer the team; a broken file keeps last-known
 
     // A broken file keeps the last-known-good config and warns exactly once.
     writeMalformedJson(path.join(repo, "tumwater.json"));
+    const warnings = () =>
+      readEvents(repo).filter(
+        (e) => e.type === "warning" && ((e.message as string | undefined) ?? "").includes("tumwater.json invalid"),
+      );
+    // The warning is the evidence that a poll read the broken file; a further pi run is not.
+    // A run pi had already spawned before the write landed satisfies a run-count wait (and both
+    // sides of the race print model=reloaded-model), so waiting on the count first let the
+    // warning land after the assert — the pin failed under load, not the reloader.
+    await waitFor(() => warnings().length >= 1, "the invalid-config warning");
+    assert.equal(warnings().length, 1, "one warning for the broken file");
+
     const runsBeforeBreak = runs().length;
     await waitFor(
       () => runs().length > runsBeforeBreak && runs().at(-1)?.includes("model=reloaded-model") === true,
       "a further pi run while the file is broken",
     );
-    const warnings = () =>
-      readEvents(repo).filter(
-        (e) => e.type === "warning" && ((e.message as string | undefined) ?? "").includes("tumwater.json invalid"),
-      );
-    assert.equal(warnings().length, 1, "one warning for the broken file");
 
     // Fixing the file recovers: the new value applies and no further warnings appear.
     saveConfig(repo, fastConfig(["bugfix"], "fixed-model"));
