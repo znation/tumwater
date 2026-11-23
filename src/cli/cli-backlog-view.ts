@@ -5,7 +5,7 @@
 
 import { fail, say, sayJson } from "../terminal.js";
 import { agree, validPositionRange } from "../text/phrases.js";
-import { failFollowJsonRival, parseCountFlag, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
+import { failFollowJsonRival, parseCountFlag, rejectRepeatFlag, requirePositionFlag, scanPositionArgs } from "./cli-args.js";
 import { FOLLOW_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "../follow.js";
 import {
@@ -470,10 +470,10 @@ export async function listAndAnnounce(
  * `--list`: no repo gate, commit, or wake. Prose is the title, a blank line, then the body, so
  * stdout is the file `--edit <n> --file` takes back. */
 export function showAndAnnounce(root: string, args: string[], command: "bug" | "plan"): void {
-  const { json, flags, position, rest } = scanPositionArgs(args, "--show", "--show 2", ["--done"]);
+  const { json, flags, position: scanned, rest } = scanPositionArgs(args, "--show", "--show 2", ["--done"]);
   rejectUnknownArgs(command, rest, []);
   refuseTeamWorkspace(root);
-  if (position === null) fail(`--show needs a position (usage: tumwater ${command} --show <n>)`);
+  const position = requirePositionFlag(command, "--show", scanned);
   if (flags["--done"]) {
     const bug = command === "bug";
     const all = bug ? fixedBugEntries(root) : donePlanEntries(root);

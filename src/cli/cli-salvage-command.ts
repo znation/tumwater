@@ -9,7 +9,7 @@
  * never writes), and its output shape. */
 
 import { fail, say, sayJson, sayJsonOrRender } from "../terminal.js";
-import { failFollowJsonRival, parseGrepFlag, scanPositionArgs } from "./cli-args.js";
+import { failFollowJsonRival, parseGrepFlag, requirePositionFlag, scanPositionArgs } from "./cli-args.js";
 import { DRY_RUN_FLAG, FOLLOW_FLAG, JSON_FLAG, grepFlagSpec, hasFollowFlag, modeNamed, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { followView, type FollowViewSeams } from "../follow.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
@@ -156,9 +156,9 @@ export async function cmdSalvage(root: string, args: string[], seams: FollowView
  * savedAt, bytes, the diffstat as `stat` (null when it is not a valid diff) and the exact
  * patch text. */
 async function cmdSalvageShow(root: string, args: string[]): Promise<void> {
-  const { json, position, rest } = scanPositionArgs(args, "--show", "--show 2");
+  const { json, position: scanned, rest } = scanPositionArgs(args, "--show", "--show 2");
   rejectUnknownArgs("salvage", rest, []);
-  if (position === null) fail("--show needs a position (usage: tumwater salvage --show <n>)");
+  const position = requirePositionFlag("salvage", "--show", scanned);
   refuseTeamWorkspace(root);
   const at = salvagePatchAt(collectSalvagePatches(root), position);
   if ("message" in at)
@@ -188,9 +188,9 @@ async function cmdSalvageShow(root: string, args: string[]): Promise<void> {
  * refuseTeamWorkspace (no requireReadyRepo) so it never needs a ready tree. `--json`
  * serves the dropped position and file. */
 async function cmdSalvageDrop(root: string, args: string[]): Promise<void> {
-  const { json, position, rest } = scanPositionArgs(args, "--drop", "--drop 2");
+  const { json, position: scanned, rest } = scanPositionArgs(args, "--drop", "--drop 2");
   rejectUnknownArgs("salvage", rest, []);
-  if (position === null) fail("--drop needs a position (usage: tumwater salvage --drop <n>)");
+  const position = requirePositionFlag("salvage", "--drop", scanned);
   refuseTeamWorkspace(root);
   const at = salvagePatchAt(collectSalvagePatches(root), position);
   if ("message" in at)
@@ -223,10 +223,10 @@ async function cmdSalvageDrop(root: string, args: string[]): Promise<void> {
  * out-of-range gates in the same order, so it fails where the apply would fail and previews
  * only where the apply could run. */
 async function cmdSalvageApply(root: string, args: string[]): Promise<void> {
-  const { json, flags, position, rest } = scanPositionArgs(args, "--apply", "--apply 2", [DRY_RUN_FLAG.names[0]!]);
+  const { json, flags, position: scanned, rest } = scanPositionArgs(args, "--apply", "--apply 2", [DRY_RUN_FLAG.names[0]!]);
   const dryRun = flags[DRY_RUN_FLAG.names[0]!] === true;
   rejectUnknownArgs("salvage", rest, [JSON_FLAG]);
-  if (position === null) fail("--apply needs a position (usage: tumwater salvage --apply <n>)");
+  const position = requirePositionFlag("salvage", "--apply", scanned);
   refuseTeamWorkspace(root);
   if (!(await isGitRepo(root))) fail("salvage --apply needs a git checkout (run it from the checkout the patch should apply to)");
   const at = salvagePatchAt(collectSalvagePatches(root), position);

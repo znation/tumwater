@@ -303,6 +303,20 @@ export function scanPositionArgs(
   return { json, flags, position, rest };
 }
 
+/** Require the position a queue-style command's edge flag carries: the number scanPositionArgs
+ * (or scanProseFlags) parsed, or a fail with the shared `--<flag> needs a position
+ * (usage: tumwater <command> --<flag> <n>)` wording. The 14 command shells that take exactly
+ * one valued position flag (`bug|plan --cancel/--retire/--release/--top/--edit/--show`,
+ * `quarantine --show/--release`, `issues --show`, `reviews --show/--accept`, `salvage
+ * --show/--drop/--apply`) each spelled the guard by hand; they now call this at their own place
+ * in their shell's refusal order, so the wording lives once. That order is not uniform: the call
+ * sits after each shell's unknown-argument gate everywhere except `reviews --show`, which fails a
+ * missing position before naming the other tokens. */
+export function requirePositionFlag(command: string, flag: string, position: number | null): number {
+  if (position === null) fail(`${flag} needs a position (usage: tumwater ${command} ${flag} <n>)`);
+  return position;
+}
+
 /** Resolve a read-only command's `--role <id>` scope: the role id, or null when the flag is
  * absent. The id is validated against built-ins PLUS user-defined roles, read through
  * loadConfigCached (which never throws) so a transiently broken tumwater.json cannot take a

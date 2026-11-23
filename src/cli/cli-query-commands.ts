@@ -6,7 +6,7 @@
 
 import { fail, say, sayJson, sayJsonOrRender } from "../terminal.js";
 import { followView, type FollowViewSeams } from "../follow.js";
-import { failFollowJsonRival, flagValue, parseGrepFlag, parseRoleListScope, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
+import { failFollowJsonRival, flagValue, parseGrepFlag, parseRoleListScope, rejectFlagLookingValue, rejectRepeatFlag, requirePositionFlag, scanPositionArgs } from "./cli-args.js";
 import { CLOSED_FLAG, DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, HELD_FLAG, JSON_FLAG, LOST_FLAG, OPEN_FLAG, READY_FLAG, grepFlagSpec, modeNamed, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { scopeSnapshotToRoles, snapshot, snapshotForStatus } from "../status/status-data.js";
@@ -279,9 +279,9 @@ export async function cmdQuarantine(root: string, args: string[], seams: FollowV
  * ready-tree like the destructive branch does. `--json` serves the entry's unsquashed fields.
  */
 async function cmdQuarantineShow(root: string, args: string[]): Promise<void> {
-  const { json, position, rest } = scanPositionArgs(args, "--show", "--show 2");
+  const { json, position: scanned, rest } = scanPositionArgs(args, "--show", "--show 2");
   rejectUnknownArgs("quarantine", rest, []);
-  if (position === null) fail("--show needs a position (usage: tumwater quarantine --show <n>)");
+  const position = requirePositionFlag("quarantine", "--show", scanned);
   refuseTeamWorkspace(root);
   const entries = loadQuarantine(root);
   const entry = quarantineEntryAt(entries, position);
@@ -312,9 +312,9 @@ async function cmdQuarantineShow(root: string, args: string[]): Promise<void> {
  * boolean (at most once), `--help`/`-h` tolerated, anything else refused. An out-of-range
  * position fails naming the current depth; a concurrent removal answers `false`. */
 async function cmdQuarantineRelease(root: string, args: string[]): Promise<void> {
-  const { json, position, rest } = scanPositionArgs(args, "--release", "--release 2");
+  const { json, position: scanned, rest } = scanPositionArgs(args, "--release", "--release 2");
   rejectUnknownArgs("quarantine", rest, []);
-  if (position === null) fail("--release needs a position (usage: tumwater quarantine --release <n>)");
+  const position = requirePositionFlag("quarantine", "--release", scanned);
   await requireReadyRepo(root);
   const rows = quarantineRows(loadQuarantine(root));
   if (position < 1 || position > rows.length) {
@@ -452,9 +452,9 @@ function refuseRivalStates(rest: readonly string[]): void {
  * detail view's position parse (`scanPositionArgs`) and out-of-range wording, and stays on
  * `refuseTeamWorkspace`: reading a ledger needs no ready repo and no `gh`. */
 async function cmdIssuesShow(root: string, args: string[]): Promise<void> {
-  const { json, position, rest } = scanPositionArgs(args, "--show", "--show 2");
+  const { json, position: scanned, rest } = scanPositionArgs(args, "--show", "--show 2");
   rejectUnknownArgs("issues", rest, []);
-  if (position === null) fail("--show needs a position (usage: tumwater issues --show <n>)");
+  const position = requirePositionFlag("issues", "--show", scanned);
   refuseTeamWorkspace(root);
   // A project with no ledger answers the same way the quarantine detail view answers an absent
   // quarantine file: the position is past the end of a mirror holding 0 issues. The whole

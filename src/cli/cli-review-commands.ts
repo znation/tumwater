@@ -13,7 +13,7 @@ import { FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, ROLE_FLAG, modeNamed, rejectUnkn
 import { followView, type FollowViewSeams } from "../follow.js";
 import { sayJsonOrRender, say, sayJson, fail } from "../terminal.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
-import { failFollowJsonRival, parseGrepFlag, parseRoleListScope, parseStatusFlag, scanPositionArgs } from "./cli-args.js";
+import { failFollowJsonRival, parseGrepFlag, parseRoleListScope, parseStatusFlag, requirePositionFlag, scanPositionArgs } from "./cli-args.js";
 import { readPostReviews, type PostReview } from "../review/post-merge-review.js";
 import { acceptPostReview, type AcceptPostReviewOutcome } from "../review/post-merge-review-accept.js";
 import { requeueDroppedReviews } from "../review/post-merge-review-requeue.js";
@@ -203,14 +203,14 @@ async function cmdReviewsRequeueDropped(root: string, args: string[]): Promise<v
  * (`fixed`) is refused. A rejected entry waits on nothing and is accepted like any pending one. */
 
 async function cmdReviewsAccept(root: string, args: string[]): Promise<void> {
-  const { json, position, rest } = scanPositionArgs(args, "--accept", "--accept 2");
+  const { json, position: scanned, rest } = scanPositionArgs(args, "--accept", "--accept 2");
   // The vocabulary an accept invocation accepts is exactly --accept and --json, both consumed
   // above; --role is refused by name: accept addresses a
   // whole-queue position `tumwater reviews` printed, and a scoped read must never renumber it.
   if (rest.includes("--role") || rest.includes("--status") || rest.includes("--grep")) fail("reviews --accept accepts by whole-queue position from `tumwater reviews`; --role, --status and --grep scope a read only — drop them");
   // Everything else is refused with the generic wording, so `--bogus` is named.
   rejectUnknownArgs("reviews", rest, []);
-  if (position === null) fail("--accept needs a position (usage: tumwater reviews --accept <n>)");
+  const position = requirePositionFlag("reviews", "--accept", scanned);
   await requireReadyRepo(root);
   const outcome: AcceptPostReviewOutcome = acceptPostReview(root, position);
   if (outcome.status === "out-of-range") {
@@ -241,8 +241,8 @@ async function cmdReviewsAccept(root: string, args: string[]): Promise<void> {
  * depth; the entry object `--json` prints is the same normalized shape `reviews --json`
  * carries, so no field is squashed. */
 async function cmdReviewsShow(root: string, args: string[]): Promise<void> {
-  const { json, position, rest } = scanPositionArgs(args, "--show", "--show 2");
-  if (position === null) fail("--show needs a position (usage: tumwater reviews --show <n>)");
+  const { json, position: scanned, rest } = scanPositionArgs(args, "--show", "--show 2");
+  const position = requirePositionFlag("reviews", "--show", scanned);
   // The vocabulary a show invocation accepts is exactly --show and --json, both consumed
   // above; every other token (--accept, -f/--follow, --role, --status, an unknown flag) is
   // refused by name, the same way cmdReviewsAccept's rejectUnknownArgs refuses its rest.

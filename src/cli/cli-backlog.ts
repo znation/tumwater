@@ -7,7 +7,7 @@
  * should act stays in cli.ts beside the other command bodies. */
 
 import { fail, say, sayJson, warnIfUncommitted } from "../terminal.js";
-import { parsePositionFlag, rejectFlagLookingValue, rejectRepeatFlag, scanPositionArgs } from "./cli-args.js";
+import { parsePositionFlag, rejectFlagLookingValue, rejectRepeatFlag, requirePositionFlag, scanPositionArgs } from "./cli-args.js";
 import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
 import { plannedPlanEntries } from "../backlog/backlog.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
@@ -178,12 +178,12 @@ export async function cancelAndAnnounce(
   command: string,
   cancel: (n: number) => { file: string; title: string },
 ): Promise<void> {
-  const { json, position, rest } = scanPositionArgs(args, "--cancel", "--cancel 2");
+  const { json, position: scanned, rest } = scanPositionArgs(args, "--cancel", "--cancel 2");
   // rejectUnknownArgs names both a stray positional and an unknown flag, with this command's
   // (empty) valid-flag list — the vocabulary a cancel invocation accepts is exactly --cancel
   // and --json, both consumed above.
   rejectUnknownArgs(command, rest, []);
-  if (position === null) fail(`--cancel needs a position (usage: tumwater ${command} --cancel <n>)`);
+  const position = requirePositionFlag(command, "--cancel", scanned);
   await requireReadyRepo(root);
   // Snapshot the claims first: the orchestrator may release the claim once the heading leaves.
   const claims = allLiveClaims(root);
@@ -245,11 +245,11 @@ export async function retireAndAnnounce(
   retire: (n: number, reason?: string | null) => { file: string; title: string; retiredOn: string },
 ): Promise<void> {
   const { reason, rest: withoutReason } = peelReasonFlag(command, args);
-  const { json, position, rest } = scanPositionArgs(withoutReason, "--retire", "--retire 2");
+  const { json, position: scanned, rest } = scanPositionArgs(withoutReason, "--retire", "--retire 2");
   // rejectUnknownArgs names both a stray positional and an unknown flag; any token that is not
   // --retire/--json/--reason (all consumed above) is refused here.
   rejectUnknownArgs(command, rest, []);
-  if (position === null) fail(`--retire needs a position (usage: tumwater ${command} --retire <n>)`);
+  const position = requirePositionFlag(command, "--retire", scanned);
   await requireReadyRepo(root);
   const retired = retire(position, reason ?? undefined);
   warnIfUncommitted(await commitOperatorBacklogEdit(root, retired.file, stampedSubject("operator", `Retire ${command}: ${retired.title}`)), retired.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
@@ -273,9 +273,9 @@ export async function releaseAndAnnounce(
   release: (n: number) => { file: string; title: string; lifted: LiftableHold },
   role: string,
 ): Promise<void> {
-  const { json, position, rest } = scanPositionArgs(args, "--release", "--release 2");
+  const { json, position: scanned, rest } = scanPositionArgs(args, "--release", "--release 2");
   rejectUnknownArgs(command, rest, []);
-  if (position === null) fail(`--release needs a position (usage: tumwater ${command} --release <n>)`);
+  const position = requirePositionFlag(command, "--release", scanned);
   await requireReadyRepo(root);
   const released = release(position);
   warnIfUncommitted(await commitOperatorBacklogEdit(root, released.file, stampedSubject("operator", `Release ${command}: ${released.title}`)), released.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
@@ -301,9 +301,9 @@ export async function topAndAnnounce(
   command: "bug" | "plan",
   top: (n: number) => { file: string; title: string },
 ): Promise<void> {
-  const { json, position, rest } = scanPositionArgs(args, "--top", "--top 2");
+  const { json, position: scanned, rest } = scanPositionArgs(args, "--top", "--top 2");
   rejectUnknownArgs(command, rest, []);
-  if (position === null) fail(`--top needs a position (usage: tumwater ${command} --top <n>)`);
+  const position = requirePositionFlag(command, "--top", scanned);
   await requireReadyRepo(root);
   const moved = top(position);
   warnIfUncommitted(await commitOperatorBacklogEdit(root, moved.file, stampedSubject("operator", `Prioritize ${command}: ${moved.title}`)), moved.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
@@ -372,12 +372,12 @@ function parseEditArgs(
   const path = fileFlag >= 0 ? promptFileValue(args[fileFlag + 1]) : null;
   const rest = path === null ? args : args.filter((_, i) => i !== fileFlag && i !== fileFlag + 1);
   if (path !== null) rejectRepeatFlag(rest.includes("--file"), "--file");
-  const { json, positionals, position } = scanProseFlags(rest, command, {
+  const { json, positionals, position: scanned } = scanProseFlags(rest, command, {
     name: "--edit",
     example: "--edit 2",
   });
   if (path !== null) rejectStrayWithFile(positionals[0]);
-  if (position === null) fail(`--edit needs a position (usage: tumwater ${command} --edit <n>)`);
+  const position = requirePositionFlag(command, "--edit", scanned);
   return { path, json, positionals, position };
 }
 
