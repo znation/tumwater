@@ -2,7 +2,7 @@ import { fail } from "../terminal.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
 import { gotSuffix, parsePositiveInt, splitCommaList } from "../text/text.js";
-import { durationLabel, parseDurationMs } from "../text/duration.js";
+import { durationLabel, durationSlipClause, parseDurationMs } from "../text/duration.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** CLI argument parsing and validation, shared by every command in cli.ts. The execution
@@ -385,7 +385,9 @@ export function parseDurationFlag(flag: string, raw: string | undefined): number
   rejectFlagLookingValue(flag, raw);
   const ms = parseDurationMs(raw);
   if (ms === null)
-    fail(`${flag} needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(raw)}`);
+    fail(
+      `${flag} needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(raw)}${durationSlipClause(raw)}`,
+    );
   return ms;
 }
 

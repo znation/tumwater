@@ -18,14 +18,18 @@ test("a malformed flag value is named before the ready-repo gate", async () => {
   // shape parser at the gate, so the wording is the parser's, byte for byte, in both places.
   const empty = tmpdir();
   const cases: Array<[string[], RegExp]> = [
-    [["logs", "--since", "bogus"], /logs --since needs a duration like 45s, 90m, 1h30m, or 2d \(got "bogus"\)/],
-    [["history", "--since", "0s"], /history --since needs a duration like 45s, 90m, 1h30m, or 2d \(got "0s"\)/],
-    [["report", "--since", "45"], /report --since needs a duration like 45s, 90m, 1h30m, or 2d \(got "45"\)/],
+    [["logs", "--since", "bogus"], /logs --since needs a duration like 45s, 90m, 1h30m, or 2d \(got "bogus"\) — the unit must be one of d, h, m, or s, not "bogus"/],
+    [["history", "--since", "0s"], /history --since needs a duration like 45s, 90m, 1h30m, or 2d \(got "0s"\) — a component's count may not be 0 or start with 0/],
+    [["report", "--since", "45"], /report --since needs a duration like 45s, 90m, 1h30m, or 2d \(got "45"\) — it has no unit; the units are d, h, m, and s/],
     [["logs", "-n", "0"], /-n needs a positive integer \(got "0"\)/],
     [["history", "-n", "abc"], /-n needs a positive integer \(got "abc"\)/],
     [["report", "--days", "abc"], /--days needs a positive integer \(got "abc"\)/],
     [["gui", "--port", "abc"], /--port must be an integer between 1 and 65535 \(got "abc"\)/],
-    [["pause", "--for", "xyz"], /pause --for needs a duration like 45s, 90m, 1h30m, or 2d \(got "xyz"\)/],
+    [["pause", "--for", "xyz"], /pause --for needs a duration like 45s, 90m, 1h30m, or 2d \(got "xyz"\) — the unit must be one of d, h, m, or s, not "xyz"/],
+    // The natural-language slip and the truncated composite: the two shapes the grammar line
+    // alone left the operator to diagnose. Each clause names the part to fix.
+    [["pause", "--for", "2hours"], /pause --for needs a duration like 45s, 90m, 1h30m, or 2d \(got "2hours"\) — the unit must be one of d, h, m, or s, not "hours"/],
+    [["wake", "--in", "1h30"], /wake --in needs a duration like 45s, 90m, 1h30m, or 2d \(got "1h30"\) — every number needs the unit that follows it/],
     [["pause", "--for"], /pause --for needs a value/],
     [["start", "--for"], /start --for needs a value/],
     [["wake", "--in"], /wake --in needs a value/],

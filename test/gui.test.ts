@@ -251,7 +251,10 @@ test("gui /api/prompt and /api/prompt-role accept a deferral the queues hold unt
 
     const bad = await postJson(base, "/api/prompt", { text: "later", defer: "nonsense" });
     assert.equal(bad.status, 400);
-    assert.match(((await bad.json()) as { error: string }).error, /defer needs a duration/);
+    assert.match(
+      ((await bad.json()) as { error: string }).error,
+      /defer needs a duration like 45s, 90m, 1h30m, or 2d \(got "nonsense"\) — the unit must be one of d, h, m, or s, not "nonsense"/,
+    );
     const over = await postJson(base, "/api/prompt", { text: "later", defer: "100d" });
     assert.equal(over.status, 400);
     assert.match(((await over.json()) as { error: string }).error, /defer is capped at 90d/);

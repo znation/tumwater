@@ -2208,6 +2208,24 @@ within each bucket. A count that rounds up to 60 minutes or 24 hours is shown in
 
 **Pinned by.** `test/datetime.test.ts` — "humanSeconds buckets sub-second-to-day spans compactly".
 
+### INV-Z6: a refused duration names its slip, and no spelling the grammar accepts gains one
+
+**Guarantee.** `durationSlipClause` answers a value `parseDurationMs` refused with one appended
+clause naming which slip it is (a missing unit, a unit spelled as a word, whitespace, a negative,
+a fractional or zero count, a repeated or out-of-order unit, or a final number left without a
+unit), or `""` when it cannot name one better than the grammar line does. It never quotes the value
+and never rewords the standing message, so both refusals keep their existing shape. No spelling the
+grammar accepts gains a clause — checked over a generated space of valid composites, which is what
+holds the branches in order.
+
+**Binds.** `src/text/duration.ts` (`durationSlipClause`); consumers `src/cli/cli-args.ts`
+(`parseDurationFlag`, the `--since`/`--until`/`--for`/`--in`/`--at` family) and
+`src/gui/gui-prompt-commands.ts` (`checkedPromptDefer`).
+
+**Pinned by.** `test/duration-slip.test.ts` — "durationSlipClause answers empty for every spelling
+the grammar accepts", "durationSlipClause orders the slips so the first fix is the one named" and
+"durationSlipClause is always an appended clause, never a report of its own".
+
 ## Full tool output: a pointer names a complete file inside the harness, or there is no pointer
 
 The module is the side-effect half of the two context extensions, kept apart so their rules stay

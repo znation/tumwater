@@ -14,6 +14,66 @@ const UNIT_MS = { s: 1_000, m: 60_000, h: HOUR_MS, d: DAY_MS } as const;
  * (d → h → m → s), so `30m1h` and `1h30m1h` fail instead of parsing to a surprising total. */
 const UNIT_ORDER: Record<keyof typeof UNIT_MS, number> = { d: 0, h: 1, m: 2, s: 3 };
 
+/** The unit letters in the order the grammar accepts them, highest first. */
+const DURATION_UNIT_ORDER = ["d", "h", "m", "s"];
+
+/** Why `raw` is not a duration, as one short clause a caller appends to the message that already
+ * states the grammar. parseDurationMs answers every malformed spelling with the same null, so
+ * both of its refusals (cli/cli-args.ts's parseDurationFlag, which serves `--since`, `--until`,
+ * `--for`, `--in` and `--at`, and gui/gui-prompt-commands.ts's `defer` field) printed one message
+ * for every slip: a value typed as `2hours`, as `1h 30m`, or as a bare `45` all came back as
+ * "needs a duration like 45s, 90m, 1h30m, or 2d (got …)", leaving the operator to spot the slip
+ * themselves in a value they had just typed. The clause names which slip it is — a missing unit,
+ * a unit spelled as a word, whitespace, a negative, a fractional or zero count, a repeated or
+ * out-of-order unit, or a final number left without one.
+ * It is a clause, not a report: it never quotes `raw` (every call site appends gotSuffix, which
+ * does) and never rewords the standing message, so the existing prefix pins of that message still
+ * match. The branches run most-specific first, so a value that matches two shapes names the one
+ * to fix first (`-1h 30m` reports the sign, not the space). Callers reach it only on a value the
+ * grammar refused; it answers "" for the empty value (the grammar line already says everything
+ * there), for a lone `-` (a flag fragment, not a negative count — naming one would be a guess),
+ * and for a refusal it cannot explain better than the grammar line does, so a caller appends it
+ * unconditionally. test/duration-slip.test.ts pins that no spelling the grammar accepts gains a
+ * clause, over a generated space of them, which is what keeps these branches honest. */
+export function durationSlipClause(raw: string): string {
+  if (raw === "") return "";
+  if (/^-(?:\d|\.)/.test(raw)) return " — a duration may not be negative";
+  // A lone leading `-` with no count after it (a `-` flag fragment, `--json`) is not a negative
+  // count, so naming one would be a guess; the CLI refuses such tokens before the grammar is ever
+  // asked, and here the clause stays out of the way.
+  if (raw.startsWith("-")) return "";
+  if (/^\s|\s$/.test(raw)) return " — it has leading or trailing whitespace";
+  if (/\s/.test(raw)) return " — its components must touch, with no space between them";
+  const runs = raw.match(/[a-z]+/gi) ?? [];
+  const misspelled = runs.find((run) => !/^[dhms]+$/i.test(run));
+  if (misspelled !== undefined)
+    return ` — the unit must be one of d, h, m, or s, not ${JSON.stringify(misspelled)}`;
+  if (/^\d+$/.test(raw)) return " — it has no unit; the units are d, h, m, and s";
+  if (/^[a-z]/i.test(raw)) return " — every unit needs a number before it";
+  if (/^\d*\.\d/.test(raw)) return " — a component's count must be a whole number";
+  if (runs.length === 0) return " — it needs a number and a unit; the units are d, h, m, and s";
+  const units = runs.join("").toLowerCase().split("");
+  if (units.some((u, i) => units.indexOf(u) !== i)) return " — a unit may not repeat";
+  if (!isDescendingUnitOrder(units)) return ` — units must descend ${DURATION_UNIT_ORDER.join(" → ")}`;
+  if (/\d$/.test(raw)) return " — every number needs the unit that follows it";
+  if ((raw.match(/\d+/g) ?? []).some((count) => count.startsWith("0")))
+    return " — a component's count may not be 0 or start with 0";
+  return "";
+}
+
+/** Do the unit letters in `units` run highest-first with none repeated — the order the grammar
+ * matches its components in. A repeat already returned its own clause at the caller, so the
+ * `<=` here only ever answers for a genuinely out-of-order pair. */
+function isDescendingUnitOrder(units: string[]): boolean {
+  let last = -1;
+  for (const unit of units) {
+    const rank = DURATION_UNIT_ORDER.indexOf(unit);
+    if (rank <= last) return false;
+    last = rank;
+  }
+  return true;
+}
+
 /** Parse a composite duration spelling: one or more `<n><unit>` components in strictly
  * descending unit order (e.g. `45s`, `90m`, `1h30m`, `1h30m15s`), each a plain-decimal
  * count — no leading zero (`007s` fails) and none zero (`0h30m` fails; write `30m`).

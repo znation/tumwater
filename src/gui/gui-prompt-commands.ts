@@ -13,7 +13,7 @@ import { promptPreview } from "../inbox/inbox.js";
 import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { editQueuedFile, type EditOutcome } from "../inbox/inbox-edit.js";
 import { topQueuedFile, type FileTopOutcome } from "../inbox/inbox-top.js";
-import { durationLabel, parseDurationMs } from "../text/duration.js";
+import { durationLabel, durationSlipClause, parseDurationMs } from "../text/duration.js";
 import { PAUSE_FOR_MAX_MS, submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadQueueFileName, rejectBadRole, requirePromptText } from "./gui-args.js";
@@ -66,7 +66,12 @@ function checkedPromptDefer(res: http.ServerResponse, body: Record<string, unkno
   if (body.defer === undefined) return undefined;
   const ms = typeof body.defer === "string" ? parseDurationMs(body.defer) : null;
   if (ms === null) {
-    badRequest(res, `defer needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(body.defer)}`);
+    badRequest(
+      res,
+      `defer needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(body.defer)}${durationSlipClause(
+        typeof body.defer === "string" ? body.defer : "",
+      )}`,
+    );
     return null;
   }
   if (ms > PAUSE_FOR_MAX_MS) {
