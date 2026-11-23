@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { readRoleNotesOverCap, readRoleLessonsOverCap, collectRoleNotesOverCap } from "../src/status/status-role-notes.js";
+import { readRoleNotesOverCap, readRoleLessonsOverCap, collectRoleLessonsOverCap, collectRoleNotesOverCap } from "../src/status/status-role-notes.js";
 
 /** A notes dir with one over-cap role note AND a `lessons` subdirectory holding a (would-be
  * over-cap) `lessons.md` file. Returns [root, notesDir, notePath, lessonsDir]. */
@@ -105,4 +105,30 @@ test("readRoleLessonsOverCap of a missing or unreadable lessons dir is empty, an
   assert.equal(over.length, 2);
   assert.equal(over[0]!.role, "bb", "the byte-heavier file is first");
   assert.equal(over[1]!.role, "aa");
+});
+
+// The snapshot's collector for the same walk (collectRoleLessonsOverCap): the status side of the
+// doctor row's lessons arm. It is the reader unchanged — no null state to map, since a missing or
+// unreadable lessons dir already reads [] there — so the alert and the doctor row cannot disagree
+// about which stores are over the caps.
+test("collectRoleLessonsOverCap returns the reader's array unchanged for the snapshot", () => {
+  // No lessons dir at all: [] (the same "nothing recorded yet" the notes collector maps null to).
+  assert.deepEqual(collectRoleLessonsOverCap(tmpdir()), [], "a missing lessons dir collects []");
+  // Two over-cap stores, in the reader's descending-byte order, each with its own counts.
+  const root = tmpdir();
+  const dir = path.join(root, ".tumwater", "state", "notes", "lessons");
+  fs.mkdirSync(dir, { recursive: true });
+  const small = "<!-- next: L14 -->\n" + Array.from({ length: 13 }, (_, i) => `- L${i + 1} (2026-11-23): x`).join("\n") + "\n";
+  const big = "<!-- next: L3 -->\n" + `- L1 (2026-11-23): ${"b".repeat(2300)}\n`;
+  fs.writeFileSync(path.join(dir, "small.md"), small);
+  fs.writeFileSync(path.join(dir, "big.md"), big);
+  const expected = [
+    { role: "big", bytes: Buffer.byteLength(big, "utf8"), lessons: 1 },
+    { role: "small", bytes: Buffer.byteLength(small, "utf8"), lessons: 13 },
+  ];
+  assert.deepEqual(collectRoleLessonsOverCap(root), expected, "the collector is the reader: byte-heaviest first");
+  assert.deepEqual(readRoleLessonsOverCap(root), expected, "and equals the reader the doctor row calls");
+  // A store inside both caps is never collected: 12 lessons, well under the byte cap.
+  fs.writeFileSync(path.join(dir, "healthy.md"), "<!-- next: L13 -->\n" + Array.from({ length: 12 }, (_, i) => `- L${i + 1} (2026-11-23): x`).join("\n") + "\n");
+  assert.deepEqual(collectRoleLessonsOverCap(root).map((o) => o.role), ["big", "small"], "a store inside both caps is not collected");
 });

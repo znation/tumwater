@@ -636,7 +636,10 @@ than a recurring search, has neither. When a note runs past the 4 KB bound (a ha
 build), the next run sees only its head plus a truncation marker while every operator surface reads
 the file whole — `tumwater doctor`'s `role notes` row warns on that over-bound state (and on a lessons
 file grown past its 12-lesson / 2 KB store caps, which the role's own `add` will now refuse), and
-`tumwater status --json` carries the over-bound roles as a `roleNotesOverCap` array. You can clear or replace a note with
+`tumwater status --json` carries the over-bound roles as a `roleNotesOverCap` array and the over-cap
+lessons stores as a `roleLessonsOverCap` array of `{ role, bytes, lessons }`; each state also raises
+its own standing amber alert (`role-notes-truncated`, `role-lessons-over-cap`) on `tumwater status`
+and the dashboard, worded by that same doctor row. You can clear or replace a note with
 `tumwater role <id> --clear-notes` or `--notes-file <path>`, and empty a role's lessons with
 `--clear-lessons` (it leaves the note untouched); a run in progress at that moment may
 still overwrite them through its own `tumwater-notes` call. When a note names an entry or series of
@@ -691,7 +694,8 @@ stale settings.
   loop, the GitHub-issues mirror family (no `gh`, a failed scan, a scan gone quiet, issues the
   director has not declined and has not mirrored, fixes waiting on a push), the background
   maintenance pass, and the standing doctor
-  twins `no-check`, `no-brief`, `brief-truncated`, `role-notes-truncated`, `salvage-patches`,
+  twins `no-check`, `no-brief`, `brief-truncated`, `role-notes-truncated`, `role-lessons-over-cap`,
+  `salvage-patches`,
   `instance-pool` and `config-problem` (`teamAlerts` in `src/ui/team-alerts.ts` and its per-domain
   builders; `tumwater status` renders the same set). Main's newest check verdict is not an alert:
   it is the sidebar's `Main` row and the header badge. What stays in the report rather than the

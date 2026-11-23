@@ -5,6 +5,82 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### A role whose lessons store has outgrown its caps raises a standing amber alert on
+  `tumwater status` and the dashboard, the twin of the doctor `role notes` row's lessons clause
+  (planned 2026-11-23 by the plan role) — done 2026-11-23 by the feature role
+
+**Why:** the lessons store is capped on the write side only. `ROLE_LESSONS_MAX_COUNT = 12` /
+`ROLE_LESSONS_MAX_BYTES = 2048` (src/roles/role-notes-write.ts) are enforced by the `add` path, so a hand
+edit or an older build leaves a store past them and that role's next `tumwater-notes lesson add` is
+refused. That state has exactly one surface today: `tumwater doctor`'s `role notes` row
+(src/doctor/doctor-role-notes.ts's `checkRoleNotes`), whose lessons clause reads
+`N lessons file(s) across N role(s) exceed(s) the 12-lesson / 2048-byte store caps: <role> (<n> lessons, <b> bytes) —
+a role's own lesson add will now be refused until one is retired (…)`. The notes half of that same row has
+a standing twin — the amber `role-notes-truncated` alert raised by `pushRoleNotesAlert`
+(src/ui/team-alert-standings.ts) from the `roleNotesOverCap` snapshot array — but the lessons half has
+none, so an operator who never runs `tumwater doctor` learns about a store that has stopped learning only
+from a refusal in a role's output. Both halves come from readers in one file
+(src/status/status-role-notes.ts) that `checkRoleNotes` already calls together, so the twin costs one
+snapshot key and one arm.
+
+**Approach:** mirror the note twin exactly, reusing its arm and the doctor row's own sentence.
+
+- src/status/status-role-notes.ts: export the entry type now kept private (`RoleLessonOverCap`: `role`,
+  `bytes`, `lessons`) and add `collectRoleLessonsOverCap(root)` returning `readRoleLessonsOverCap(root)`
+  unchanged, beside the existing `collectRoleNotesOverCap`. Leave the lessons reader uncached: it walks one
+  small `.md` per role in a directory the role count bounds, and it counts lessons by scanning the text, so
+  the size-keyed `cachedByStat` (src/files/stat-cache.ts) would miss on every lesson edit anyway. A missing
+  or unreadable lessons dir already reads `[]` there — no new state to handle.
+- src/status/status-types.ts: add `roleLessonsOverCap?: RoleLessonOverCap[]` beside `roleNotesOverCap`
+  (which the file already imports), documented as absent when empty.
+- src/status/status-data.ts: where `collectRoleNotesOverCap(root)` is already called once per poll, call the
+  lessons collector beside it and pass it as a parameter to `snapshotHealthFields`, which already takes
+  `roleNotesOverCap`; emit it in that builder's returned object as
+  `...(roleLessonsOverCap.length > 0 ? { roleLessonsOverCap } : {})`.
+- src/ui/status-payload.ts: pass the key through in the raw `--json` object beside `roleNotesOverCap`, as an
+  array of `{ role, bytes, lessons }` in the reader's descending-byte order.
+- src/ui/team-alerts.ts: add `"roleLessonsOverCap"` to the `Pick<StatusSnapshot, …>` union of standing flags
+  that already names `"roleNotesOverCap"`.
+- src/ui/team-alert-standings.ts: add `pushRoleLessonsAlert(out, over, root)` beside `pushRoleNotesAlert`,
+  raising through the shared `pushDoctorTwinAlert` so the detail is `checkRoleNotes(root)`'s warn sentence
+  whole and the alert and the row stay twins by construction; title
+  `N role(s) over the 12-lesson / 2048-byte lessons caps` built with `plural(over.length, "role", "roles")`
+  (the snapshot array's length, as the note arm does, because the row's own named cap undercounts past
+  three roles). Emit it in `buildStandingAlerts` immediately after the `roleNotesOverCap` arm, gated by
+  `snap.roleLessonsOverCap && snap.roleLessonsOverCap.length > 0`. Update that module's header comment and
+  `buildStandingAlerts`'s emission-order comment.
+
+**Files touched:** src/status/status-role-notes.ts, src/status/status-types.ts, src/status/status-data.ts,
+src/ui/status-payload.ts, src/ui/team-alerts.ts, src/ui/team-alert-standings.ts (the last three are the alert
+builder and payload, which live under src/ui/, not src/status/);
+test/status-role-notes.test.ts, test/team-alerts.test.ts, test/status-payload.test.ts;
+docs/invariants.md (INV-T6), docs/cli.md (the `tumwater status` Check state row), docs/how-it-works.md (the
+alerts list naming the standing doctor twins). No dashboard client change: the alerts band renders the
+payload's `alerts` array, which already carries whatever `teamAlerts` raises.
+
+**Acceptance criteria:**
+
+- With a `.tumwater/state/notes/lessons/feature.md` holding 13 `- L<n> (<date>):` lines under the byte cap,
+  `tumwater status` shows a standing amber alert and `tumwater status --json` carries a
+  `roleLessonsOverCap` array whose single row is `{ role: "feature", lessons: 13, bytes: <file bytes> }`;
+  the same file at 12 lessons carries neither the key nor the alert.
+- The alert's detail is byte-identical to the `role notes` row's detail from `checkRoleNotes(root)` in the
+  same tree — the plan pins the twin, not new wording — so the row's lesson count, byte count and the
+  `tumwater-notes lesson retire` / `--clear-lessons` remedy appear in the standing alert. The `role notes`
+  row's own output is unchanged (the existing `checkRoleNotes` lessons tests in test/doctor-checks.test.ts
+  pass untouched).
+- With no lessons dir at all, and with a lessons file inside both caps, `tumwater status --json` has no
+  `roleLessonsOverCap` key and no `role-lessons-over-cap` alert (the absent store is not an alert), and the
+  existing standing-alert cases in test/team-alerts.test.ts stay green.
+- An over-cap lessons file alone (no over-bound note) raises only `role-lessons-over-cap`; an over-cap note
+  alone raises only `role-notes-truncated`; both at once raise both, note first then lessons, and both alerts
+  carry the one joined `checkRoleNotes` sentence — the behaviour `role-notes-truncated` has today.
+- docs/invariants.md INV-T6 is updated in the same commit: the standing doctor-twin family is eight alerts
+  including `role-lessons-over-cap`, its flag list names `roleLessonsOverCap`, the amber count goes from six
+  to seven, and its **Binds**/**Pinned by** paragraphs name the new arm and tests.
+- `node scripts/tsc.mjs --incremental`, then the runner over status-role-notes team-alerts status-payload
+  doctor-checks backlog-structure plan-citations invariants-doc cli-doc config-doc, stay green.
+
 ### The `tumwater status` header and the dashboard's team panel gain a `QA:` badge, so a flow-coverage
   stall shows at a glance instead of only in `tumwater doctor` (planned 2026-11-23 by the plan role) — done 2026-11-23 by the feature role
 

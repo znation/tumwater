@@ -21,7 +21,7 @@ import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { requestWake } from "../src/operator/operator-intent.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
-import { configPath, orchestratorStatePath, pausedPath, piLogPath, postReviewPath, qaCoveragePath, remoteCiPath, roleNotesPath, salvageDir, salvagePendingDir } from "../src/paths.js";
+import { configPath, orchestratorStatePath, pausedPath, piLogPath, postReviewPath, qaCoveragePath, remoteCiPath, roleLessonsPath, roleNotesPath, salvageDir, salvagePendingDir } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
@@ -1006,6 +1006,55 @@ test("the payload's roleNotesOverCap follows the notes read bound and clears und
   assert.equal((await snapshot(root, undefined, now)).roleNotesOverCap, undefined, "rewriting both to the cap clears the snapshot field");
   assert.equal((await payload()).roleNotesOverCap, undefined, "no key once both notes are at the cap");
   assert.equal((await payload()).alerts.find((a) => a.key === "role-notes-truncated"), undefined, "no alert once both notes are at the cap");
+});
+
+// The lessons half of the same doctor `role notes` row on the payload: the raw `roleLessonsOverCap`
+// key beside `roleNotesOverCap`, and the standing amber `role-lessons-over-cap` alert it renders.
+// A 13-lesson store under the byte cap fires the count cap; the same store at 12 lessons carries
+// neither the key nor the alert.
+test("the payload's roleLessonsOverCap follows the lessons store caps and clears under them", async () => {
+  const now = Date.now();
+  const root = makeRepo();
+  interface Payload {
+    roleLessonsOverCap?: Array<{ role: string; bytes: number; lessons: number }>;
+    alerts: Array<{ key: string; tone: string; title: string; detail: string }>;
+  }
+  const payload = async () => (await statusPayload(root, now)) as Payload;
+  // No lessons dir at all (nothing recorded yet): no snapshot field, no key, no alert.
+  assert.equal((await snapshot(root, undefined, now)).roleLessonsOverCap, undefined, "no lessons dir leaves the field absent");
+  assert.equal((await payload()).roleLessonsOverCap, undefined, "no roleLessonsOverCap key with no lessons dir");
+  assert.equal((await payload()).alerts.find((a) => a.key === "role-lessons-over-cap"), undefined, "no role-lessons-over-cap alert with no lessons dir");
+
+  const lessonsDir = path.dirname(roleLessonsPath(root, "feature"));
+  fs.mkdirSync(lessonsDir, { recursive: true });
+  const lessonsText = (n: number) =>
+    `<!-- next: L${n + 1} -->\n` + Array.from({ length: n }, (_, i) => `- L${i + 1} (2026-11-23): keep this`).join("\n") + "\n";
+
+  // 12 lessons — exactly at the count cap, under the byte cap: absent everywhere.
+  fs.writeFileSync(roleLessonsPath(root, "feature"), lessonsText(12));
+  assert.equal((await snapshot(root, undefined, now)).roleLessonsOverCap, undefined, "12 lessons stays absent");
+  assert.equal((await payload()).roleLessonsOverCap, undefined, "no key at the count cap");
+  assert.equal((await payload()).alerts.find((a) => a.key === "role-lessons-over-cap"), undefined, "no alert at the count cap");
+
+  // 13 lessons — one past the count cap, still under the byte cap: the field, the key and the
+  // alert all stand, and the row carries the file's own byte length.
+  const over = lessonsText(13);
+  fs.writeFileSync(roleLessonsPath(root, "feature"), over);
+  const expected = [{ role: "feature", bytes: Buffer.byteLength(over, "utf8"), lessons: 13 }];
+  assert.ok(expected[0]!.bytes < 2048, "the count cap is what fires here, not the byte cap");
+  assert.deepEqual((await snapshot(root, undefined, now)).roleLessonsOverCap, expected, "an over-cap store surfaces in the snapshot");
+  assert.deepEqual((await payload()).roleLessonsOverCap, expected, "the payload carries the same array");
+  const alert = (await payload()).alerts.find((a) => a.key === "role-lessons-over-cap");
+  assert.ok(alert, "the over-cap store renders the standing alert");
+  assert.equal(alert!.tone, "amber");
+  assert.equal(alert!.title, "1 role over the 12-lesson / 2048-byte lessons caps");
+  assert.ok(alert!.detail.includes(`feature (13 lessons, ${expected[0]!.bytes} bytes)`), `the alert names the store's counts: ${alert!.detail}`);
+
+  // Back to 12 lessons: the field, the key and the alert all clear.
+  fs.writeFileSync(roleLessonsPath(root, "feature"), lessonsText(12));
+  assert.equal((await snapshot(root, undefined, now)).roleLessonsOverCap, undefined, "rewriting to 12 lessons clears the field");
+  assert.equal((await payload()).roleLessonsOverCap, undefined, "no key once the store is inside both caps");
+  assert.equal((await payload()).alerts.find((a) => a.key === "role-lessons-over-cap"), undefined, "no alert once the store is inside both caps");
 });
 
 test("the payload's salvagePatches follows the direct kept patches and clears without them", async () => {

@@ -19,7 +19,7 @@ import type { MergeInFlight } from "../merge/merge-slot.js";
 import type { MainCheckStatus } from "./status-main-check.js";
 import type { CiParityStatus, QaCoverageStatus, RemoteCiStatus } from "./status-polls.js";
 import type { StatusRoleRow } from "./status-roles.js";
-import type { RoleNoteOverCap } from "./status-role-notes.js";
+import type { RoleLessonOverCap, RoleNoteOverCap } from "./status-role-notes.js";
 import type { SalvagePatch } from "./status-salvage.js";
 import type { MaintenanceMarker } from "../orchestrator/retention.js";
 import type { GithubIssuesSummary } from "../github/github-issues-state.js";
@@ -381,6 +381,13 @@ export interface StatusSnapshot {
    * role's id and its note's length in characters, sorted newest-char-count first; present
    * only when non-empty, so the surfaces render exactly as before. */
   roleNotesOverCap?: RoleNoteOverCap[];
+  /** Every role whose lessons file has grown past the lessons store caps — the doctor `role
+   * notes` row's lessons-arm warning state (src/doctor/doctor-role-notes.ts's checkRoleNotes),
+   * raised as a standing amber alert on `tumwater status` and the dashboard. Each entry is the
+   * role's id, its lessons file's UTF-8 byte length and its lesson count, sorted byte-heaviest
+   * first (the order the reader returns); present only when non-empty, so the surfaces render
+   * exactly as before. */
+  roleLessonsOverCap?: RoleLessonOverCap[];
   /** The GitHub issues ledger folded to its counts (github-issues-state.ts's githubIssuesSummary),
    * read fresh per poll: the amber `github-gh` alert when gh cannot read the repo, the gray
    * `github-error` alert when the last scan failed, and the blue `github-mirror` alert when

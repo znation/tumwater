@@ -36,17 +36,17 @@ export type { TeamAlert, AlertRole } from "./team-alert-shared.js";
 interface StandingAlertInputs {
   snap: Pick<
     StatusSnapshot,
-    "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "salvagePatches" |
-      "configProblem"
+    "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "roleLessonsOverCap" |
+      "salvagePatches" | "configProblem"
   >;
   config: TumwaterConfig;
   root: string;
 }
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget,
- * roles failing run after run, roles that look stuck, disk and install drift, the seven
+ * roles failing run after run, roles that look stuck, disk and install drift, the eight
  * standing doctor twins (no-check, no-brief, brief-truncated, role-notes-truncated,
- * salvage-patches, instance-pool, config-problem), open questions,
+ * role-lessons-over-cap, salvage-patches, instance-pool, config-problem), open questions,
  * refused entries, orphaned processes, and a stopped team.
  */
 export function teamAlerts(

@@ -1,18 +1,20 @@
 /** The standing doctor-twin team alerts, in emission order: no-check, no-brief,
- * brief-truncated, role-notes-truncated, salvage-patches, instance-pool, and the
+ * brief-truncated, role-notes-truncated, role-lessons-over-cap, salvage-patches, instance-pool,
+ * and the
  * config-problem alert. One of the per-domain builders split out of
  * src/ui/team-alerts.ts; the shared types and wording helpers live in team-alert-shared.ts.
  *
- * These seven are the standing amber alerts docs/cli.md promises on `tumwater status` and the
+ * These eight are the standing amber alerts docs/cli.md promises on `tumwater status` and the
  * dashboard — the always-on twins of their doctor rows. (An over-cap
  * PRINCIPLES.md raises none: the orchestrator instead queues the director a consolidation
  * prompt — src/prompt/principles-consolidation.ts — while the `principlesTruncated` key and
  * the doctor `principles` row stay the diagnostic.) The snapshot carries
  * their state as raw fields (noDeclaredCheck, noBrief, briefTruncated, roleNotesOverCap,
- * salvagePatches, configProblem) and this module raises each as its
+ * roleLessonsOverCap, salvagePatches, configProblem) and this module raises each as its
  * alert when its flag stands, phrasing the detail from the same check or selector the
  * doctor row runs (doctor-project-checks.ts checkBuildCheck, doctor-checks.ts checkBrief,
- * doctor-role-notes.ts checkRoleNotes, doctor-salvage.ts checkSalvagePatches,
+ * doctor-role-notes.ts checkRoleNotes (twice — once for the notes arm and once for the lessons
+ * arm), doctor-salvage.ts checkSalvagePatches,
  * doctor-contention-checks.ts smallPoolProblems, or
  * the doctor `init` row's config-validity check for config-problem), so the alert and the
  * row cannot drift on the trigger, the caps, or the remedy. The raw fields stay the
@@ -28,7 +30,7 @@ import { checkRoleNotes } from "../doctor/doctor-role-notes.js";
 import { checkSalvagePatches } from "../doctor/doctor-salvage.js";
 import { smallPoolProblems } from "../doctor/doctor-contention-checks.js";
 import { plural } from "../text/phrases.js";
-import { ROLE_NOTES_MAX_BYTES } from "../roles/role-notes-write.js";
+import { ROLE_LESSONS_MAX_BYTES, ROLE_LESSONS_MAX_COUNT, ROLE_NOTES_MAX_BYTES } from "../roles/role-notes-write.js";
 
 /** The standing-alert half of the snapshot: exactly the fields this builder reads. `config`
  * is the observer's config (configForStatus's last-known-good read) — instance-pool's
@@ -38,8 +40,8 @@ import { ROLE_NOTES_MAX_BYTES } from "../roles/role-notes-write.js";
 interface StandingAlertsInput {
   snap: Pick<
     StatusSnapshot,
-    "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "salvagePatches" |
-      "configProblem"
+    "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "roleLessonsOverCap" |
+      "salvagePatches" | "configProblem"
   >;
   config: TumwaterConfig;
   root: string;
@@ -57,9 +59,10 @@ interface StandingAlertsInput {
  * construction — a row that reads ok is a state the snapshot flag's own read could not see
  * (a concurrent write between the flag's read and the row's), and it raises nothing. `key`
  * and `title` are the arm's own; the tone is fixed amber and the actions empty, as every
- * doctor-twin standing alert is. The four amber arms that read a CheckOutcome use it: no-brief,
- * brief-truncated, role-notes-truncated and salvage-patches. no-check does not: its row reads ok
- * (a declaration is on its way), so it raises blue info whatever the row says.
+ * doctor-twin standing alert is. The five amber arms that read a CheckOutcome use it: no-brief,
+ * brief-truncated, role-notes-truncated, role-lessons-over-cap and salvage-patches. no-check does
+ * not: its row reads ok (a declaration is on its way), so it raises blue info whatever the row
+ * says.
  * instance-pool is not one — it reads the smallPoolProblems selector, not a doctor row, so it
  * keeps its own arm. */
 function pushDoctorTwinAlert(out: TeamAlert[], row: CheckOutcome, key: string, title: string): void {
@@ -101,6 +104,23 @@ function pushRoleNotesAlert(
   );
 }
 
+// The doctor's lessons arm of the same row: the row's warn sentence names every over-cap role
+// with its lesson and byte counts and the remedy, so the alert reuses it whole through the same
+// pushDoctorTwinAlert — the alert and the row stay twins by construction. The title's count is
+// the snapshot array's length, which the row's named cap would undercount past three roles.
+function pushRoleLessonsAlert(
+  out: TeamAlert[],
+  over: NonNullable<StatusSnapshot["roleLessonsOverCap"]>,
+  root: string,
+): void {
+  pushDoctorTwinAlert(
+    out,
+    checkRoleNotes(root),
+    "role-lessons-over-cap",
+    `${plural(over.length, "role", "roles")} over the ${ROLE_LESSONS_MAX_COUNT}-lesson / ${ROLE_LESSONS_MAX_BYTES}-byte lessons caps`,
+  );
+}
+
 // The doctor's `parallel instances` row carries more than the pool clause (stale and gone
 // claims), so the alert reads the shared selector itself — the same smallPoolProblems the
 // row uses — and names only the pool clause.
@@ -130,7 +150,7 @@ function pushConfigProblemAlert(out: TeamAlert[], problem: string): void {
 }
 
 // The doctor `salvage patches` row's warn sentence names the count, the oldest patch's age and
-// the remedy, so the alert reuses it whole through the six shared doctor-twin arms. It passes the
+// the remedy, so the alert reuses it whole through the seven shared doctor-twin arms. It passes the
 // configured retention window to the row, so the alert names the same deadline the row does —
 // including the `sessionRetentionDays: 0` form that says these patches are never pruned.
 function pushSalvagePatchesAlert(
@@ -147,7 +167,8 @@ function pushSalvagePatchesAlert(
 }
 
 /** The standing doctor-twin alerts, in emission order: no-check (blue), no-brief,
- * brief-truncated, role-notes-truncated, salvage-patches, instance-pool, config-problem.
+ * brief-truncated, role-notes-truncated, role-lessons-over-cap, salvage-patches, instance-pool,
+ * config-problem.
  * The caller pushes the returned alerts at the position this run used to
  * occupy, so the emitted key order is unchanged. */
 export function buildStandingAlerts(input: StandingAlertsInput): TeamAlert[] {
@@ -158,6 +179,8 @@ export function buildStandingAlerts(input: StandingAlertsInput): TeamAlert[] {
   if (snap.briefTruncated) pushBriefTruncatedAlert(out, root);
   if (snap.roleNotesOverCap && snap.roleNotesOverCap.length > 0)
     pushRoleNotesAlert(out, snap.roleNotesOverCap, root);
+  if (snap.roleLessonsOverCap && snap.roleLessonsOverCap.length > 0)
+    pushRoleLessonsAlert(out, snap.roleLessonsOverCap, root);
   if (snap.salvagePatches && snap.salvagePatches.length > 0)
     pushSalvagePatchesAlert(out, root, config.sessionRetentionDays);
   pushInstancePoolAlert(out, config);

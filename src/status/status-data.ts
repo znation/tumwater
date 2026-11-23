@@ -23,7 +23,7 @@ import { readMergeQueue } from "../merge/merge-queue.js";
 import { mainCheckForPoll } from "./status-main-check.js";
 import { collectRoleRows } from "./status-roles.js";
 import { collectInboxes } from "./status-inbox.js";
-import { collectRoleNotesOverCap, type RoleNoteOverCap } from "./status-role-notes.js";
+import { collectRoleLessonsOverCap, collectRoleNotesOverCap, type RoleLessonOverCap, type RoleNoteOverCap } from "./status-role-notes.js";
 import { collectSalvagePatches } from "./status-salvage.js";
 import { collectBudget } from "./status-budget.js";
 import { collectRootInstallDrift } from "./status-install.js";
@@ -183,13 +183,15 @@ function snapshotPauseFields(
 }
 
 /** The merge-queue and doctor health fields of the snapshot (main-check, ci-parity and the
- * build-check/brief/principles flags, plus the role notes over cap). `now` is the poll's clock,
+ * build-check/brief/principles flags, plus the role notes over cap and the role lessons over cap).
+ * `now` is the poll's clock,
  * passed through so the GitHub mirror's stall is decided where its ledger is already open. */
 function snapshotHealthFields(
   root: string,
   cfg: ReturnType<typeof configForStatus>,
   mergeQueue: StatusSnapshot["mergeQueue"],
   roleNotesOverCap: RoleNoteOverCap[],
+  roleLessonsOverCap: RoleLessonOverCap[],
   configProblem: string | undefined,
   now: number,
 ): Partial<StatusSnapshot> {
@@ -212,6 +214,7 @@ function snapshotHealthFields(
     noBrief: brief.missing ? true : undefined,
     briefTruncated: brief.overCap ? true : undefined,
     ...(roleNotesOverCap.length > 0 ? { roleNotesOverCap } : {}),
+    ...(roleLessonsOverCap.length > 0 ? { roleLessonsOverCap } : {}),
     ...(salvagePatches.length > 0 ? { salvagePatches } : {}),
     principlesTruncated: principlesBlockOverCap(root) ? true : undefined,
     ...githubIssuesForPoll(root, cfg, now),
@@ -377,6 +380,9 @@ export function snapshotForStatus(root: string, modelsPath = piModelsPath(), now
   // Every role whose notes file runs past the read bound (status-role-notes.ts): the standing
   // twin of the doctor `role notes` row, raised as the amber role-notes-truncated alert.
   const roleNotesOverCap = collectRoleNotesOverCap(root);
+  // Every role whose lessons file grew past the store caps (status-role-notes.ts): the standing
+  // twin of the same doctor row's lessons arm, raised as the amber role-lessons-over-cap alert.
+  const roleLessonsOverCap = collectRoleLessonsOverCap(root);
   // One inbox pass per poll (status-inbox.ts) serves all four director fields and the per-role
   // counts/entries from the same queuedRolePromptEntries reads.
   const { inbox, inboxPrompts, inboxFiles, inboxQueuedAt, inboxNotBefore, roleInbox, roleInboxPrompts } =
@@ -465,7 +471,7 @@ export function snapshotForStatus(root: string, modelsPath = piModelsPath(), now
       quiet,
       now,
     ),
-    ...snapshotHealthFields(root, cfg, mergeQueue, roleNotesOverCap, problem, now),
+    ...snapshotHealthFields(root, cfg, mergeQueue, roleNotesOverCap, roleLessonsOverCap, problem, now),
     ...snapshotResourceFields(root, running, info, rootDrift),
   } as StatusSnapshot;
 }

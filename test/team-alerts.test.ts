@@ -6,8 +6,9 @@ import { alertNeedsYou, teamAlerts, type AlertRole } from "../src/ui/team-alerts
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
 import { defaultConfig } from "../src/config/config.js";
-import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
-import { roleNotesPath, salvageDir } from "../src/paths.js";
+import { ROLE_LESSONS_MAX_BYTES, ROLE_LESSONS_MAX_COUNT, ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
+import { roleLessonsPath, roleNotesPath, salvageDir } from "../src/paths.js";
+import { checkRoleNotes } from "../src/doctor/doctor-role-notes.js";
 import { PRINCIPLES_MAX_CHARS } from "../src/prompt/principles.js";
 import { BRIEF_TEXT_MAX_CHARS, PROMPT_END, PROMPT_START } from "../src/brief/brief.js";
 import { renderStatus } from "../src/ui/status-render.js";
@@ -19,8 +20,8 @@ import type { StatusSnapshot } from "../src/status/status-types.js";
 
 type StandingFlags = Pick<
   StatusSnapshot,
-  "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "salvagePatches" |
-    "principlesTruncated" | "configProblem"
+  "noDeclaredCheck" | "noBrief" | "briefTruncated" | "roleNotesOverCap" | "roleLessonsOverCap" |
+    "salvagePatches" | "principlesTruncated" | "configProblem"
 >;
 
 // team-alerts.ts's teamAlerts: what needs the operator, phrased once for the dashboard's alert
@@ -493,6 +494,69 @@ test("the standing amber alerts raise from the snapshot's raw flags, worded like
   );
   assert.match(offAlert?.detail ?? "", /; session retention is off, so these patches are never pruned/);
   assert.doesNotMatch(offAlert?.detail ?? "", /goes in /, "the off window names no countdown");
+});
+
+// The lessons half of the same doctor row (the twin of the `role notes` row's lessons clause):
+// an over-cap lessons store stops the role's own `lesson add`, so the standing alert must reach
+// an operator who never runs `tumwater doctor`. The detail is checkRoleNotes' warn sentence whole,
+// so the alert and the row cannot drift, and the two arms coexist — note first, lessons second —
+// each carrying that one joined sentence.
+test("the standing role-lessons-over-cap alert twins the doctor role notes row's lessons clause", () => {
+  const root = makeRepo();
+  const config = defaultConfig();
+  const raise = (flags: StandingFlags) => {
+    const snap = { ...base, ...flags };
+    return teamAlerts(snap, [], [], Date.now(), undefined, null, { snap, config, root });
+  };
+  const has = (flags: StandingFlags, key: string) => raise(flags).find((a) => a.key === key);
+  const over: StandingFlags["roleLessonsOverCap"] = [{ role: "feature", bytes: 295, lessons: 13 }];
+
+  // No lessons store on disk: the doctor row reads ok, so the flag alone raises nothing — the
+  // row is the trigger, the same construction as every other doctor-twin arm.
+  assert.ok(!has({ roleLessonsOverCap: over }, "role-lessons-over-cap"), "no lessons dir raises no lessons alert");
+
+  // 13 short lessons: over the 12-lesson cap, under the byte cap — the lessons alert alone.
+  fs.mkdirSync(path.dirname(roleLessonsPath(root, "feature")), { recursive: true });
+  const overLessons = "<!-- next: L14 -->\n" + Array.from({ length: 13 }, (_, i) => `- L${i + 1} (2026-11-23): x`).join("\n") + "\n";
+  fs.writeFileSync(roleLessonsPath(root, "feature"), overLessons);
+  const lessons = has({ roleLessonsOverCap: over }, "role-lessons-over-cap");
+  assert.ok(lessons, "an over-cap lessons store raises the standing role-lessons-over-cap alert");
+  assert.deepEqual(raise({ roleLessonsOverCap: over }).map((a) => a.key), ["role-lessons-over-cap"], "the lessons flag alone raises only the lessons alert");
+  assert.equal(lessons?.tone, "amber");
+  assert.equal(lessons?.title, "1 role over the 12-lesson / 2048-byte lessons caps");
+  assert.equal(
+    lessons?.detail,
+    checkRoleNotes(root).detail,
+    "the alert detail is the row's warn sentence whole for the same tree",
+  );
+  const bytes = Buffer.byteLength(overLessons, "utf8");
+  assert.ok(lessons?.detail.includes(`feature (13 lessons, ${bytes} bytes)`), `the row names the store's own counts: ${lessons?.detail}`);
+  assert.ok(lessons?.detail.includes("tumwater-notes lesson retire"), "the row's remedy rides the alert");
+  assert.ok(lessons?.detail.includes(`${ROLE_LESSONS_MAX_COUNT}-lesson / ${ROLE_LESSONS_MAX_BYTES}-byte store caps`), "the alert names both caps");
+  assert.ok(!has({ roleNotesOverCap: [] }, "role-notes-truncated"), "an over-cap lessons store alone raises no notes alert");
+
+  // A store inside both caps (12 lessons, tiny) clears it: the row reads ok, so nothing raises.
+  fs.writeFileSync(
+    roleLessonsPath(root, "feature"),
+    "<!-- next: L13 -->\n" + Array.from({ length: 12 }, (_, i) => `- L${i + 1} (2026-11-23): x`).join("\n") + "\n",
+  );
+  assert.ok(!has({ roleLessonsOverCap: [{ role: "feature", bytes: 120, lessons: 12 }] }, "role-lessons-over-cap"), "a lessons store inside both caps raises nothing");
+
+  // Both halves at once: note first, lessons second, each carrying the one joined sentence the
+  // row prints — the behaviour the notes alert has today.
+  fs.writeFileSync(roleNotesPath(root, "clean"), "x".repeat(ROLE_NOTES_MAX_BYTES + 1));
+  fs.writeFileSync(roleLessonsPath(root, "feature"), overLessons);
+  const flags: StandingFlags = {
+    roleNotesOverCap: [{ role: "clean", chars: ROLE_NOTES_MAX_BYTES + 1 }],
+    roleLessonsOverCap: over,
+  };
+  const both = raise(flags);
+  assert.deepEqual(both.map((a) => a.key), ["role-notes-truncated", "role-lessons-over-cap"], "the two arms emit note first, lessons second");
+  const joined = checkRoleNotes(root).detail;
+  assert.equal(both[0]!.detail, joined, "the notes alert carries the joined row sentence");
+  assert.equal(both[1]!.detail, joined, "the lessons alert carries the same joined row sentence");
+  assert.ok(joined.includes("exceeds the 4096-character read bound"), `the notes clause stands: ${joined}`);
+  assert.ok(joined.includes("exceeds the 12-lesson / 2048-byte store caps"), `the lessons clause stands: ${joined}`);
 });
 
 // The same alerts on the CLI surface: renderStatus composes the banners from the snapshot's

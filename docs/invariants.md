@@ -1708,22 +1708,25 @@ stat-keyed cache without re-reading" (it pins the cache hit and the per-poll cop
 
 ### INV-T6: each standing doctor-twin alert is gated by its snapshot flag and worded by its doctor row
 
-**Guarantee.** The seven standing doctor-twin alerts — no-check, no-brief, brief-truncated,
-role-notes-truncated, salvage-patches, instance-pool, config-problem — are
+**Guarantee.** The eight standing doctor-twin alerts — no-check, no-brief, brief-truncated,
+role-notes-truncated, role-lessons-over-cap, salvage-patches, instance-pool, config-problem — are
 raised by `buildStandingAlerts` (team-alert-standings.ts) only when their snapshot flag stands
 (`noDeclaredCheck`, `noBrief`, `briefTruncated`, a non-empty `roleNotesOverCap`, a non-empty
+`roleLessonsOverCap`, a non-empty
 `salvagePatches`, or a non-empty `configProblem`; instance-pool by the
-configured pool itself, `smallPoolProblems`). Six are amber. no-check is the one blue info alert
+configured pool itself, `smallPoolProblems`). Seven are amber. no-check is the one blue info alert
 (titled "Declaring a build check"): its row reads ok while tumwater declares the check itself, so
 its detail is checkBuildCheck's ok sentence, whole. The amber detail is the warn sentence of the
-doctor row it twins (checkBrief, checkRoleNotes, checkSalvagePatches,
+doctor row it twins (checkBrief, checkRoleNotes — read separately for the `role-notes-truncated`
+and the `role-lessons-over-cap` arms, so both carry the same joined sentence when both halves warn,
+checkSalvagePatches,
 smallPoolProblems; config-problem phrases the `init` row's config-validity
 failure from the `configProblem` string, with the remedy) — so the rendered alert and the
 `tumwater doctor` row cannot disagree on the trigger, the caps, or the remedy, and both
 surfaces (`tumwater status`'s banners, the dashboard's `alerts`) show
 them from the one `teamAlerts` source. A caller that passes no standing inputs raises none of
 them (the pre-alert rendering), never a false one. An over-cap PRINCIPLES.md raises none of the
-seven: the `principlesTruncated` snapshot key and the doctor `principles` row stay the diagnostic,
+eight: the `principlesTruncated` snapshot key and the doctor `principles` row stay the diagnostic,
 and the orchestrator instead queues the director a one-shot consolidation prompt
 (`requestPrinciplesConsolidation`, `src/prompt/principles-consolidation.ts`) — one at a time, gated
 so an over-cap episode never repeats the assignment. The same poll covers a project that declares
@@ -1734,6 +1737,7 @@ retries only when main's head has moved and at least 24 hours have passed since 
 
 **Binds.** `src/ui/team-alert-standings.ts` (`buildStandingAlerts`),
 `src/ui/team-alerts.ts` (`teamAlerts`' `standings` argument),
+`src/status/status-data.ts` (the per-poll `collectRoleLessonsOverCap` read that fills the flag),
 `src/ui/status-render.ts` (`renderStatus`), `src/ui/status-payload.ts`
 (`alertFields`) — the two call sites that pass `{ snap, config, root }` — and
 `src/prompt/principles-consolidation.ts` (`requestPrinciplesConsolidation`), the
@@ -1743,9 +1747,15 @@ over-cap assignment that replaces the removed `principles-truncated` alert.
 snapshot's raw flags, worded like their doctor rows" (each flag raises its amber alert with
 the row's own wording; the flag gates it, and an over-cap `principlesTruncated` snapshot raises
 no `principles-truncated` alert) and "tumwater status prints the standing no-check
-banner from the snapshot's flag"; `test/status-payload.test.ts` — the raw-flag suites (they
+banner from the snapshot's flag", and "the standing role-lessons-over-cap alert twins the doctor
+role notes row's lessons clause" (the lessons flag alone raises only `role-lessons-over-cap`, its
+detail is `checkRoleNotes(root)`' warn sentence whole, a store inside both caps raises nothing, and
+both halves together emit note first then lessons, each carrying the one joined sentence);
+`test/status-payload.test.ts` — the raw-flag suites (they
 assert the `principlesTruncated` key stands while no `principles-truncated` alert accompanies
-it); `test/principles-consolidation.test.ts` — the one-assignment-at-a-time gate over an
+it) and "the payload's roleLessonsOverCap follows the lessons store caps and clears under them"
+(the `roleLessonsOverCap` key and its alert stand at 13 lessons and clear at 12);
+`test/principles-consolidation.test.ts` — the one-assignment-at-a-time gate over an
 over-cap file; `test/check-declaration-request.test.ts` — one declaration request at a time, the
 retry gate, and no request while a check is declared.
 

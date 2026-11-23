@@ -94,7 +94,7 @@ export function collectRoleNotesOverCap(root: string): RoleNoteOverCap[] {
  * that exceeds the 2 KB whole-file or 12-lesson cap is named so the doctor can tell the
  * operator the role's write path will now refuse to grow it (a missing lessons dir or file
  * simply means no lessons — nothing to report). */
-interface RoleLessonOverCap {
+export interface RoleLessonOverCap {
   role: string;
   bytes: number;
   lessons: number;
@@ -102,12 +102,14 @@ interface RoleLessonOverCap {
 
 /** Every role whose lessons file has grown past the 12-lesson or 2 KB store caps, in
  * descending-byte order — the data source for the doctor `role notes` row's lessons arm
- * (src/doctor/doctor-role-notes.ts), so a hand-edited lessons store the write path will now
- * refuse is surfaced rather than left to silently stop learning. Unlike readRoleNotesOverCap it
- * reads each file's bytes directly (no stat-keyed cache): the doctor is one-shot, not the
- * status snapshot's once-a-second poll, so the cache's overhead buys nothing here. A lessons
- * dir that is missing or unreadable reads [] (no lessons recorded yet); a file whose text
- * cannot be read is skipped rather than counted. Never throws, like every check's reads. */
+ * (src/doctor/doctor-role-notes.ts) and for the status snapshot's `collectRoleLessonsOverCap`,
+ * so a hand-edited lessons store the write path will now refuse is surfaced on both surfaces
+ * rather than left to silently stop learning. Unlike readRoleNotesOverCap it reads each file's
+ * bytes directly (no stat-keyed cache): the walk is one small `.md` per role in a directory the
+ * role count bounds, and the lesson count is a scan of the text, so a size-keyed `cachedByStat`
+ * entry would miss on every lesson edit anyway — the cache's overhead would buy nothing. A
+ * lessons dir that is missing or unreadable reads [] (no lessons recorded yet); a file whose
+ * text cannot be read is skipped rather than counted. Never throws, like every check's reads. */
 export function readRoleLessonsOverCap(root: string): RoleLessonOverCap[] {
   const lessonsDir = path.dirname(roleLessonsPath(root, "role"));
   // A missing or unreadable lessons dir reads [] — the same "nothing recorded yet" the
@@ -126,4 +128,12 @@ export function readRoleLessonsOverCap(root: string): RoleLessonOverCap[] {
   }
   over.sort((a, b) => b.bytes - a.bytes);
   return over;
+}
+
+/** The role-lessons slice of a status snapshot as a plain array for the dashboard payloads:
+ * every over-cap lessons file in descending-byte order — the twin of collectRoleNotesOverCap
+ * for the notes half of the same doctor `role notes` row. A missing or unreadable lessons dir
+ * already reads [] in readRoleLessonsOverCap, so there is no null state to map here. */
+export function collectRoleLessonsOverCap(root: string): RoleLessonOverCap[] {
+  return readRoleLessonsOverCap(root);
 }
