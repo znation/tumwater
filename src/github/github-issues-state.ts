@@ -9,6 +9,7 @@
 import { ensureParentDir } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { isJsonObject } from "../files/json-object.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { githubIssuesPath } from "../paths.js";
 import { DAY_MS, humanAgo } from "../text/datetime.js";
@@ -184,8 +185,8 @@ export function keepNewestIssueRows<T extends GithubIssueRow>(
  * its `open` list, and every reader below indexes the row (`row.trusted`, `row.number`,
  * `row.labels.join`) straight out of that list. */
 function isGithubIssueRow(value: unknown): value is GithubIssueRow {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const row = value as Record<string, unknown>;
+  if (!isJsonObject(value)) return false;
+  const row = value;
   return (
     typeof row.number === "number" &&
     Number.isFinite(row.number) &&
