@@ -32,13 +32,13 @@ principles positively.
 
 The steward's standing measure of where the codebase stands, measured from the repo, not vibes — refresh with `wc -l` and `find` when touched.
 
-- **Code size**: 500 src / ~129,100 lines; 658 test / ~197,600 lines. Grows with every merge; the
+- **Code size**: 503 src / ~130,800 lines; 662 test / ~201,900 lines. Grows with every merge; the
   split-large-function family is the standing driver of per-function (not per-file) growth. The
   figure fell on 2026-11-20 when the ink TUI was removed (~25,500 lines across 131 files).
-- **Module-size ceiling**: 30 src files exceed 600 lines, 9 exceed 700, 4 exceed 800; the largest
-  is src/cli/cli-help-text.ts at 941, with src/roles/role-view.ts at 924. The ceiling holds because
-  complexity is extracted into named helpers, not by shrinking files — a file may stay large while
-  its functions stay small; do not re-split an already-small function to chase a line count.
+- **Module-size ceiling**: 31 src files exceed 600 lines, 10 exceed 700, 3 exceed 800; the largest
+  is src/cli/cli-help-text.ts at 947, with src/backlog/backlog-write.ts at 806. The ceiling holds
+  because complexity is extracted into named helpers, not by shrinking files — a file may stay
+  large while its functions stay small; do not re-split an already-small function to chase a line count.
 - **Dependencies**: 0 runtime and 5 dev, all dev-time (typescript + its `typescript-native`
   alias, eslint, typescript-eslint, @types/node). Zero incidental runtime deps: any new one needs a
   user decision recorded here.
@@ -48,5 +48,5 @@ The steward's standing measure of where the codebase stands, measured from the r
   answered better by a name; a complexity-N number alone is not the reason. This keeps the family
   finite, not a bottomless re-split.
 
-_Last measured 2026-11-22 by the steward role from main's tip (code size, module-size ceiling and
+_Last measured 2026-11-23 by the steward role from main's tip (code size, module-size ceiling and
 split count); dependencies re-measured the same day from main's package.json._
