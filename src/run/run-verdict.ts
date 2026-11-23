@@ -329,11 +329,11 @@ function blindReadFailureMessage(pi: PiRunResult, path: string): string {
 
 /** The image-blind decision: a run stopped the moment its agent read an image its model cannot
  * see. One hop to an image-capable reroute target is taken when one exists; otherwise the
- * run fails and the prompt re-queues (plans/image-input.md "Failing the run"). */
+ * run fails and the prompt re-queues (plans/image-input.md "Failing the tick"). */
 function imageBlindArm(ctx: RunVerdictContext): RunOutcome | undefined {
   const { pi, state: s } = ctx;
   // A run the runner killed the moment its agent read an image its model cannot see
-  // (plans/image-input.md "Failing the run"): pi strips such an image from the request, so
+  // (plans/image-input.md "Failing the tick"): pi strips such an image from the request, so
   // the agent was about to answer about a picture it never saw. The run was deliberately
   // stopped before it could work on, so its half-done edits are discarded exactly as a
   // timed-out run's are — nothing to resume, and the prompt re-queues to run fresh on a

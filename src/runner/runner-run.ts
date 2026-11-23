@@ -373,7 +373,7 @@ export function slotPinnedForResume(
   );
 }
 
-/** A non-director run's whole life on a pooled slot (plans/worktree-pool.md, "Role runs
+/** A non-director run's whole life on a pooled slot (plans/worktree-pool.md, "Role ticks
  * lease slots"): lease, author on the role's branch, release. The release pins the slot for
  * a run whose next run resumes (aborted, quiet-killed, cut off, or a failed dirty run),
  * keeping the branch checked out and the uncommitted edits in the same cwd pi's `--continue`

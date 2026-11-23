@@ -31,7 +31,8 @@ export const CLAIM_IDLE_MAX_MS = DAY_MS;
  * runner has something to take and the next planner run still has headroom. At the default
  * instance count (DEFAULT_INSTANCES, src/roles/runner-ids.ts) that is DEFAULT_INSTANCES + 1, and
  * an `instances: 1` team keeps the "two or more plans" threshold the charter used before
- * (plans/parallel-work-instances.md "…keeping the plan role ahead", part 5c/7). */
+ * (plans/parallel-work-instances.md "Spawning instances and keeping the plan loop ahead",
+ * part 5c/7). */
 export function planBacklogTarget(config: TumwaterConfig): number {
   return configuredInstances(config, "feature") + 1;
 }

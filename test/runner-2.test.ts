@@ -412,7 +412,7 @@ test("a failed pin leaves the commit on the branch; the next run recovers and me
 });
 
 // A run whose authoring agent reads an image on a model that cannot see it stops and fails
-// (plans/image-input.md "Detecting a blind read" / "Failing the run"): pi strips such an
+// (plans/image-input.md "Detecting a blind read" / "Failing the tick"): pi strips such an
 // image from the request, so the run is killed at the first read and the run ends error
 // instead of answering about a picture it never saw. The fake pi emits the read start, its
 // end carrying pi's non-vision note, and nothing more — the runner must kill it before any

@@ -506,7 +506,7 @@ test("a failed feedback ledger write warns and the no_change run stands", async 
 test("a blind image read fails the run with an error naming the file and the model", async () => {
   const { root, wt } = await initializedWorktree("improve");
   // The runner killed the authoring run the moment its agent read an image its model cannot
-  // see (plans/image-input.md "Failing the run"): pi strips such images, so the run must
+  // see (plans/image-input.md "Failing the tick"): pi strips such images, so the run must
   // fail rather than let the agent answer about a picture it never saw.
   const pi: PiRunResult = piRunResult({
     ok: false,

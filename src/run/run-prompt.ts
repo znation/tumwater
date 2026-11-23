@@ -392,9 +392,10 @@ function readPromptNotes(
  * tally — each exactly as it stood inline. */
 function collectRoleDirectives(root: string, config: TumwaterConfig, base: string): { planTargetNote: string | undefined; flakyChecks: string | undefined } {
   // The plan charter's stop threshold is derived from config (plans/parallel-work-
-  // instances.md "…keeping the plan role ahead", part 5c/7). The catalog text stays a
-  // config-free description of the rule; this note supplies the concrete eligible-plan count
-  // so the plan role stops only once every configured feature instance has a plan waiting.
+  // instances.md "Spawning instances and keeping the plan loop ahead", part 5c/7). The
+  // catalog text stays a config-free description of the rule; this note supplies the
+  // concrete eligible-plan count so the plan role stops only once every configured feature
+  // instance has a plan waiting.
   // The count is the projection's — projectedPlanEligibleCount over main's `## Planned` with
   // every unmerged change applied — the same figure planBacklogFull defers on, so the note a
   // run reads is the count that decides its deferral, not main's alone.

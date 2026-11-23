@@ -171,7 +171,7 @@ export function settleExit(state: RunSettleState): void {
 }
 
 /** Settle the run's `lastError` text in priority order: a failed blind image read names both
- * the file and the model (plans/image-input.md "Failing the run"), then the abort, quiet-kill
+ * the file and the model (plans/image-input.md "Failing the tick"), then the abort, quiet-kill
  * and timeout causes the watchdogs and signal path set, then the parser's own event-derived
  * error, else the raw stderr tail. Undefined for a run that simply ended with a message.
  * The two watchdog kills are mutually exclusive on the state flags, so the quiet-kill wording

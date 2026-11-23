@@ -1,6 +1,7 @@
 // The `checkpoint` tool and the two compaction handlers that together let a pi run compact its
 // own context at a step boundary it chooses (Run checkpoints, part 2/2;
-// plans/run-checkpoints.md §5-6). A long run can cross the same 256k window several times, so
+// plans/run-checkpoints.md "Part 2: the `checkpoint` tool and its rubric"). A long run can
+// cross the same 256k window several times, so
 // pi's own compaction at the fixed thresholds runs out for it (part 1/2 kept the prompt verbatim
 // across each compaction; this adds the run's own choice of *when* to compact, at a step
 // boundary rather than mid-exploration).
