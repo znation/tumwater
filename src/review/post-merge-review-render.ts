@@ -11,7 +11,7 @@ import { shortSha } from "../text/format.js";
 import { squash } from "../text/text.js";
 import { filterKeepPositions } from "../collections.js";
 import { plural } from "../text/phrases.js";
-import { humanAgo } from "../text/datetime.js";
+import { humanAgo, humanUntil } from "../text/datetime.js";
 import type { PostReview } from "./post-merge-review.js";
 
 /** The one state every observer surface narrows on: `fixed` when the repair already merged
@@ -90,6 +90,31 @@ export function postReviewStatusLabel(entry: PostReview): string {
   }
 }
 
+/** True only for an entry inside a *live* transient-provider-failure backoff: `notBeforeMs` a
+ * number in the future. A deadline already passed admits the entry on the next poll (INV-BT6's
+ * `unreviewed`), so there is no wait left to name. The one condition the CLI list, the `--show`
+ * detail and the dashboard card share, so none of them can call a finished wait live. */
+function postReviewBackoffLive(entry: PostReview, now: number): boolean {
+  return typeof entry.notBeforeMs === "number" && entry.notBeforeMs > now;
+}
+
+/** The bracketed backoff suffix one post-merge review entry carries while a transient provider
+ * failure is holding it: `provider failure — retrying in <duration>` (plain terms: the code word
+ * `backoff` is retired in user text), the countdown from
+ * `humanUntil` (the same `humanSeconds`/`secondsUntil` bucketing every other countdown in the
+ * harness uses), else `""` for an entry with no live wait. A post-merge review that ended on a
+ * transient provider failure is deliberately left *uncounted* (INV-BT5), so `postReviewStatusLabel`
+ * renders it as a plain waiting row; this is the half that says why it is not moving. Kept out of
+ * on purpose — that switch picks ONE label by precedence, and an entry
+ * hold a content-failure `failures` count *and* a transient-failure deadline at once (the
+ * infrastructure settle spreads `...entry`, keeping `failures`), so the two brackets must be able
+ * to print together. The CLI list, the `--show` detail and the dashboard card read `notBeforeMs`
+ * through this one home. */
+export function postReviewBackoffNote(entry: PostReview, now: number): string {
+  if (!postReviewBackoffLive(entry, now)) return "";
+  return `provider failure — retrying in ${humanUntil(entry.notBeforeMs!, now)}`;
+}
+
 /** Narrows a whole post-merge review list to the entries `keep` accepts, and returns
  * the `scope` renderPostReviews takes: the kept roles, each kept entry's 1-based place in the
  * whole list, and the whole list's entry count — plus, when a status filter is active, the
@@ -114,7 +139,10 @@ export function scopePostReviews(
  * `now` and the entry's `enqueuedAt` are both numbers, the wait since the commit was queued
  * (`<age> ago`, between the short commit and the summary) — then the squashed summary and the
  * status suffix from `postReviewStatusLabel`, appended as `" · " + label` only when it is
- * non-empty. Without a `now`, or for an entry with no `enqueuedAt`, the line is byte-identical
+ * non-empty, and finally — under the same `now` guard as the age clause — the live provider-
+ * failure backoff bracket from `postReviewBackoffNote` as `" · [<note>]"`, so an entry the
+ * transient-failure backoff is holding says why it is not moving. Without a `now`, or for an
+ * entry with no `enqueuedAt`, the line is byte-identical
  * to before, so an older `post-review.json` and every existing renderer test read unchanged.
  * With the optional `scope` (`reviews --role`/`--status`: `entries` already holds only the kept
  * entries', `positions` their 1-based places in the whole queue, `total` the whole queue's
@@ -144,11 +172,17 @@ export function renderPostReviews(
   entries.forEach((entry, i) => {
     const label = postReviewStatusLabel(entry);
     const suffix = label === "" ? "" : ` · ${label}`;
+    // The backoff bracket rides beside the status label, under the same clock guard the age
+    // clause uses, so a list called without `now` renders byte-identically to before.
+    const backoff =
+      typeof now === "number" && postReviewBackoffLive(entry, now)
+        ? ` · [${postReviewBackoffNote(entry, now)}]`
+        : "";
     const age =
       typeof now === "number" && typeof entry.enqueuedAt === "number"
         ? ` · ${humanAgo(entry.enqueuedAt, now)}`
         : "";
-    lines.push(`  ${scope ? scope.positions[i] : i + 1}. ${roleLabel(entry.role)} ${shortSha(entry.commit)}${age} · ${squash(entry.summary, 80)}${suffix}`);
+    lines.push(`  ${scope ? scope.positions[i] : i + 1}. ${roleLabel(entry.role)} ${shortSha(entry.commit)}${age} · ${squash(entry.summary, 80)}${suffix}${backoff}`);
   });
   return lines.join("\n");
 }
@@ -168,7 +202,10 @@ export function renderPostReviews(
  * withheld fix left behind is the part a reader acts on), a
  * `Rejection reasons:` block with one `- <reason>` line per recorded reason (each whole), a
  * `Failed review runs: <n>` line whose `Last failure:` follow-up carries the full text when
- * it is a non-empty string, and `Fixed in: <short sha>` when the repair merged. It never
+ * it is a non-empty string, `Provider failure: retrying in <duration>` plus a separate
+ * `Transient provider failures in a row: <n>` line while the entry sits inside a live
+ * transient-provider-failure backoff (the streak line printed whenever the counter is positive),
+ * and `Fixed in: <short sha>` when the repair merged. It never
  * calls `postReviewStatusLabel`, whose 60/80 truncation is the reason this view exists. */
 export function renderPostReviewDetail(entry: PostReview, position: number, now: number): string {
   const lines: string[] = [`post-merge review ${position}: ${roleLabel(entry.role)} ${shortSha(entry.commit)} — ${entry.summary}`];
@@ -183,6 +220,14 @@ export function renderPostReviewDetail(entry: PostReview, position: number, now:
   if (typeof entry.failures === "number" && entry.failures > 0) {
     lines.push(`Failed review runs: ${entry.failures}`);
     if (typeof entry.lastFailure === "string" && entry.lastFailure.length > 0) lines.push(`Last failure: ${entry.lastFailure}`);
+  }
+  // The whole (untruncated) backoff, and the streak that says the pause has already doubled
+  // toward its cap — the detail view's version of the list's single bracket.
+  if (postReviewBackoffLive(entry, now)) {
+    lines.push(`Provider failure: retrying in ${humanUntil(entry.notBeforeMs!, now)}`);
+  }
+  if (typeof entry.consecutiveTransientFailures === "number" && entry.consecutiveTransientFailures > 0) {
+    lines.push(`Transient provider failures in a row: ${entry.consecutiveTransientFailures}`);
   }
   if (entry.fixed !== undefined) lines.push(`Fixed in: ${shortSha(entry.fixed)}`);
   return lines.join("\n");

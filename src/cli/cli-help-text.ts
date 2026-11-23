@@ -270,7 +270,10 @@ Usage:
                                    waiting for its review — position, role, short sha, summary,
                                    and either its rejected reasons
                                    (\`[rejected — <reasons>]\`) or its
-                                   failed-review-run count (\`[N failed review runs]\`); an empty
+                                   failed-review-run count (\`[N failed review runs]\`); an entry
+                                   a transient provider failure is holding also carries
+                                   \`[provider failure — retrying in <duration>]\` while that wait
+                                   holds; an empty
                                    queue prints \`post-merge review queue empty\`; --json prints
                                    the normalized { pending: [...] } list for scripts, each row
                                    carrying \`position\` — the 1-based whole-queue number the
@@ -303,7 +306,10 @@ Usage:
                                    full — the whole summary, the whole commit body, every
                                    rejection reason, and the failed-run count with the last
                                    failure's whole text (the fields the list squashes to
-                                   80/60 characters or never prints) — so you can read
+                                   80/60 characters or never prints), and — while a
+                                   transient provider failure holds the entry — that
+                                   wait (\`Provider failure: retrying in <duration>\`) with the
+                                   consecutive transient-failure streak that doubled it — so you can read
                                    why a merged commit was turned back without opening
                                    post-review.json; read-only and needing no ready repo, like
                                    the list; --json prints the entry object unsquashed for

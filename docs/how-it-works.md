@@ -744,7 +744,9 @@ stale settings.
   post-merge review queue as a Post-merge reviews card mirroring `tumwater reviews` with a Role picker that keeps only the chosen role's entries, the `tumwater reviews --role` twin, and a State picker that keeps only the chosen states — waiting, failing, rejected, each entry counted in the first state it matches — the `tumwater reviews --status` twin — the merged
   commits put aside for post-merge review, each row naming the wait since the
   commit was queued for review (`<age> ago`, omitted for an entry an older file wrote without a
-  timestamp), each with its rejected (stays on main with the reviewer's reasons) or failed-review status, and each row a two-click Accept posting
+  timestamp), each with its rejected (stays on main with the reviewer's reasons) or failed-review status, each row also naming
+  a live transient provider failure and its countdown (`[provider failure — retrying in
+  <duration>]`, the browser twin of the `tumwater reviews` list's bracket), and each row a two-click Accept posting
   `POST /api/post-review-accept`, the browser twin of `tumwater reviews --accept <n>` (which names
   the deliberate accept-unreviewed action). A review one failed run from the
   `POST_REVIEW_FAILURE_LIMIT` drop is surfaced by the `post-merge reviews` doctor row, and a

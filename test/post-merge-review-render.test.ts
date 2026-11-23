@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { postReviewMatchesGrep, renderPostReviewDetail, renderPostReviews, scopePostReviews, postReviewStatusLabel, postReviewState } from "../src/review/post-merge-review-render.js";
+import { postReviewMatchesGrep, renderPostReviewDetail, renderPostReviews, scopePostReviews, postReviewStatusLabel, postReviewState, postReviewBackoffNote } from "../src/review/post-merge-review-render.js";
 import type { PostReview } from "../src/review/post-merge-review.js";
 
 // The renderer behind `tumwater reviews`: pure text for the post-merge review queue, pinned
@@ -245,6 +245,55 @@ test("renderPostReviewDetail adds each optional block only when its field is pre
     renderPostReviewDetail(e({ fixed: "f".repeat(40) }), 1, 0),
     "post-merge review 1: feature cccccccc — seed\nFixed in: ffffffff",
   );
+});
+
+test("postReviewBackoffNote names only a live provider-failure backoff", () => {
+  const now = 1_000_000_000_000;
+  // A deadline 600 000 ms ahead reads the humanSeconds countdown; a passed deadline, a bare
+  // equal-to-now deadline and no field at all name nothing (the drain admits those entries).
+  assert.equal(postReviewBackoffNote(e({ notBeforeMs: now + 600_000 }), now), "provider failure — retrying in 10m");
+  assert.equal(postReviewBackoffNote(e({ notBeforeMs: now - 1 }), now), "");
+  assert.equal(postReviewBackoffNote(e({ notBeforeMs: now }), now), "");
+  assert.equal(postReviewBackoffNote(e({}), now), "");
+});
+
+test("the list names a live provider backoff beside the status label", () => {
+  const now = 1_000_000_000_000;
+  // A live deadline appends the bracket; a passed deadline and a bare entry print byte-identically.
+  assert.ok(
+    renderPostReviews([e({ notBeforeMs: now + 600_000 })], undefined, now).includes(
+      `cccccccc · seed · [provider failure — retrying in 10m]`,
+    ),
+    renderPostReviews([e({ notBeforeMs: now + 600_000 })], undefined, now),
+  );
+  assert.equal(renderPostReviews([e({ notBeforeMs: now - 1 })], undefined, now), renderPostReviews([e({})]));
+  assert.equal(renderPostReviews([e({})], undefined, now), renderPostReviews([e({})]));
+  // A list called without a clock renders no backoff bracket at all.
+  assert.equal(renderPostReviews([e({ notBeforeMs: now + 600_000 })]), renderPostReviews([e({})]));
+  // An entry can hold a content-failure count AND a transient deadline: both brackets print, the
+  // status label first. That is why the note is not part of the status-label switch.
+  const both = renderPostReviews([e({ failures: 2, lastFailure: "boom", notBeforeMs: now + 600_000 })], undefined, now);
+  assert.ok(both.includes("· [2 failed review runs — last: boom] · [provider failure — retrying in 10m]"), both);
+  // The backoff bracket survives an entry with no status label of its own.
+  assert.ok(renderPostReviews([e({ notBeforeMs: now + 600_000 })], undefined, now).includes("[provider failure"));
+});
+
+test("renderPostReviewDetail names the backoff wait and its consecutive-failure streak", () => {
+  const now = 1_000_000_000_000;
+  const out = renderPostReviewDetail(e({ notBeforeMs: now + 90_000, consecutiveTransientFailures: 3 }), 1, now);
+  assert.ok(out.includes("Provider failure: retrying in 2m"), out);
+  assert.ok(out.includes("Transient provider failures in a row: 3"), out);
+  // A zero streak names no line (a first failure has not doubled anything yet).
+  const once = renderPostReviewDetail(e({ notBeforeMs: now + 90_000, consecutiveTransientFailures: 0 }), 1, now);
+  assert.ok(once.includes("Provider failure: retrying in 2m"), once);
+  assert.ok(!once.includes("Transient provider failures"), once);
+  // No deadline, no backoff line; a passed deadline prints neither the wait nor a stale streak
+  // alone (the streak line only rides a live wait's view when the entry carries one).
+  const none = renderPostReviewDetail(e({}), 1, now);
+  assert.ok(!none.includes("Provider failure"), none);
+  assert.ok(!none.includes("Transient provider failures"), none);
+  const passed = renderPostReviewDetail(e({ notBeforeMs: now - 1 }), 1, now);
+  assert.ok(!passed.includes("Provider failure"), passed);
 });
 
 test("renderPostReviewDetail keeps summary, reasons and last failure longer than the list's squash whole", () => {

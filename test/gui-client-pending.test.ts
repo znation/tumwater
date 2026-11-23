@@ -501,6 +501,49 @@ test("the Post-merge reviews card shows each entry's waiting age", () => {
   assert.doesNotMatch(html, /undefined|NaN/);
 });
 
+test("the Post-merge reviews card names a live provider-failure backoff", () => {
+  const { postReviewsHtml } = clientScope<{ postReviewsHtml(entries: unknown, armed?: string, role?: string, state?: string, now?: number): string }>(
+    ["format", "labels", "pending-table"],
+    ["postReviewsHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const html = postReviewsHtml(
+    [{ role: "feature", commit: "abcdef1234567890", summary: "x", notBeforeMs: now + 42_000 }],
+    "",
+    "",
+    "",
+    now,
+  );
+  assert.match(html, /\[provider failure — retrying in 42s\]/);
+  // A passed deadline and a bare entry render no backoff text at all.
+  const passed = postReviewsHtml(
+    [{ role: "feature", commit: "abcdef1234567890", summary: "x", notBeforeMs: now - 1 }],
+    "",
+    "",
+    "",
+    now,
+  );
+  assert.doesNotMatch(passed, /provider failure/);
+  const bare = postReviewsHtml(
+    [{ role: "feature", commit: "abcdef1234567890", summary: "x" }],
+    "",
+    "",
+    "",
+    now,
+  );
+  assert.doesNotMatch(bare, /provider failure/);
+  // The bracket rides after the status label when an entry carries both.
+  const both = postReviewsHtml(
+    [{ role: "feature", commit: "abcdef1234567890", summary: "x", failures: 2, notBeforeMs: now + 42_000 }],
+    "",
+    "",
+    "",
+    now,
+  );
+  assert.match(both, /<span class='mono'>\[2 failed review runs\]\<\/span> · <span class='mono'>\[provider failure — retrying in 42s\]\<\/span>/);
+  assert.doesNotMatch(both, /undefined|NaN/);
+});
+
 test("postReviewsHtml arms the clicked commit's Accept as Confirm accept", () => {
   const { postReviewsHtml } = clientScope<{ postReviewsHtml(entries: unknown, armed?: string): string }>(
     ["format", "labels", "pending-table"],

@@ -66,6 +66,40 @@ test("reviews prints an entry's waiting age and omits it for an entry without a 
   assert.match(r.stdout, new RegExp(`2\\. clean ${'b'.repeat(8)} · rejected · \\[rejected — no tests\\]`));
 });
 
+test("reviews names a live provider-failure backoff on the list and in --json", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews backoff test");
+  const deadline = Date.now() + 600_000;
+  writeFileDeep(
+    postReviewPath(repo),
+    JSON.stringify({
+      pending: [
+        { commit: "a".repeat(40), role: "improve", summary: "tidy the parser", notBeforeMs: deadline, consecutiveTransientFailures: 3 },
+        { commit: "b".repeat(40), role: "clean", summary: "already eligible", notBeforeMs: Date.now() - 1 },
+      ],
+    }),
+  );
+  const r = await cli(repo, "reviews");
+  assert.equal(r.code, 0);
+  // The live deadline prints the countdown bracket; the passed one prints the plain line.
+  assert.match(r.stdout, /\[provider failure — retrying in 10m\]/);
+  assert.match(r.stdout, new RegExp(`2\. clean ${'b'.repeat(8)} · already eligible$`, "m"));
+
+  // --show names the wait whole and the streak that doubled it.
+  const shown = await cli(repo, "reviews", "--show", "1");
+  assert.equal(shown.code, 0);
+  assert.match(shown.stdout, /Provider failure: retrying in 10m/);
+  assert.match(shown.stdout, /Transient provider failures in a row: 3/);
+
+  // --json keeps its exact shape: no new key, the seeded deadline verbatim.
+  const j = await cli(repo, "reviews", "--json");
+  assert.equal(j.code, 0);
+  const doc = JSON.parse(j.stdout) as { pending: Record<string, unknown>[] };
+  assert.equal(doc.pending[0]!.notBeforeMs, deadline);
+  assert.deepEqual(Object.keys(doc.pending[0]!), ["position", "commit", "role", "summary", "notBeforeMs", "consecutiveTransientFailures"]);
+  assert.ok(!Object.keys(doc.pending[1]!).includes("backoffNote"), "no rendered backoff key reaches --json");
+});
+
 test("reviews --role keeps only the listed roles' entries under their whole-queue positions", async () => {
   const repo = makeRepo();
   await initProject(repo, "reviews role test");

@@ -5122,8 +5122,11 @@ whose `notBeforeMs` backoff deadline is in the future, so the next poll does not
 review of the same commit while it is inside its transient-failure backoff; a later queue entry's
 review still runs, and a plain content failure stamps no `notBeforeMs` and keeps the today retry.
 
-**Binds.** `src/merge/merge-post-review-drain.ts` (`unreviewed`, `drainPostReviews`) and
-`src/review/post-merge-review.ts` (`PostReview.notBeforeMs`, `parsePostReview`).
+**Binds.** `src/merge/merge-post-review-drain.ts` (`unreviewed`, `drainPostReviews`),
+`src/review/post-merge-review.ts` (`PostReview.notBeforeMs`, `parsePostReview`), and the two
+readers of that field's meaning: `src/review/post-merge-review-render.ts`
+(`postReviewBackoffNote`, the CLI list's bracket and the `--show` detail's backoff lines) and
+`src/ui/gui/gui-client-pending.ts` (`postReviewsHtml`, the dashboard card's bracket).
 
 **Pinned by.** `test/post-merge-review.test.ts` — "a post-merge review that ended on a transient
 provider failure is not re-run on the next poll (regression, BUGS.md 2026-11-16)", "a later queue

@@ -293,13 +293,20 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     const kept = entries.filter((e) => (!active || (e && e.role === active)) && (!activeState || postReviewState(e) === activeState));
     const lines = kept.map((e) => {
       const label = postReviewStatusLabel(e);
+      // The dashboard twin of the list's backoff bracket: a live transient-provider-failure
+      // deadline holds this entry, so name the countdown — the same humanSeconds(secsUntil(...))
+      // composition queueEntryLineHtml's "eligible in" clause uses, since the browser bundle has
+      // no humanUntil of its own.
+      const backoff = Number.isFinite(e.notBeforeMs) && e.notBeforeMs > now
+        ? " · <span class='mono'>[provider failure — retrying in " + esc(humanSeconds(secsUntil(e.notBeforeMs, now))) + "]</span>"
+        : "";
       const age = typeof e.enqueuedAt === "number" && Number.isFinite(now)
         ? " · " + esc(humanSeconds(secsSince(e.enqueuedAt, now))) + " ago"
         : "";
       let line = "<div class='queue-entry mono clamp1'>" + esc(e.role ? roleLabel(e.role) : "?") + " " + esc(shortSha(e.commit)) +
         age +
         " · " + esc(e.summary || "—") +
-        (label ? " · <span class='mono'>" + esc(label) + "</span>" : "") + "</div>";
+        (label ? " · <span class='mono'>" + esc(label) + "</span>" : "") + backoff + "</div>";
       // A two-click Accept on every well-formed entry not already settled fixed (the server
       // refuses a fixed entry, so it renders no button): armed by the first
       // click, fired by the second within 5 s (the confirmSlot guard), so a stray click cannot
