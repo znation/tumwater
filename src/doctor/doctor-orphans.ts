@@ -416,10 +416,12 @@ const systemSignals: OrphanSignals = {
   pollMs: GROUP_POLL_MS,
 };
 
-/** What `doctor --kill-orphans` did: the orphans killed (with how many descendants went with
- * each), the pids that could not be signalled, or why the table could not be scanned. */
+/** One killed orphan in a report: its pid, its command line, and how many descendants went
+ * with it. */
 interface KilledOrphan { pid: number; command: string; descendants: number; }
 
+/** What `doctor --kill-orphans` did: the orphans killed (with how many descendants went with
+ * each), the pids that could not be signalled, or why the table could not be scanned. */
 export type OrphanKillReport =
   | { error: string }
   | {

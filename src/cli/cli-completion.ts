@@ -13,7 +13,10 @@ import { EVENT_TYPE_LABELS } from "../events/event-labels.js";
 import { POST_REVIEW_STATES } from "../review/post-merge-review-render.js";
 import { HELP, helpStanzas } from "./cli-help.js";
 
+/** The shells `tumwater completion` accepts — the same words its usage line shows
+ * (`<bash|zsh|fish>`) and the list a wrong word is corrected against. */
 export const SUPPORTED_SHELLS = ["bash", "zsh", "fish"] as const;
+/** One of `SUPPORTED_SHELLS`: which script `completionScript` renders. */
 export type CompletionShell = (typeof SUPPORTED_SHELLS)[number];
 
 interface CompletionSpec {

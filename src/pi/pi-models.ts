@@ -31,6 +31,10 @@ export function piAgentDir(env: NodeJS.ProcessEnv = process.env, homeDir: string
   return expandHomeTilde(dir, homeDir);
 }
 
+/** One model entry of pi's `models.json` — the shape tumwater reads defensively: every field a
+ * hand-written or edited catalog may get wrong stays `unknown` until checked (`costIsFree`,
+ * declaredWindow, piModelImageInput), and only `id` is required for a row to be kept
+ * (readPiProviders). */
 export interface PiModelDef {
   id: string;
   /** The model's declared cost — whatever the user's models.json holds, so read as unknown

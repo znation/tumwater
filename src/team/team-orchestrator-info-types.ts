@@ -79,11 +79,20 @@ export interface ModelCheckInfo {
   savedAt?: number;
 }
 
+/** The disk floor's measured state as the orchestrator publishes it into its info file
+ * (src/gates/gate-polls.ts, plans/disk-floor.md part 4/4): observers cannot call statfs in step
+ * with the poll, so the orchestrator writes what it measured. `freeGB` rounds to one decimal;
+ * `held` is the current hold from the poll's disk gate; `lastReclaim` is absent until a reclaim
+ * pass has run. A load drops a `disk` lacking finite numbers or a boolean `held`, or carrying
+ * an invalid `lastReclaim` (src/team/team-orchestrator-info.ts `normalizeDisk`). */
 export interface DiskStatus {
   freeGB: number;
+  /** The configured `diskHoldGB` floor the `held` flag is measured against. */
   holdGB: number;
+  /** The configured `diskReclaimGB` threshold a pressure pass cleans below. */
   reclaimGB: number;
   held: boolean;
+  /** The most recent reclaim pass — its instant, what triggered it, and how much it freed. */
   lastReclaim?: { at: number; mode: "pressure" | "idle" | "manual"; freedGB: number };
 }
 

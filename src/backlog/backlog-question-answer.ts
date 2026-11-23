@@ -281,6 +281,9 @@ export type AnswerOutcome =
   | { status: "moved"; title: string }
   | { status: "fenced" };
 
+/** The refusal `AnswerOutcome`'s `fenced` status renders verbatim — shared with the dashboard's
+ * 409 body (src/gui/gui-backlog-commands.ts) so both surfaces say the same thing about an
+ * unclosed fence in QUESTIONS.md's `## Open`. */
 export const UNCLOSED_FENCE_MESSAGE =
   "QUESTIONS.md's ## Open section holds an unclosed code fence — every reader quotes the rest of the file as that entry's body, so answering would corrupt the file; close or remove the fence and re-run";
 

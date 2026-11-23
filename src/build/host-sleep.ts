@@ -127,6 +127,12 @@ export function hostLoadStarved(load: HostLoad): boolean {
   return load.cpus > 0 && load.load1 > load.cpus;
 }
 
+/** Reads one host-load sample — the seam the starvation readers inject instead of calling
+ * `os` themselves (`build-check-scoped`'s `sampleLoad`, the doctor's contention check, the
+ * merge-scope review budget in src/review/post-merge-review.ts, and test/helpers/wait's
+ * quiet-host gate all default to `sampleHostLoad` and accept a fixed load in tests). */
 export type LoadSampler = () => HostLoad;
 
+/** The live sampler: the process host's load averages and core count, from `os.loadavg` and
+ * `os.cpus`. A missing load average reads as 0, not undefined. */
 export const sampleHostLoad: LoadSampler = () => ({ load1: os.loadavg()[0] ?? 0, load5: os.loadavg()[1] ?? 0, cpus: os.cpus().length });

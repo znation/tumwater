@@ -208,6 +208,9 @@ function inFlagSpec(command: string): FlagSpec {
   };
 }
 
+/** `tumwater wake --in <duration>`: schedule the wake for later. Built by inFlagSpec, which
+ * carries the spelling, the shared duration shape, the 90-day cap and the command-named
+ * missing-value wording (`wake --in needs a value`). */
 export const WAKE_IN_FLAG: FlagSpec = inFlagSpec("wake");
 
 /** `tumwater stop --in <duration>`: the scheduled graceful stop, same shape and cap as wake's. */
@@ -230,16 +233,17 @@ export const WAKE_CANCEL_FLAG: FlagSpec = {
 /** `wake --list`: print the pending scheduled wakes instead of writing one. Takes no value. */
 export const WAKE_LIST_FLAG: FlagSpec = { names: ["--list"] };
 
-/** The `--reason <text>` flag spec, accepted by `pause` alone (the operator pause's why):
- * one definition of the flag's spelling and value shape, beside ROLE_FLAG and durationFlagSpec,
- * so the gate's accepted vocabulary cannot drift from cmdPause's parse. The missing-value
- * wording names its only command (the GREP_VALUE_ERROR idiom — each command's parser names
- * itself); the 200-char cap stays in pauseTeam beside the marker it bounds, and per-role
- * pauses carry no reason, so cmdPause rejects the `--role` + `--reason` combination. Exported
- * so the gate and the command body share one definition of what `pause` accepts. Its
- * missing-value wording is REASON_VALUE_ERROR, exported so cmdPause's own guard reads it too. */
+/** The missing-value wording REASON_FLAG carries (the GREP_VALUE_ERROR idiom — the parser names
+ * itself). Exported so cmdPause's own guard fails with the same string the gate does. */
 export const REASON_VALUE_ERROR = "pause --reason needs a reason";
 
+/** The `--reason <text>` flag spec, the one the gate admits for `pause` alone (the operator
+ * pause's why; `bug`/`plan --retire --reason` are peeled in the backlog command's own parser,
+ * not by this spec): one definition of the flag's spelling and value shape, beside ROLE_FLAG
+ * and durationFlagSpec, so the gate's accepted vocabulary cannot drift from cmdPause's parse.
+ * Exported so the gate and the command body share one definition of what `pause` accepts. The
+ * 200-char cap stays in pauseTeam beside the marker it bounds, and per-role pauses carry no
+ * reason, so cmdPause rejects the `--role` + `--reason` combination. */
 export const REASON_FLAG: FlagSpec = {
   names: ["--reason"],
   value: true,

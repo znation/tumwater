@@ -17,6 +17,8 @@
  * `backends.codex.configDir` is unset — so a run never inherits the operator's home. */
 import { scrubEnv } from "../env-scrub.js";
 
+/** A codex run's environment options: the team-resolved config home, layered onto the scrubbed
+ * base by `codexEnv`. */
 export interface CodexEnvOptions {
   /** The expanded team config dir, set as `CODEX_HOME`. */
   home?: string;

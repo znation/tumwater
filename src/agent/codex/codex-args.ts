@@ -9,6 +9,8 @@
  * Everything here is proved against Codex 0.163.0: every flag exists on that build, and every
  * `-c` key passes the `--strict-config` device (design finding 20). */
 
+import { appendPassthroughArgs, EFFORT_BY_THINKING } from "../agent-args.js";
+
 /** Flags the harness invocation sets itself (§3): the output and model flags, the sandbox and
  * approval switches, the isolation switches, and the where-and-what-it-runs switches. A
  * passthrough arg equal to one of these is appended AFTER the harness's own copy and Codex's
@@ -20,9 +22,6 @@
  *
  * Operators keep `-c`, `--enable` and `--disable` for their own settings — those keys are
  * screened separately (HARNESS_CODEX_CONFIG_KEYS). */
-
-import { appendPassthroughArgs, EFFORT_BY_THINKING } from "../agent-args.js";
-
 export const HARNESS_CODEX_FLAGS: ReadonlySet<string> = new Set([
   // Output and model: tumwater forces JSON output, the resolved model, and a normal color for
   // the transcript log.

@@ -12,13 +12,13 @@
  * rejected by opencodeArgs with the offending arg named, matching the same rejection in
  * claudeArgs and the reserved set from plans/opencode-backend.md "Config and routing". */
 
+import { appendPassthroughArgs } from "../agent-args.js";
+
 /** Flags the harness invocation sets. A passthrough arg equal to one of these is rejected by
  * opencodeArgs with the offending arg named, so an operator's `backends.opencode.args` can
  * never silently override the resolved model, the session choice, or the isolation flags. This
  * is the reserved set from plans/opencode-backend.md "Config and routing"; part 3 adds
  * `--title`, which tumwater now sets (finding 6). */
-import { appendPassthroughArgs } from "../agent-args.js";
-
 export const HARNESS_OPENCODE_FLAGS: ReadonlySet<string> = new Set([
   "run",
   "--format",

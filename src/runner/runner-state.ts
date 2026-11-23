@@ -309,6 +309,9 @@ export type SkipReason =
   | "yield-gap"
   | "model-check";
 
+/** The same nine reasons, as the closed vocabulary a persisted state is checked against: a
+ * `skipReason` outside this list is dropped on load (src/runner/runner-state-load.ts
+ * `healVocabulary`, the one enumerated field a load rejects). */
 export const SKIP_REASONS: readonly string[] = [
   "no-free-entry",
   "claim-hold",
