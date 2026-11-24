@@ -1241,15 +1241,31 @@ saw it. Only entries new over the merge-base count — a twin already on main is
 and stays the director's to retire. At most one finding, the first such entry in file order. Like
 `duplicatePlanFinding`, this is a staging finding only: a re-filed copy is repairable by a later
 edit, so it is never a merge-gate refusal. A git hiccup falls back to the worktree's archive copy;
-a read that yields nothing anywhere yields no finding.
+a read that yields nothing anywhere yields no finding. When no exact key matches, a second arm
+(`rewordedTwin`) catches the same re-file under a **reworded heading** — the 2026-11-23 incident,
+where a qa filing was fixed and archived 31 minutes later and re-filed in different words, so
+neither key overlapped and the index kept handing the dead entry out. It matches on citations, not
+prose: the closed record's own `### ` heading must cite at least two names, at least one a file and
+at least one not, and the open entry's heading-or-body must cite every one of them — the heading is
+the narrow side, since a closed body ranges over Symptom, Plan and Fix narrative that later changes
+to the same code share. The same merge-base skip applies, and its finding is worded as a suspicion
+for the author to confirm, because the arm is a heuristic: an author may mean a different defect at
+the same site. Calibrated over this repo's 542 historical `## Open` filings, it fires on 2, both
+genuine twins.
 
-**Binds.** `src/stage/stage-backlog-checks.ts` (`refiledFixedBugFinding`),
-`src/stage/stage-check.ts` (`bugsFindings`, `stageCheckFindings`).
+**Binds.** `src/stage/stage-backlog-checks.ts` (`refiledFixedBugFinding`, `rewordedTwin`),
+`src/stage/stage-check.ts` (`bugsFindings`, `stageCheckFindings`),
+`src/verdict/fix-claim.ts` (`citedNames`, the span normalization both this guard's arm and
+`fixSymbols` read).
 
 **Pinned by.** `test/stage-check.test.ts` — "stageCheckFindings flags a BUGS.md open entry a
 fixed-bug record already holds", "an open copy whose heading carries no closing stamp still
 matches the stamped one", "a re-filed entry main archived while the change ran is flagged from
-main's tip" and "a fresh open bug, a pre-existing open twin, and a fix move all stay quiet".
+main's tip" and "a fresh open bug, a pre-existing open twin, and a fix move all stay quiet", plus
+the reworded-heading arm's three: "a reworded open copy whose every name a closed heading cites
+matches that record", "an open entry that cites only some of a closed heading's names stays quiet"
+and "a closed heading citing no file never matches, and a reworded twin already on the base stays
+quiet".
 
 ## The backlog archive: finished entries move once, and only the ones a change added
 

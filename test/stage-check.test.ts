@@ -1577,6 +1577,86 @@ test("a fresh open bug, a pre-existing open twin, and a fix move all stay quiet"
   assert.deepEqual(await stageCheckFindings(move.wt, "main", "selfcheck"), []);
 });
 
+// INV-N7's second arm (BUGS.md "A re-filed `## Open` bug reworded under a *different* heading slips
+// past `refiledFixedBugFinding`…"): the live incident's shape, where the closed record and the
+// re-file share no heading text at all, so the guard matches on the names the two cite.
+
+/** The closed record of the live incident: its heading cites a symbol and a file. */
+const REWORDED_CLOSED =
+  "main's tip does not typecheck: `isJsonObject` is imported twice in `src/github/github-issues-state.ts` " +
+  "(found by the qa role 2026-11-23) — fixed 2026-11-23 by the readme role";
+
+/** The re-filed copy of that defect, in words sharing no substring with the heading above. */
+const REWORDED_OPEN =
+  "A build break filed, fixed and archived the same day keeps being handed to runs as open work " +
+  "(found by the bugfix role 2026-11-23)";
+
+test("a reworded open copy whose every name a closed heading cites matches that record", async () => {
+  const { wt } = await repoWith({
+    "BUGS.md": bugsRecord("_None yet._\n"),
+    "BUGS-FIXED.md": `# Fixed bugs\n\n## Fixed\n\n### ${REWORDED_CLOSED}\n\n**Fix:** the duplicate import is gone.\n`,
+  });
+  // The open entry's BODY cites the closed heading's citations — the incident's shape, where the
+  // re-filed title names neither the symbol nor the file.
+  fs.writeFileSync(
+    path.join(wt, "BUGS.md"),
+    bugsRecord(
+      `### ${REWORDED_OPEN}\n\n**Symptom:** \`src/github/github-issues-state.ts\` did not typecheck: ` +
+        "`isJsonObject` was imported twice.\n",
+    ),
+  );
+
+  const findings = await stageCheckFindings(wt, "main", "bugfix");
+  assert.equal(findings.length, 1, `expected one finding, got ${JSON.stringify(findings)}`);
+  assert.match(findings[0]!, /reworded heading/);
+  assert.match(findings[0]!, /isJsonObject/);
+});
+
+test("an open entry that cites only some of a closed heading's names stays quiet", async () => {
+  // The false-positive guard: sharing the file, or sharing the symbol, is not restating the defect.
+  const { wt } = await repoWith({
+    "BUGS.md": bugsRecord("_None yet._\n"),
+    "BUGS-FIXED.md": `# Fixed bugs\n\n## Fixed\n\n### ${REWORDED_CLOSED}\n\n**Fix:** the duplicate import is gone.\n`,
+  });
+  fs.writeFileSync(
+    path.join(wt, "BUGS.md"),
+    bugsRecord(
+      "### A different defect in the same file (found by the qa role 2026-11-23)\n\n" +
+        "**Symptom:** `src/github/github-issues-state.ts` drops a field.\n",
+    ),
+  );
+
+  assert.deepEqual(await stageCheckFindings(wt, "main", "bugfix"), []);
+});
+
+test("a closed heading citing no file never matches, and a reworded twin already on the base stays quiet", async () => {
+  // A heading whose citations are all symbols cannot pin a finding to a place in the tree.
+  const symbolOnly = await repoWith({
+    "BUGS.md": bugsRecord("_None yet._\n"),
+    "BUGS-FIXED.md":
+      "# Fixed bugs\n\n## Fixed\n\n### The guard `heldFromStarting` returns the wrong reason " +
+      "(found by the reviewer role 2026-11-20) — fixed 2026-11-21 by the bugfix role\n\n**Fix:** it reads the arm.\n",
+  });
+  fs.writeFileSync(
+    path.join(symbolOnly.wt, "BUGS.md"),
+    bugsRecord(
+      "### Something else about that guard (found by the qa role 2026-11-23)\n\n" +
+        "**Symptom:** `heldFromStarting` is slow.\n",
+    ),
+  );
+  assert.deepEqual(await stageCheckFindings(symbolOnly.wt, "main", "bugfix"), []);
+
+  // The citation arm honours the same merge-base skip as the exact arm: a reworded twin main
+  // already holds is the director's to retire, not this change's doing.
+  const open = `### ${REWORDED_OPEN}\n\n**Symptom:** \`isJsonObject\` twice in \`src/github/github-issues-state.ts\`.\n`;
+  const pre = await repoWith({
+    "BUGS.md": bugsRecord(open),
+    "BUGS-FIXED.md": `# Fixed bugs\n\n## Fixed\n\n### ${REWORDED_CLOSED}\n\n**Fix:** the duplicate import is gone.\n`,
+  });
+  fs.writeFileSync(path.join(pre.wt, "BUGS.md"), bugsRecord(`${open}\n**Progress:** looked, still open.\n`));
+  assert.deepEqual(await stageCheckFindings(pre.wt, "main", "bugfix"), []);
+});
+
 // The re-added-finished-plan finding (BUGS.md "A plan run re-adds a merged, already-archived plan
 // under PLANS.md `## Planned`, and no guard compares `## Planned` against PLANS-DONE.md, so
 // finished work is handed back out as open work"): the plan side of the re-filed-bug guard

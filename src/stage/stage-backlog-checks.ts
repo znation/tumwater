@@ -20,6 +20,7 @@ import type { PendingPlanChange } from "../backlog/backlog-pending.js";
 import { refusalNote } from "../backlog/backlog-eligibility.js";
 import { entryKey, partKey, planDependencyProblems, seriesPart, type PartRef } from "../backlog/backlog-parts.js";
 import { moreSuffix, plural } from "../text/phrases.js";
+import { citedNames } from "../verdict/fix-claim.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 
 /** The finding for the heading `requires` clause problems that `head` (the edited PLANS.md)
@@ -199,6 +200,44 @@ export function finishedDuplicateFindings(
   return findings;
 }
 
+/** Whether one backticked citation names a file rather than a symbol: a path with a separator, or a
+ * bare name carrying a file extension (`backlog-write.ts`). The same line fix-claim's false-fix
+ * check draws between a path and a symbol. */
+function isFileCitation(name: string): boolean {
+  return name.includes("/") || /\.[A-Za-z][\w-]*$/.test(name);
+}
+
+/** The closed record `open` re-states under a reworded heading, judged on the names the two cite
+ * rather than on their text — the looser second arm of the re-file guard.
+ *
+ * It fires only on the closed copy's OWN `### ` heading citations: every one of them cited
+ * somewhere in the open entry (its heading or body), the heading citing at least two names, at
+ * least one a file and at least one not. The heading is the narrow side — a closed record's body
+ * ranges over its Symptom, Plan and Fix narrative, and those share a file and a helper with every
+ * later change to the same code — while a heading states the defect in the two or three names that
+ * identify it, so citing all of them is restating the defect. A heading citing one name cannot pin
+ * a finding to one record, and one citing no file cannot pin it to a place in the tree, so both
+ * yield nothing.
+ *
+ * Calibrated against every `## Open` filing in this repo's history (542 of them, to 2026-11-23):
+ * the rule fires on 2 — the reworded `isJsonObject` re-file this guard's own entry documents, and a
+ * `strandedPlanEntries` re-file naming the same guard and the same test file as a Fixed entry two
+ * days earlier, a real near-twin rather than a false alarm. The looser forms (title-word overlap,
+ * or the closed record's whole body against the open entry's) fired 12-15 times over the same
+ * history, mostly on unrelated filings that happen to share a test path. */
+function rewordedTwin(
+  open: { title: string; body: string },
+  closed: readonly { title: string; body: string }[],
+): { title: string } | undefined {
+  const openCites = new Set(citedNames(`${open.title}\n${open.body}`));
+  return closed.find((other) => {
+    const headingCites = [...new Set(citedNames(other.title))];
+    if (headingCites.length < 2) return false;
+    if (!headingCites.some(isFileCitation) || !headingCites.some((n) => !isFileCitation(n))) return false;
+    return headingCites.every((n) => openCites.has(n));
+  });
+}
+
 /** The staging finding for a `## Open` bug entry that `head` (the edited BUGS.md) adds over
  * `base` (its text at the change's merge-base) while a closed record of the same bug already
  * holds it: a `## Fixed` entry in `archive` (BUGS-FIXED.md, at main's tip so a fix a sibling
@@ -208,9 +247,10 @@ export function finishedDuplicateFindings(
  * `(found …)` parenthetical are both invisible). The 2026-11-22 incident: a selfcheck run
  * re-filed under `## Open` a bug that another run had fixed and archived 100 minutes earlier,
  * and the next bugfix run spent itself on work already done. Only entries new over the
- * merge-base count — a twin already on main is not this change's doing. At most one finding:
- * the first such entry in file order. A re-filed copy is repairable by a later edit, so this is
- * a staging finding, never a merge-gate refusal. */
+ * merge-base count — a twin already on main is not this change's doing. When no exact key matches,
+ * `rewordedTwin` gives the second arm below, so a reworded heading no longer escapes the guard.
+ * At most one finding: the first such entry in file order. A re-filed copy is repairable by a later
+ * edit, so this is a staging finding, never a merge-gate refusal. */
 export function refiledFixedBugFinding(head: string, base: string, archive: string): string | undefined {
   const keyed = (md: string, section: string) =>
     parseEntryDetails(md, section).map((e) => ({ ...e, key: finishedKey(e.title, FIXED_DATE_RE) }));
@@ -227,6 +267,23 @@ export function refiledFixedBugFinding(head: string, base: string, archive: stri
       `closed: ${where} holds "${truncate(hit.title, 160)}" — delete this copy, or fold what it adds into ` +
       "the closed entry, before this change commits; a re-filed copy is repairable, so this is a staging " +
       "finding, not a merge-gate refusal"
+    );
+  }
+  // No exact key matched any new entry, so try the citation arm: the same re-file seen from the
+  // names the records share instead of the words they use. Worded as a suspicion, because unlike
+  // the exact match this is a heuristic — an author may genuinely mean a different defect at the
+  // same site — and a stage finding is a fix-up turn's prompt, never a merge refusal.
+  const openWasKeys = new Set(keyed(base, "Open").map((e) => e.key));
+  for (const e of keyed(head, "Open")) {
+    if (openWasKeys.has(e.key)) continue;
+    const twin = rewordedTwin(e, held);
+    if (twin === undefined) continue;
+    return (
+      `this change adds BUGS.md "## Open" entry "${truncate(e.title, 160)}", which cites every name the ` +
+      `closed entry "${truncate(twin.title, 160)}" cites in its own heading — this may be that defect ` +
+      "re-filed under a reworded heading, which the exact heading match above cannot see. Read the closed " +
+      "copy: if it is the same defect, delete this copy (or fold what it adds into the closed entry) " +
+      "instead of fixing it twice; if it is a different defect, reword this heading to name what differs"
     );
   }
   return undefined;

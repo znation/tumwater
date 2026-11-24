@@ -5,6 +5,66 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A re-filed `## Open` bug reworded under a *different* heading slips past `refiledFixedBugFinding`, because that guard keys on whole-heading text (found by the bugfix role 2026-11-23) — fixed 2026-11-23 by the bugfix role
+
+**Symptom.** `refiledFixedBugFinding` (merged 2026-11-23 01:47, INV-N7) gives a re-filed
+`## Open` bug a staging finding when a closed record already holds it — but only while the
+copy keeps the archived heading. It is silent when the copy names the same defect in other
+words: two entries landed 31 minutes apart — `f09f20a66` (qa) filed "…`npm run build` fails at
+main's tip with a duplicate `isJsonObject` import…", and `707b85ff` (readme) fixed and archived
+the same defect as "main's tip does not typecheck: `isJsonObject` is imported twice in
+`src/github/github-issues-state.ts`". The qa copy stayed under `## Open`, the backlog index kept
+handing it out, and a bugfix run spent itself on work already merged.
+
+**Reproduce.** Offline, no model, no gate. Replay both guards over the two real commits, with
+BUGS-FIXED.md read at `707b85ff` (the fix). With base `5dc4f317` — BUGS.md as of the last
+commit before the filing that touched it, so the entry IS new over base and the guard's base-skip
+is not the reason —
+`refiledFixedBugFinding` returns `undefined` and `finishedDuplicateFindings` returns `[]`,
+though the live `## Open` entry and the archived `## Fixed` twin name one defect. Control 1
+(rules out the merge-base rule): the same call with base `f09f20a66`, the filing commit itself,
+is also silent — both bases miss it. Control 2 (rules out a broken guard): paste the archived
+heading verbatim, its `— fixed …` stamp removed, under `## Open`, and the same guard FIRES and
+names the closed entry. So only the rewording defeats it, and the keys show why:
+`finishedKey(open, FIXED_DATE_RE)` is 201 characters against its archived twin's 102, and
+`entryKey` is unequal too, because `finishedKey` is `collapseWhitespace(finishedTitle(title))`
+— the whole heading with only the stamp stripped — so any rewording changes the identity.
+
+**Why the 2026-11-23 guards do not cover it.** The plan-side twin's own **Notes for the fixer**
+(BUGS-FIXED.md) warned "Do not key on exact title text … Key on `entryKey` … or `finishedKey`
+with the stamp stripped" — but neither key strips the *wording*, only the date. Every existing
+duplicate guard keys on heading text (`duplicatePlannedEntries`, `duplicateHeadings`,
+`finishedDuplicateFindings`' exact-copy skip), so the class that survives all of them is a
+reworded twin — which is exactly what both archived entries say happened.
+
+**The filing side never asked either.** The qa charter's filing step (src/roles/role-catalog.ts,
+step 4 of the qa entry) says only "record ONE reproducible bug in BUGS.md" — it carries no
+dedupe step, unlike selfcheck's step 4 (which greps BUGS.md's `## Open` and its own role's
+commits) and the feedback role's step 4 (which greps the "Previously filed from this install"
+block and `gh issue list`, i.e. upstream issues only). Neither of those two reaches this case
+either: the earlier copy was already archived out of `## Open`, and the fix was a
+`tumwater(readme):` commit that a role-scoped `git log --grep="tumwater(<role>)"` excludes by
+construction (`roleCommitGrep` in src/roles/legacy-role-ids.ts names only the role's own id and
+its retired ids).
+
+**Expected.** A copy of an already-fixed bug never reaches `## Open`, and if it does, a run is
+told so before it spends itself.
+
+**Fix.** The guard grew a second arm inside `refiledFixedBugFinding`: when no exact
+`finishedKey` matches a newly added `## Open` entry, `rewordedTwin` (a new helper in
+src/stage/stage-backlog-checks.ts) compares a closed record's own `### ` heading citations
+against the open entry's heading plus body, and reports a suspected duplicate when every name
+the closed heading cites is cited by the open entry — the closed heading having to cite at least
+two names, at least one file and one non-file among them. The span normalization is `citedNames`
+in src/verdict/fix-claim.ts, exported and shared with `fixSymbols`, so the two readers cannot
+drift. The arm honours the same merge-base skip, yields at most one finding, is worded as a
+suspicion the run confirms by reading the closed copy, and stays staging-only — never the
+merge-gate refusal. Calibrated over all 542 historical `## Open` filings in this repo it fires on
+2: this incident and a genuine `strandedPlanEntries` near-twin; the looser body- and title-word
+forms fired 12-15 times and were rejected. INV-N7 in docs/invariants.md records the arm.
+
+**Validation gap:** none — the miss was reproduced by calling the two guards over the two commits that produced it (`undefined` and `[]` above), not inferred.
+
 ### A post-merge reviewer's fix is pre-checked on its PRE-rebase tree, so the bytes the merge's rebase composes onto main never reach any check — main went red for 82 min on a duplicate import no parent commit carried (found by the selfcheck role 2026-11-23) — fixed 2026-11-23 by the bugfix role
 
 **Validation gap:** no-fake — no fake reviewer turn committed to main mid-review, so nothing in the suite ever made main move under a fix and the checked tree differ from the landed tree.

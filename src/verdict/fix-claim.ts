@@ -197,13 +197,23 @@ const FIX_LABEL_RE = /\*\*Fix(?:ed)?(?![a-z])(?!\s*(?:sketch|direction))[^*\n]*\
  * claims its file (claimedName). */
 export function fixSymbols(body: string): string[] {
   const fixes = body.split(/\n\s*\n/).filter((p) => FIX_LABEL_RE.test(p));
-  const fix = fixes.length > 0 ? fixes.join("\n") : body;
-  const symbols: string[] = [];
-  for (const span of fix.matchAll(/`([^`\n]+)`/g)) {
-    const symbol = claimedName(unwrapSymbol((span[1] ?? "").trim()).replace(/\(\)$/, ""));
-    if (symbol && !/\s/.test(symbol)) symbols.push(symbol);
+  return citedNames(fixes.length > 0 ? fixes.join("\n") : body);
+}
+
+/** Every backticked span `text` cites, normalized exactly as fixSymbols normalizes a fix claim's
+ * names (wrapper stripped, trailing `()` dropped, a `path:line` location reduced to its file, a
+ * span with whitespace inside dropped). fixSymbols reads only the fix-claim paragraphs, because
+ * a body's Symptom section may quote content no code ever held; this reads the WHOLE text, which
+ * is what a caller comparing two records' vocabularies wants — a record's `### ` heading cites
+ * the names its defect is about. Exported so one normalization serves both readers: a second
+ * copy of the span grammar would drift from the first. */
+export function citedNames(text: string): string[] {
+  const names: string[] = [];
+  for (const span of text.matchAll(/`([^`\n]+)`/g)) {
+    const name = claimedName(unwrapSymbol((span[1] ?? "").trim()).replace(/\(\)$/, ""));
+    if (name && !/\s/.test(name)) names.push(name);
   }
-  return symbols;
+  return names;
 }
 
 /** A `path:line` location — `src/a.ts:66`, `a.ts:66:3`, `a.ts:66-70` — whose path part ends in
