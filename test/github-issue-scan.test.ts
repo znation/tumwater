@@ -681,6 +681,26 @@ function row8(checkedAt: number): GithubIssueRow {
   };
 }
 
+test("a scan whose previous ledger holds a closedRows that is not a list still writes its scan", async () => {
+  // Every reader of `closedRows` guards the key with Array.isArray, so a hand-edited or
+  // foreign-generation value costs the mirror its closed rows and nothing more. Read without the
+  // guard, the eviction step would throw and the scan would stop writing the ledger for good.
+  const { dir, config, cleanup } = githubRepo({});
+  try {
+    fs.mkdirSync(path.dirname(githubIssuesPath(dir)), { recursive: true });
+    fs.writeFileSync(
+      githubIssuesPath(dir),
+      JSON.stringify({ repo: "o/r", branch: "main", checkedAt: 1_000, gh: "ok", open: [], closedRows: "not-a-list" }),
+    );
+    const ledger = await scanGithubIssues(dir, config, fakeGh({ issues: [[issue(8)]] }).probe, 2_000);
+    assert.equal(ledger?.gh, "ok");
+    assert.deepEqual(ledger?.open.map((r) => r.number), [8], "the scan still lists what gh reports open");
+    assert.deepEqual(readLedgerFile(dir).closedRows, "not-a-list", "the unreadable key is left as it was, harmless to every reader");
+  } finally {
+    cleanup();
+  }
+});
+
 /** A closed row as the closer writes it, for the scan's own tests. */
 function row7(at: number): GithubIssueRow {
   return {

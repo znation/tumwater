@@ -211,7 +211,11 @@ function recordUpstreamCloses(
   now: number,
 ): void {
   const openNumbers = new Set(ledger.open.map((row) => row.number));
-  const closedNumbers = new Set((ledger.closedRows ?? []).map((row) => row.number));
+  // Both carried lists pass the same `Array.isArray` guard every other reader uses: a hand-edited
+  // or foreign-generation ledger holding a non-list under one of these keys costs the mirror that
+  // list and nothing more, instead of throwing and stopping the scan from writing the ledger.
+  const closedRows = Array.isArray(ledger.closedRows) ? ledger.closedRows : [];
+  const closedNumbers = new Set(closedRows.map((row) => row.number));
   const lost = (previous?.open ?? [])
     .filter((row) => !openNumbers.has(row.number) && !closedNumbers.has(row.number))
     .map((row) => ({ ...row, closedAt: now }));
@@ -224,7 +228,8 @@ function recordUpstreamCloses(
       updatedAt: row.updatedAt,
     });
   }
-  const carried = (previous?.upstreamClosed ?? []).filter((row) => !openNumbers.has(row.number));
+  const previousUpstreamClosed = Array.isArray(previous?.upstreamClosed) ? previous.upstreamClosed : [];
+  const carried = previousUpstreamClosed.filter((row) => !openNumbers.has(row.number));
   // Nothing to say: the list is dropped rather than left as whatever the spread carried over, so a
   // lost issue that came back leaves no record behind.
   if (carried.length === 0 && lost.length === 0) {
@@ -312,9 +317,10 @@ export async function scanGithubIssues(
   // A closed row whose number the fresh listing reports open again is no longer a closed row: the
   // issue is open, listed in `open`, and `closed[<n>]` survives so `isReopened` still marks it a
   // reopen and the queue offers it again. A scan that saw no change leaves the list as it was.
-  if (previous?.closedRows !== undefined && previous.closedRows.length > 0) {
+  const previousClosedRows = previous?.closedRows;
+  if (Array.isArray(previousClosedRows) && previousClosedRows.length > 0) {
     const openNumbers = new Set(open.map((row) => row.number));
-    ledger.closedRows = previous.closedRows.filter((row) => !openNumbers.has(row.number));
+    ledger.closedRows = previousClosedRows.filter((row) => !openNumbers.has(row.number));
   }
   // An issue the ledger held open that a complete listing came back without is closed upstream (or
   // deleted, or turned into a PR — the listing cannot tell); record it so the loss leaves a trace.
