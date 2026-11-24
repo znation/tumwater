@@ -6385,3 +6385,37 @@ prompt is never starved — the operator's demand outranks the hold.
 is due on the min clock, not back to back" and "a work role's self-requeued inbox waits its
 min-run clock; a fresh prompt does not"; `test/orchestrator-scheduling.test.ts` — "a work role's
 own self-requeued prompt waits its clock through the scheduling pass, not the poll".
+
+## Post-merge fix landing: the pre-check judges the tree the merge would land, not the pinned one
+
+A reviewer's repair is reviewer-authored bytes main has never held. `mergeToMain` rebases the pin
+onto main's current tip inside its lock and fast-forwards, and its only check of the post-rebase
+tree is the `recheckResolved` gate, which fires for a conflict resolution it made. So a fix pinned
+against the reviewed base was judged on bytes main had never held: git can auto-merge two
+independently added identical lines into one tree that fails the check while both inputs pass it
+(main sat red 82 minutes on a duplicate import no parent commit carried, BUGS.md 2026-11-23).
+
+### INV-DI1: a reviewer's fix is pre-checked on its rebase onto main's current tip, and the ref names that commit
+
+**Guarantee.** Before `precheckReviewerFix` runs, `syncReviewerFixPin` rebases the fix pin onto
+main's current tip in the post-review worktree and moves `reviewFixRef(entry.commit)` to the result,
+so the sha the pre-check judges, the sha the merge lands, the sha a withheld fix's `withheldFix`
+event names, and the sha a reader picks up from the ref are one commit — the tree that lands. The
+sync reuses the merge slot's own gate sync (`mergeToMain`'s `syncPinToMain`, part 3 of
+plans/disk-floor.md), so a pinned bare sha never outlives a rebase that rewrote it. It returns the
+original pin, keeping today's path, when main is already the fix's base, when the rebase conflicts
+(`rebaseOntoMain` aborts and restores the pin, and the conflicting fix keeps the merge slot's
+resolver plus its `recheckResolved` gate over the resolution), or when the ref move fails — in that
+last case the worktree is reset back to the pinned fix, so the bytes the pre-check reads always
+match the sha it is told. The sync holds the post-review worktree for its own duration and leaves it
+at the tree it checked. A withheld fix still never moves main, and a landing fix's recorded sha is
+still whatever `mergeToMain` reports.
+
+**Binds.** `src/merge/merge-post-review-drain.ts` (`syncReviewerFixPin`, `mergeReviewerFix`),
+`src/merge/merge-to-main.ts` (`tryMerge`'s `syncPinToMain` / `recheckResolved` arms).
+
+**Pinned by.** `test/post-merge-review.test.ts` — "a reviewer's fix is pre-checked on the tree its
+rebase onto a moved main composes (BUGS.md 2026-11-23)", "a reviewer's fix rebased onto a main that
+moved still lands when the landing tree is green (BUGS.md 2026-11-23)", "a reviewer's fix that fails
+its pre-check is withheld from main (BUGS.md 2026-11-04)", and "a fix that lands on a main which
+moved under the review records the actually-merged sha".

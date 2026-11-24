@@ -1,7 +1,7 @@
 import { withRunPermit } from "../concurrency/run-permit.js";
 import type { SemaphoreLease } from "../concurrency/semaphore.js";
 import { subscribeEvents, warnEventBestEffort, TUMWATER_SOURCE, logEventBestEffort } from "../events/events.js";
-import { deleteRef, headOf, subjectOfCommit } from "../git/git.js";
+import { deleteRef, headOf, setRef, subjectOfCommit } from "../git/git.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { postReviewWorktreePath, reviewFixRef, reviewRunSessionDir } from "../paths.js";
@@ -21,6 +21,7 @@ import { fileBugsOnMain } from "../backlog/backlog-file-bugs.js";
 import { abortOnShutdown, acquireUnlessAborted, guardMergeTask, type InFlightMerge, type MergePipeline, type MergePipelineContext } from "./merge-pipeline.js";
 import { resolveWaitStage } from "./merge-slot.js";
 import { mergeToMain } from "./merge-to-main.js";
+import { rebaseOntoMain } from "./merge-git.js";
 import { MERGE_TIER, resolveAuthor, VERIFY_TIER } from "./merge-author.js";
 import { gateBuildPrecheck } from "../review/review-precheck.js";
 import { reviewAheadOfMain } from "../review/review.js";
@@ -298,16 +299,24 @@ async function fileDroppedReview(ctx: MergePipelineContext, entry: PostReview, f
   }
 }
 
-/** Land a reviewer's fix commit on main, in four named phases: the deterministic pre-check that
- * may withhold the fix, the guarded merge onto main that names the sha that actually landed, the
- * landed-fix settle and requeue, and the failed-merge settle with its drop-at-the-limit path.
- * Each phase reads from one helper below; this body only orders them, with no behavior change.
- * Throws when git could not start; a failed merge itself returns a non-terminal RunResult and
- * is never a throw. */
+/** Land a reviewer's fix commit on main, in five named phases: the pin synced onto main's current
+ * tip, the deterministic pre-check that may withhold the fix, the guarded merge onto main that
+ * names the sha that actually landed, the landed-fix settle and requeue, and the failed-merge
+ * settle with its drop-at-the-limit path. Each phase reads from one helper below; this body only
+ * orders them. Throws when git could not start; a failed merge itself returns a non-terminal
+ * RunResult and is never a throw. */
 async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fix: string, finding: string[], state: RunnerState): Promise<void> {
   const author = resolveAuthor(ctx, entry.role);
-  if (!(await precheckReviewerFix(ctx, entry, fix, finding, state))) return;
-  const outcome = await mergeReviewerFixCommit(ctx, entry, fix, author);
+  // The tree the pre-check judges must be the tree that lands (BUGS.md 2026-11-23: main sat red 82
+  // minutes on a duplicate import NO parent commit carried). mergeToMain rebases onto main's tip
+  // inside its lock and fast-forwards with no check of the rebase's output, so a fix pinned against
+  // the reviewed base was checked on bytes main had never held: git auto-merged two independently
+  // added identical lines into one tree that failed the check while both inputs passed it. Syncing
+  // the pin first makes the pre-check, the ref, and the `withheldFix` event name the post-rebase
+  // commit, so mergeToMain's own rebase is then a no-op over already-checked bytes.
+  const synced = await syncReviewerFixPin(ctx, entry, fix);
+  if (!(await precheckReviewerFix(ctx, entry, synced, finding, state))) return;
+  const outcome = await mergeReviewerFixCommit(ctx, entry, synced, author);
   if (outcome.result === "changed") {
     await settleMergedReviewerFix(ctx, entry, outcome.merged);
     return;
@@ -315,12 +324,41 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
   await settleFailedReviewerFix(ctx, entry, outcome.result);
 }
 
+/** Rebase the reviewer's fix pin onto main's current tip in the post-review worktree and move the
+ * ref to the result, so everything downstream — the pre-check, the merge, the `withheldFix` event,
+ * and a reader who picks the ref up — names the tree that can actually merge. The same sync the
+ * merge slot's gates run before reviewing (merge-core.ts syncPinToMain): a pinned bare sha does not
+ * move when git rebase rewrites it, so without this the pre-check judges the pre-rebase tree while
+ * mergeToMain lands the post-rebase one (BUGS.md 2026-11-23, INV-DI1).
+ * Returns the sha to check and land, which is `fix` unchanged when nothing needed moving: main is
+ * already the fix's base, the rebase CONFLICTS (`rebaseOntoMain` aborts and restores the pin, and a
+ * conflicting fix keeps today's path — the pre-check on the pinned tree, then mergeToMain's
+ * resolver and its `recheckResolved` gate over the resolution), the sync found the same head, or
+ * the ref move failed (in which case the worktree is reset back to the pinned fix so the bytes the
+ * pre-check reads always match the sha it is told). The worktree is held for the whole sync
+ * (plans/disk-floor.md part 2/4) and left AT the synced tree, which is where the pre-check runs.
+ * Throws when git could not start, like every other git site here. */
+async function syncReviewerFixPin(ctx: MergePipelineContext, entry: PostReview, fix: string): Promise<string> {
+  return useWorktree(ctx.root, postReviewWorktreePath(ctx.root), async () => {
+    const wt = await ensureDetachedWorktree(ctx.root, postReviewWorktreePath(ctx.root), fix);
+    if (!(await rebaseOntoMain(wt, ctx.mainBranch))) return fix;
+    const synced = await headOf(wt, "HEAD");
+    if (!synced || synced === fix) return fix;
+    if (await setRef(ctx.root, reviewFixRef(entry.commit), synced)) return synced;
+    // The ref could not move, so the synced commit would be unreachable the moment the worktree is
+    // next reset: keep pinning the reviewed-base fix and put its tree back for the pre-check.
+    await ensureDetachedWorktree(ctx.root, postReviewWorktreePath(ctx.root), fix);
+    return fix;
+  });
+}
+
 /** The deterministic pre-check that withholds a reviewer's fix before main moves. A reviewer's
  * fix is reviewer-authored bytes main has never checked: since part 4l/3 mergeToMain is a bare
  * rebase and fast-forward with no check of its own, the fix tree runs through the same
  * deterministic gate check a queued change gets (review-precheck.ts) BEFORE the write path
  * touches main (BUGS.md 2026-11-04: a broken repair landed unchecked and main sat red ~20 h). It
- * runs OUTSIDE the merge lock, over the fix tree as pinned: a passing check or a failure main
+ * runs OUTSIDE the merge lock, over the fix tree rebased onto main's current tip
+ * (`syncReviewerFixPin` above, BUGS.md 2026-11-23): a passing check or a failure main
  * already carries lands as before (a conflict still hands the tree to the resolver path below),
  * while a reproduced failure that is the fix's — or a check that could not be run at all — is
  * withheld without touching main. It is deterministic: no model run, so no reviewer budget is

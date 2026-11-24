@@ -5,6 +5,108 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A post-merge reviewer's fix is pre-checked on its PRE-rebase tree, so the bytes the merge's rebase composes onto main never reach any check — main went red for 82 min on a duplicate import no parent commit carried (found by the selfcheck role 2026-11-23) — fixed 2026-11-23 by the bugfix role
+
+**Validation gap:** no-fake — no fake reviewer turn committed to main mid-review, so nothing in the suite ever made main move under a fix and the checked tree differ from the landed tree.
+
+**Digest cluster** (`## Fast merge guardrails`, verbatim): "main has had no passing full check for
+82 min: red since 1706a712 at 15:20; the main watch blames improve's merge 1706a712". Correlated
+merged commit: `1706a712b` ("tumwater(reviewer): Fix e3572db9 — …"), landed 15:16, main green again
+only at `707b85fff` 16:42. The digested restart line "11-23 16:31 tumwater — restarting onto update
+e279ac3d" shows the team re-deploying to the commit *before* the red one (INV-K1 targets a green tip),
+so it ran a stale build across the whole window. The visible damage — `npm run build` failing at main's
+tip and `status`/`gui`/`issues`/`doctor`/`start` dying at load — was repaired at `707b85fff`
+(BUGS-FIXED.md, "main's tip does not typecheck: `isJsonObject` is imported twice", and the still-Open
+qa entry above, whose symptom `707b85fff`'s one-line deletion already clears). That fix removes the
+offender, not this mechanism, so the same shape can recur. The wrong response: the harness ran a full
+deterministic check over the fix and passed it, while the tree that actually fast-forwarded onto main
+was never checked — and no signal in this window says so: the digest's Top review failure clusters
+section reads "no review failures in the window", and the only line that surfaces it is the
+guardrails line itself.
+
+**Mechanism** (read in source). `mergeReviewerFix` (src/merge/merge-post-review-drain.ts:307) guards
+main with `precheckReviewerFix` (:330) → `gateBuildPrecheck` (src/review/review-precheck.ts:320),
+which runs `runScopedBuildCheck` over the worktree as it stands — the fix commit as pinned, with no
+rebase anywhere in src/review/ (`grep -rn rebase src/review/` names one comment, review-precheck.ts:283). The merge
+that follows, `mergeReviewerFixCommit` (:414) → `mergeToMain` (src/merge/merge-to-main.ts:93),
+rebases that commit onto main's tip **inside the lock** (:136) and fast-forwards the resulting
+head (:149). A clean rebase reaches no check: `recheckResolved` fires only when the rebase
+conflicts AND the resolved diff diverges from the reviewed diff (merge-to-main.ts:103-115), and part 4l/3 removed the
+in-lock `verifyMerge`, so `tryMerge` is rebase-plus-fast-forward (BUGS-FIXED.md:2562 names that).
+`precheckReviewerFix` returns only a boolean (:393-394), so the pass verdict's sha (`pre.verifiedHead`,
+which `gateBuildPrecheck` returns at review-precheck.ts:384 for exactly the tree it judged) is
+dropped: nothing downstream can tell that the landed sha is not the checked one.
+
+**Proof that the rebase composed the failure** (git only, offline, no model):
+
+```
+$ for c in ad3db64fa e279ac3dc 1706a712b; do printf "%s " $c; git show $c:src/github/github-issues-state.ts | grep -c '^import { isJsonObject }'; done
+ad3db64fa 1   # the fix as authored (base e3572db9e) — compiles, and its pre-check passed
+e279ac3dc 1   # main's tip at merge time — compiles
+1706a712b 2   # the tree that landed — TS2300 Duplicate identifier (BUGS.md entry above)
+```
+
+`ad3db64fa` is the fix commit `mergeReviewerFix`'s pre-check judged; `1706a712b` is its rebase, which
+is what `mergeToMain` fast-forwarded. The fix's own diff adds the import after `readJsonFile` (line
+12) while main's tip already carried it at line 10 — added by `a9bfd9f09`, an ancestor of `1706a712b`
+but not of `e3572db9e` (`git merge-base --is-ancestor a9bfd9f09 e3572db9e` fails, `… 1706a712b`
+succeeds). Two clean hunks in different lines of one file: no conflict, so no resolver, so no
+re-check. The timeline is in the shared reflog (`git reflog "worktrees/_post-review/HEAD"`):
+`ad3db64fa … commit` 15:16:46 → `e279ac3dc … rebase (start): checkout main` → `1706a712b … rebase
+(pick)` 15:16:54 → main green at `707b85fff` 16:42. In code order the pre-check sits between the two
+(`mergeReviewerFix` calls it at :309 before `mergeReviewerFixCommit` at :310).
+
+**Same root, second face** (not the one that fired today, and NOT fixed by this entry): the
+queued-change path gates the *synced*
+tree (`reviewQueuedChange` calls `syncPinToMain` before `reviewPinnedChange`, merge-core.ts:347), so
+its verdict is post-rebase — but only for the main tip of that moment. If main moves between the
+gate's sync and the lock's rebase, `tryMerge`'s rebase is not a no-op and that newer tree is merged
+unchecked by the same absence of a clean-rebase check — the code says so at merge-core.ts:426 ("a clean
+rebase is accepted as-is: mergeToMain's in-lock rebase moves it onto main's tip and fast-forwards").
+
+**Expected.** The deterministic check guards the bytes that land. Either run the fix's pre-check after
+rebasing the fix onto main's tip (reuse `syncPinToMain`, merge-core.ts:136, in the same dedicated
+`postReviewWorktreePath` worktree it already uses) and carry the checked sha so the lock's rebase is a
+no-op, or re-check `tryMerge`'s post-rebase head when it differs from the head a check passed on —
+`verifiedHead` already names that head and is already plumbed into `MergeRequest` (merge-core.ts:63).
+**Not this fix:** widening `recheckResolved` — its subject is a conflict resolution's bytes, which no
+reviewer authored, and that guard fired on nothing here because this rebase was clean. `test:gate`'s `node scripts/tsc.mjs` half
+catches this failure class exactly; lint does not — `eslint.config.js`'s import-hygiene rules are
+`@typescript-eslint/consistent-type-imports`, `no-import-type-side-effects` and
+`consistent-type-exports` (:81-83), none of which flags a repeated import.
+
+**Candidates to pin it.** `test/post-merge-review.test.ts` "a reviewer's fix that fails its pre-check
+is withheld from main (BUGS.md 2026-11-04)" needs its sibling — a fix that passes its pre-check as
+authored and fails only after the rebase, expecting the fix withheld (or the merge retried), main
+unmoved; `test/merge-to-main-recheck.test.ts` holds the clean-rebase-skip cases for the second face.
+Update the pre-check guarantee in docs/invariants.md (INV-BT8, :5155) in the same change if the check
+moves to the rebased tree.
+
+**Fix (landed).** The second shape in **Expected**, the pre-check rebase: `mergeReviewerFix` now calls
+`syncReviewerFixPin` before `precheckReviewerFix` and passes the returned sha to both the pre-check and
+`mergeReviewerFixCommit`. The helper holds the same dedicated `postReviewWorktreePath` worktree for its
+own duration, checks it out detached at the pinned fix, runs `rebaseOntoMain`, and moves
+`reviewFixRef(entry.commit)` to the resulting head, so the pre-check's subject, the merge's pin, the
+`withheldFix` event's sha and the ref an operator/role picks up are all one commit — the tree the merge
+would land — and `mergeToMain`'s in-lock rebase is then a no-op. It returns the original pin unchanged,
+preserving today's behaviour, when main is already the fix's base, when the rebase **conflicts**
+(`rebaseOntoMain` aborts and restores the pin; such a fix keeps the merge slot's resolver plus its
+`recheckResolved` gate over the resolution), or when the ref move fails — in that last case the
+worktree is reset back to the pinned fix so the bytes the pre-check reads always match the sha it is
+told. The pinned-tree early withhold is kept in the sense that a fix whose rebase conflicts is still
+never landed on a hope; it is no longer a check of bytes that cannot land.
+
+**Pinned by** `test/post-merge-review.test.ts`: "a reviewer's fix is pre-checked on the tree its rebase
+onto a moved main composes (BUGS.md 2026-11-23)" rebuilds today's exact shape offline (the fix appends
+`SHARED`; main independently adds a byte-identical `SHARED` at another position; git auto-merges and the
+count check fails 2 ≠ 1) and asserts main keeps only its own commit while the fix ref names the
+rebased commit — RED without the fix: main fast-forwarded onto the doubled line; and "a reviewer's fix
+rebased onto a main that moved still lands when the landing tree is green (BUGS.md 2026-11-23)" holds
+the other side, that the sync does not withhold a fix that auto-merges cleanly. Guarantee recorded in
+docs/invariants.md as INV-DI1. The duplicate mechanism open at BUGS.md `## Open` ("A reviewer's fix is
+pre-checked on the fix tree as PINNED…", found by the bugfix role 2026-11-23) is the same hole and is
+closed by this same change (that entry stays in `## Open` for its own run to move); the second face above is untouched.
+
 ### main's tip does not compile: a reviewer's fix added an import line `isJsonObject` that main had already added in the hunk above, and the rebase kept both, so `tsc` fails TS2300 Duplicate identifier (found by the bugfix role 2026-11-23) — fixed 2026-11-23 by the bugfix role
 
 - **Symptom:** `node scripts/tsc.mjs` at main's tip `e1f0459e` fails with `src/github/github-issues-state.ts(10,20): error TS2300: Duplicate identifier 'isJsonObject'.` and the same error at `(12,20)`. The parent `1706a712^` (`e279ac3d`) compiles clean, so the break is in `1706a712` ("tumwater(reviewer): Fix e3572db9 — …"). Every gate and check run against that tip cannot get past the compile step.

@@ -1112,6 +1112,113 @@ test("a reviewer's fix that fails its pre-check is withheld from main (BUGS.md 2
   assert.ok((lastReview?.reasons.length ?? 0) > 1, "and it still names the pre-check failure that withheld the fix");
 });
 
+test("a reviewer's fix is pre-checked on the tree its rebase onto a moved main composes (BUGS.md 2026-11-23)", async () => {
+  // main went red for 82 min on a duplicate import no parent commit carried: the fix's pre-check
+  // judged the fix AS PINNED (green against the reviewed base) while mergeToMain's in-lock rebase
+  // composed it onto a main that had moved — and nobody checked THOSE bytes. The fixture is the
+  // incident's shape: main adds its own `SHARED` line and the fix appends one, in disjoint hunks,
+  // so the rebase auto-merges a duplicate. Each tree alone passes the one-`SHARED` check; only the
+  // tree that lands fails it.
+  const { root, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+  const config = (ctx as { liveConfig: unknown }).liveConfig as Record<string, unknown>;
+  config.check = {
+    command:
+      "[ \"$(grep -c '^SHARED$' f.txt 2>/dev/null)\" = \"1\" ] || { echo 'check: the shared line is duplicated' >&2; exit 1; }",
+  };
+  const base = `${Array.from({ length: 20 }, (_, i) => `line${i + 1}`).join("\n")}\n`;
+  let mainMoved = "";
+  fs.writeFileSync(path.join(root, "f.txt"), base);
+  sh(root, "git", "add", "--", "f.txt");
+  sh(root, "git", "commit", "-m", "add f");
+  const reviewed = headSha(root);
+  fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: [{ commit: reviewed, role: "improve", summary: "add f" }] }));
+  // The reviewer edits in its worktree and, in the same turn, main moves under the review: a
+  // separate change lands a `SHARED` line of its own, in a hunk far from the reviewer's.
+  const fixer = {
+    role: "improve",
+    baseRole: "improve",
+    state: freshRunnerState("improve"),
+    runGatePi: async (opts: { cwd: string }) => {
+      fs.writeFileSync(path.join(opts.cwd, "f.txt"), `${base}SHARED\n`);
+      const lines = base.trimEnd().split("\n");
+      lines.splice(2, 0, "SHARED");
+      fs.writeFileSync(path.join(root, "f.txt"), `${lines.join("\n")}\n`);
+      sh(root, "git", "add", "--", "f.txt");
+      sh(root, "git", "commit", "-m", "main adds its own shared line");
+      mainMoved = headSha(root);
+      return { ok: true, verdictText: "VERDICT: reject\n1. breaks the contract\nFIX: f.txt" };
+    },
+    foldMergeUsage: () => {},
+  } as unknown as RoleRunner;
+  (ctx as { runners: RoleRunner[] }).runners = [fixer];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  const mainTip = headSha(root);
+  // The landing tree fails the check, so the fix is withheld: main keeps only its own new commit.
+  assert.equal(mainTip, mainMoved, "main keeps the commit that moved under the review and takes no fix");
+  assert.equal(fs.readFileSync(path.join(root, "f.txt"), "utf8").split("\n").filter((l) => l === "SHARED").length, 1, "main keeps one shared line");
+  // The withheld commit is the ONE that would have landed — the fix rebased onto main's tip — so a
+  // reader picking the ref up sees the tree the check judged, not the stale pinned base.
+  const withheldSha = sh(root, "git", "rev-parse", reviewFixRef(reviewed)).trim();
+  assert.ok(withheldSha, "the withheld fix ref survives");
+  assert.equal(
+    sh(root, "git", "rev-parse", `${withheldSha}^`).trim(),
+    mainTip,
+    "the ref names the fix rebased onto main's current tip, not the pinned pre-rebase commit",
+  );
+  assert.equal(
+    sh(root, "git", "show", `${withheldSha}:f.txt`).trim().split("\n").filter((l) => l === "SHARED").length,
+    2,
+    "the withheld commit IS the landing tree — it carries both SHARED lines, the failure the check named",
+  );
+  const rejected = eventsOfType(root, "review_rejected");
+  const withheld = rejected[rejected.length - 1]!;
+  assert.equal(withheld.withheldFix, withheldSha, "the event names the same post-rebase sha the ref holds");
+  assert.ok(
+    (withheld.reasons as string[]).join("\n").includes("shared line is duplicated"),
+    "the pre-check's own reasons name the landing tree's failure",
+  );
+  assert.equal(readPostReviews(root).find((e) => e.commit === reviewed)?.failures, 1, "the withheld fix counts as one failure of the review");
+});
+
+test("a reviewer's fix rebased onto a main that moved still lands when the landing tree is green (BUGS.md 2026-11-23)", async () => {
+  // The pre-check now runs on the post-rebase tree, so a fix main moved under must still land on
+  // top of main's new commit: the re-pin must not block a sound repair or land the stale base.
+  const { root, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+  const config = (ctx as { liveConfig: unknown }).liveConfig as Record<string, unknown>;
+  config.check = { command: "[ -f x.txt ]" };
+  fs.writeFileSync(path.join(root, "x.txt"), "x\nbase\n");
+  sh(root, "git", "add", "--", "x.txt");
+  sh(root, "git", "commit", "-m", "grow x");
+  const reviewed = headSha(root);
+  fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: [{ commit: reviewed, role: "improve", summary: "grow x" }] }));
+  const fixer = {
+    role: "improve",
+    baseRole: "improve",
+    state: freshRunnerState("improve"),
+    runGatePi: async (opts: { cwd: string }) => {
+      fs.writeFileSync(path.join(opts.cwd, "x.txt"), "x\nbase\nfixed\n");
+      fs.writeFileSync(path.join(root, "x.txt"), "main moved\nbefore\nx\nbase\n");
+      sh(root, "git", "add", "--", "x.txt");
+      sh(root, "git", "commit", "-m", "main moves under the review");
+      return { ok: true, verdictText: "VERDICT: reject\n1. breaks the contract\nFIX: x.txt" };
+    },
+    foldMergeUsage: () => {},
+  } as unknown as RoleRunner;
+  (ctx as { runners: RoleRunner[] }).runners = [fixer];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  const tip = headSha(root);
+  const mainMoved = sh(root, "git", "rev-parse", "main~1").trim();
+  assert.notEqual(tip, reviewed, "the fix landed on top of main's new commit");
+  assert.equal(sh(root, "git", "rev-parse", `${tip}^`).trim(), mainMoved, "the landed fix's parent is main's new commit, not the reviewed one");
+  assert.match(fs.readFileSync(path.join(root, "x.txt"), "utf8"), /main moved/, "main's concurrent edit survives the rebase");
+  assert.match(fs.readFileSync(path.join(root, "x.txt"), "utf8"), /fixed/, "the reviewer's repair landed");
+  assert.equal(readPostReviews(root).find((e) => e.commit === reviewed)?.fixed, tip, "the entry settles fixed naming the landed sha");
+});
+
 test("a withheld fix at the failure limit files both the reviewer's finding and the pre-check's reason", async () => {
   // The entry is dropped at POST_REVIEW_FAILURE_LIMIT and filed to BUGS.md; the filed body must
   // carry what the reviewer found and why its repair never landed — losing either makes the filed
