@@ -113,8 +113,10 @@ function settleOncePaused(scope: SchedulingScope, runner: RoleRunner, demand: bo
  * the team gate it mirrors status-model.ts's heldPhase: the team pause outranks the quiet window,
  * which outranks the budget pause. Every arm of that run needs a label: an unlabeled hold leaves
  * the runner unsettled, and OnceRound.exitReady waits for a settle on EVERY runner, so the round
- * sat idle-polling until the DEFER_MAX_MS cap (or never, on a full disk) instead of reporting the
- * skip and exiting. */
+ * sat idle-polling while the hold stood — with no settle to end it and no deferral episode to
+ * time out (a starting hold returns before the due check, so DEFER_MAX_MS never applies here) —
+ * until the hold itself lifted, or never on a full disk, instead of reporting the skip and
+ * exiting. */
 function onceHoldLabel(scope: SchedulingScope, runner: RoleRunner, demand: boolean): string | undefined {
   const {
     pausedRoles,

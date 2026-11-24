@@ -6251,9 +6251,10 @@ user intent outranks spend state, and a scheduled window outranks spend state to
 precedence the idle role rows of both dashboards take (`heldPhase` in
 `src/ui/status-model.ts`, which `roleRowCells` feeds to `tumwater status` and the GUI
 payload). A run held by quiet hours while the team is also budget-paused therefore settles
-`held: quiet hours`, never `budget paused`, whichever arm declined it. An arm with no label
-leaves its runner unsettled, and the round idle-polls until the deferral cap — or never, on a
-full volume.
+`held: quiet hours`, never `budget paused`, whichever arm declined it. An arm with no label leaves
+its runner unsettled, and the round idle-polls while the hold stands: a starting hold declines the
+run before the due check, so no deferral episode opens and no cap times the wait out — the round
+ends only once the hold itself lifts, or never on a full volume.
 
 **Binds.** `src/scheduling/skip.ts` (`onceHoldLabel`, `heldFromStarting`, `settleOncePaused`),
 `src/scheduling/once-round.ts` (`exitReady`, `isSettled`), `src/ui/status-model.ts` (`heldPhase`,
