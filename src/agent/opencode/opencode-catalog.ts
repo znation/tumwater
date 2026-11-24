@@ -2,10 +2,11 @@
  * fetch of models.dev's `api.json` — the catalog OpenCode itself caches (finding 10) — a parse
  * that keeps only the providers the config routes through OpenCode, a cache at
  * `.tumwater/state/opencode-models.json` that survives a failed fetch, and
- * `opencodeModelFree` as the one predicate part 6b/7's seam reads. No seam is wired here: that
- * is part 6b/7 (the budget gate), part 6c/7 (a billedAt demotion on an observed cost) and
- * part 7/7 (a startup-cache seed and doctor), so this module only publishes the data and
- * predicates those seam consumers read. */
+ * `opencodeModelFree` as the one free-ness predicate its consumers read, plus
+ * `observeOpencodeRun`, which demotes a catalog-free model an observed run bills for. The
+ * consumers live elsewhere: the budget gate, the fallback view and the status badge read
+ * `opencodeModelFree` (part 6b/7), the runner calls `observeOpencodeRun` after a run (part
+ * 6c/7), and the startup gate seeds the cache the doctor reads (part 7/7). */
 
 import { spawnSync } from "node:child_process";
 import { isJsonObject, validEntries } from "../../files/json-object.js";

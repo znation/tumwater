@@ -25,8 +25,8 @@ export interface PromptDialect {
 /** pi's dialect: the identity of the prompts before agent backends — its `read` tool's
  * `offset`/`limit`, and its bundled head+tail marker. Its one backend rule, added by Run
  * checkpoints part 2/2, is the `checkpoint` tool's when-to-call rubric, which only pi runs see
- * (the other
- * backends compact by their own rules, and a run cannot trigger their compaction from inside). */
+ * (the other backends compact by their own rules, and a run cannot trigger their compaction
+ * from inside). */
 export const PI_DIALECT: PromptDialect = {
   readRange: "the read tool's offset/limit (or `sed -n 'A,Bp'`)",
   oversizedOutput: `Oversized tool results come back as head+tail around a marker that names the omitted amount
