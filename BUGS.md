@@ -6,6 +6,21 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
+### `a suspended head another check records red is settled without waiting for the interval` fails when a sibling `culpritFixture` test ran in the same second: identical fixture commits share a SHA, so the process-wide verdict cache hands it the sibling's red (found by an operator session 2026-11-23)
+
+- **Symptom:** GitHub CI on main `608cb8e5` (the 0.11.0 release commit, run 45339869241 attempt 1) failed only this test; the rerun of the same sha passed, and so did CI on its parent `d13725c4`, whose src/ and test/ trees are identical.
+
+  ```
+  ✖ a suspended head another check records red is settled without waiting for the interval (243.239847ms)
+    AssertionError [ERR_ASSERTION]: the watch itself made no verdict yet
+    actual: 2, expected: 1
+        at TestContext.<anonymous> (file:///…/dist/test/main-watch.test.js:350:12)
+  ```
+
+- **Reproduce:** run it right after its sibling `a red whose bisection re-runs reach no verdict still names the tip` (test/main-watch.test.ts:326): `npm run build`, then repeat `node --test --test-name-pattern='a red whose bisection re-runs reach no verdict|a suspended head another check records red' dist/test/main-watch.test.js` — 8 of 20 runs failed on this host. Run alone, it passed 15 of 15.
+- **Cause:** every `culpritFixture()` repo (test/fixtures/main-watch-fixtures.ts:55 → `baselineFixture`, test/fixtures/runner-fixtures.ts:168) commits the same tree, with the same `test <test@example.com>` identity from `gitInit` and the same messages (`seed`, then `edit bad.txt`). So two fixtures built within the same wall-clock second get byte-identical commits and the same SHAs. `baselineCache` (src/baseline/main-baseline.ts) is process-wide and keyed by SHA alone. The sibling test leaves a red verdict with `checkedAt` cached for the shared `bad.txt` SHA. When this test polls that head, `fullCheckPlan` (src/baseline/main-watch-full.ts:76-85) picks that red as its anchor, returns `skip: false` and runs the full check, which is the second `main_check` the assert sees. The file's header comment ("every fixture repo has its own, so these tests share no state", test/main-watch.test.ts:30-32) is true only while the fixture SHAs differ. The other `culpritFixture` tests in main-watch.test.ts (lines 123–383) and the `change(root, "bad.txt", "b")` tests in main-watch-mirror/main-red-heal/main-watch-spells are exposed in the same way whenever two of them in one process land in the same second.
+- **Fix direction:** make each fixture's commits unique, so the SHA-keyed cache really is per repo. For example, `baselineFixture` could write a per-fixture nonce (its tmpdir path) into the seed commit's message or a tracked file. Clearing `baselineCache` between tests would also work, but it hides the shared-key assumption instead of making it true. The regression test: build two `culpritFixture`s back to back in one test, assert their `bad.txt` commits differ, and keep the pair repro above green.
+
 ### A reviewer's fix is pre-checked on the fix tree as PINNED, never on the tree `mergeToMain` rebases onto main's tip, so an auto-merged rebase that duplicates a line both sides added lands unchecked and turns main red (found by the bugfix role 2026-11-23)
 
 - **Symptom:** main's tip `1706a712` ("tumwater(reviewer): Fix e3572db9 — …") fails `node scripts/tsc.mjs` with `error TS2300: Duplicate identifier 'isJsonObject'` at `src/github/github-issues-state.ts:10` and `:12`; its parent `1706a712^` (`e279ac3d`) compiles clean (rc=0). The main watch logged `main_check status=failed` for it and named `improve` as `main_culprit` — the wrong role: the breaking commit is reviewer-authored, and the author's own change had passed its gate. The team's own build check is the only thing that caught it; no merge-stage check did.
