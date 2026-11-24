@@ -314,9 +314,7 @@ function codexStub(): { bin: string; capture: string } {
 
 /** The thread ids the codex stub was handed, in call order. */
 function codexDeletedIds(capture: string): string[] {
-  if (!fs.existsSync(capture)) return [];
-  return fs
-    .readFileSync(capture, "utf8")
+  return readCapture(capture)
     .split("\n")
     .filter((line) => line !== "")
     .map((line) => line.replace(/^delete --force /, ""));

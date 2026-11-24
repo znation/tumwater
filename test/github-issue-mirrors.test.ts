@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import path from "node:path";
 import { mirrorStates, mirroredIssueNumbers, mirrorsAtTip } from "../src/github/issue-mirrors.js";
 import { loggingGit, makeRepo, seedCommit, tmpdir } from "./fixtures/repo-fixtures.js";
+import { readCapture } from "./helpers/read-capture.js";
 
 test("a heading that mirrors one issue names that issue number", () => {
   const found = mirroredIssueNumbers("### Heap OOM (mirrors GitHub issue #1; filed 2026-11-21 by director)\n");
@@ -107,9 +107,7 @@ test("every mirror section is read from its file, not just the first match", () 
 
 /** How many `git show` a logging-git log names. */
 function showCount(logFile: string): number {
-  if (!fs.existsSync(logFile)) return 0;
-  return fs
-    .readFileSync(logFile, "utf8")
+  return readCapture(logFile)
     .split("\n")
     .filter((line) => line.startsWith("show ")).length;
 }

@@ -12,6 +12,7 @@ import { readGithubIssues, type GithubIssuesLedger, type GithubIssueRow } from "
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { fakeGh } from "./fakes/fake-gh.js";
 import { loggingGit, tmpdir } from "./fixtures/repo-fixtures.js";
+import { readCapture } from "./helpers/read-capture.js";
 
 const NOW = Date.parse("2026-11-21T12:00:00Z");
 const HOUR = 60 * 60 * 1000;
@@ -193,9 +194,7 @@ test("queueOneIssue scans once, then queues one issue and records it; the next a
 
 /** How many `git config --get` a logging-git log names. */
 function configReads(logFile: string): number {
-  if (!fs.existsSync(logFile)) return 0;
-  return fs
-    .readFileSync(logFile, "utf8")
+  return readCapture(logFile)
     .split("\n")
     .filter((line) => line.includes("config --get")).length;
 }
