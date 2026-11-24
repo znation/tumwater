@@ -29,8 +29,9 @@ export function isFinishedMirror(entry: MirrorEntry): boolean {
 }
 
 /** The issue numbers one heading mirrors, from its text after `### `. Numbers are compared as
- * integers, so `#1` never matches `#12`. */
-function mirroredNumbersOf(heading: string): number[] {
+ * integers, so `#1` never matches `#12`. Exported for the close pass, which attributes a fix
+ * commit to its issues with this same numbering (issue-close.ts). */
+export function mirroredNumbersOf(heading: string): number[] {
   const list = /mirrors GitHub issues? ((?:#\d+)(?:,\s*#\d+)*)/.exec(heading);
   if (!list) return [];
   return [...(list[1] ?? "").matchAll(/#(\d+)/g)].map((ref) => Number(ref[1]));

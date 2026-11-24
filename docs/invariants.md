@@ -6057,23 +6057,26 @@ decline stamped with a foreign updatedAt never holds"; `test/team-alert-status.t
 ### INV-DE5: a fix commit is a commit that moved a `### ` mirror heading, never one that quotes the phrase
 
 **Guarantee.** `fixCommits` (src/github/issue-close.ts) selects the commits a close cites with one
-`git log -S` over the finished archives, and its pickaxe pattern is anchored to a heading —
-`^### [^[:cntrl:]]*mirrors GitHub issues? [^[:cntrl:]]*#<n>([^0-9]|$)`. That is the mirror's own
-rule seen from the other side: `mirroredIssueNumbers` (src/github/issue-mirrors.ts) counts a phrase
-only inside a `### ` heading, so only a commit that adds or removes such a heading is a fix commit.
-An unanchored phrase also matched a commit that merely QUOTES a heading in archive prose, and the
-damage ran past the comment's wording: `closeOne` cites a commit only when every sha it found is
-GitHub's copy of the branch, so one quoted commit that GitHub lacks parks the issue in
-`waitingPush` and the issue is never closed at all. The `([^0-9]|$)` tail still keeps `#1` from
-matching `#12`, and the heading anchor does not cost the compression case: a steward commit that
+`git log -p -G` walk over the finished archives, and its diff-grep pattern is anchored to a heading
+— `^### [^[:cntrl:]]*mirrors GitHub issue`, matched against each changed line's own text, diff
+marker aside. That is the mirror's own rule seen from the other side: `mirroredIssueNumbers`
+(src/github/issue-mirrors.ts) counts a phrase only inside a `### ` heading, so only a commit that
+adds or removes such a heading is a fix commit, and the walk's commits are grouped to issue numbers
+with `mirroredNumbersOf` — the same numbering, so `#1` never reads as a fix for `#12`. An unanchored
+phrase also matched a commit that merely QUOTES a heading in archive prose, and the damage ran past
+the comment's wording: `closeOne` cites a commit only when every sha it found is GitHub's copy of
+the branch, so one quoted commit that GitHub lacks parks the issue in `waitingPush` and the issue is
+never closed at all. The heading anchor does not cost the compression case: a steward commit that
 replaces a full entry with its one-line record deletes the heading, so it still counts as a fix.
 
-**Binds.** `src/github/issue-close.ts` (`fixCommits`, the phrase it builds, `closeOne`),
-`src/github/issue-mirrors.ts` (`mirroredIssueNumbers`, `isFinishedMirror`).
+**Binds.** `src/github/issue-close.ts` (`fixCommits`, `FIX_WALK_PATTERN`, `groupFixWalk`,
+`closeOne`), `src/github/issue-mirrors.ts` (`mirroredIssueNumbers`, `mirroredNumbersOf`,
+`isFinishedMirror`).
 
 **Pinned by.** `test/github-issue-close.test.ts` — "a commit that only quotes the mirror phrase in
-prose is not the fix commit" and "a fix on main closes the mirrored issue once GitHub has it,
-citing the fix commit once".
+prose is not the fix commit", "a fix on main closes the mirrored issue once GitHub has it, citing
+the fix commit once", "the walk attributes a heading to its own numbers: #12 is never a fix for #1"
+and "the fix walk names no pickaxe at all: one diff-grep walk answers every issue".
 
 ### INV-DE6: the mirror has two read front ends over one numbering, one count source and one state filter, and the dashboard never calls `gh`
 
