@@ -5312,6 +5312,39 @@ session 3 seconds later (BUGS.md 2026-11-21).
 post-merge review keeps its entry and marks its session for resume" and "a shutdown settles a
 parked post-merge review at once, keeping its entry".
 
+### INV-BT10: a reviewer's fix is checked on the tree that fast-forwards onto main, not only on the tree the reviewer wrote
+
+**Guarantee.** Even after the pre-check synced the fix pin onto main's tip (INV-DI1), that check runs
+OUTSIDE the merge lock: main can still move between it and `mergeToMain`'s in-lock rebase, and that
+rebase is a tree nobody authored or checked — git resolves a line BOTH sides added without a
+conflict, keeping both copies. `mergeToMain` therefore offers the caller
+a `verifyMergedTree(wt, mergedHead)` hook, awaited under the merge lock immediately after
+`rebaseOntoMain` rewrote the head and BEFORE `ffMainToOrWhy` — and only when the rebase actually
+rewrote it (`target !== preRebaseHead && mainBefore !== target`), so a fix landing on an unmoved
+main pays no extra check. Returning false withholds the landing: main keeps its old tip and the
+merge settles `merge_blocked`. The post-review drain answers that hook with `gateBuildPrecheck` over
+the post-rebase worktree (deterministic, no model run, no reviewer budget). On a `rejected` verdict
+it records the same shared shape INV-BT8 pins — the author's rejection, a `review_rejected` event
+whose `head` stays the reviewed commit and whose `withheldFix` names the MERGED head (the bytes that
+actually failed), the entry kept open with its finding — and returns `mergedTreeWithheld`, which tells
+`mergeReviewerFix` not to settle the entry again: one attempt spends one failure, not two. A
+`failed` verdict (sleep- or signal-killed check) makes no claim about the tree, so it withholds the
+landing, counts nothing, and leaves the entry and its fix ref for the next poll's retry. The synced
+pre-check stays as the cheap early withhold, outside the lock; this hook covers the window between
+it and the in-lock rebase. Contrast the merge slot (`mergeApprovedChangeIn`):
+`syncPinToMain` rebases the pin onto main BEFORE its gate, so that gate already judges the tree that
+lands — which is exactly what the reviewer-fix path lacked (BUGS.md 2026-11-23: main's tip
+`1706a712`, a duplicated import, TS2300, reached main unchecked and the main watch blamed the wrong
+role).
+
+**Binds.** `src/merge/merge-to-main.ts` (`MergeContext.verifyMergedTree` and `tryMerge`'s gate
+between `rebaseOntoMain` and `ffMainToOrWhy`), `src/merge/merge-post-review-drain.ts`
+(`mergeReviewerFixCommit`'s `verifyMergedTree` closure, its `mergedTreeWithheld` result, and
+`mergeReviewerFix` skipping `settleFailedReviewerFix` for it).
+
+**Pinned by.** `test/post-merge-review.test.ts` — "a fix whose rebase onto a main that moved
+mid-precheck breaks the build is withheld (BUGS.md 2026-11-23)".
+
 ## Observer run ledgers: a failed ledger write never fails a run
 
 ### INV-BW1: a failed qa-coverage.json write warns and the run keeps its outcome

@@ -81,6 +81,17 @@ export interface MergeContext extends RunsPi {
    * merge-withdrawn.ts) and nothing merges. The closure owns the pin and the role's lastError.
    * Optional: without it every change goes on to the rebase. */
   withdrawn?(wt: string): Promise<boolean>;
+  /** The caller's landing check over a rewritten tree (optional): awaited with the merged
+   * worktree and its post-rebase head, immediately after an automatic rebase rewrites the
+   * change's head onto a moved main tip and before main is fast-forwarded onto it (the worktree
+   * stands at `mergedHead` when this is called). Returning false withholds the landing: main
+   * stays at its old tip and this merge comes back "merge_blocked". A rebase is a rewrite of a
+   * tree nobody built or checked — the caller's pre-merge check ran against the pre-rebase tree
+   * — and git auto-merges a line both sides add, duplicating it with no conflict, so the merged
+   * tree is exactly what this gate must cover (BUGS.md 2026-11-23). A withheld merge's side
+   * effects (events, the entry's settlement, the ref) stay the caller's: this hook only answers
+   * whether the merged tree may land. */
+  verifyMergedTree?(wt: string, mergedHead: string): boolean | Promise<boolean>;
 }
 
 /** Merge the worktree branch on main under the shared merge lock: rebase it onto main (keeping
@@ -133,6 +144,10 @@ async function tryMerge(
     // In the lock, so no withdrawal can land between this check and the fast-forward; before the
     // rebase, so the change's merge-base still lists the entries it moved.
     if (ctx.withdrawn && (await ctx.withdrawn(wt))) return "withdrawn";
+    // The branch tip before THIS attempt's rebase — the landing-check gate below asks whether
+    // the rebase rewrote it. The conflict-retry path's second attempt rebases a no-op (the
+    // resolution already sits on main's tip), so it is gated by recheckResolved instead.
+    const preRebaseHead = await headOf(wt, "HEAD");
     if (!(await rebaseOntoMain(wt, ctx.mainBranch))) return "merge_conflict";
     // The worktree's POST-REBASE HEAD: a pinned bare sha does not move when git
     // rebase rewrites it — ff'ing main to the original pin would fail as merge_blocked whenever
@@ -146,6 +161,17 @@ async function tryMerge(
       return "merge_blocked";
     }
     const mainBefore = await headOf(ctx.root, ctx.mainBranch);
+    // The landing check over the rewritten tree (optional), run while the merge lock is held and
+    // before main moves. Only when the rebase actually rewrote the head: after a no-op rebase the
+    // worktree still holds exactly the tree the caller's pre-merge check judged, so a second check
+    // would cost a run and learn nothing. A rebase onto a moved tip changed the tree under that
+    // check, and git's automatic merge duplicates a line both sides added — an unconflicted,
+    // build-breaking result no pre-merge check of the pinned tree can see (BUGS.md 2026-11-23).
+    // Withheld here, main keeps its old tip.
+    if (target !== preRebaseHead && mainBefore !== target && ctx.verifyMergedTree
+      && !(await ctx.verifyMergedTree(wt, target))) {
+      return "merge_blocked";
+    }
     const ffFailure = await ffMainToOrWhy(ctx.root, target, ctx.mainBranch);
     if (ffFailure !== null) {
       warnEventBestEffort(ctx.root, ctx.role, `merge blocked: ${ffFailure}`);

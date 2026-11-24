@@ -314,14 +314,21 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
   // the reviewed base was checked on bytes main had never held: git auto-merged two independently
   // added identical lines into one tree that failed the check while both inputs passed it. Syncing
   // the pin first makes the pre-check, the ref, and the `withheldFix` event name the post-rebase
-  // commit, so mergeToMain's own rebase is then a no-op over already-checked bytes.
+  // commit. Syncing is not enough on its own: the pre-check runs OUTSIDE the merge lock, so main
+  // can still move between it and `mergeToMain`'s own in-lock rebase — the fix merge passes
+  // `verifyMergedTree` (merge-to-main.ts, INV-BT10) to catch a tree rewritten in that window.
   const synced = await syncReviewerFixPin(ctx, entry, fix);
   if (!(await precheckReviewerFix(ctx, entry, synced, finding, state))) return;
-  const outcome = await mergeReviewerFixCommit(ctx, entry, synced, author);
+  const outcome = await mergeReviewerFixCommit(ctx, entry, synced, finding, author);
   if (outcome.result === "changed") {
     await settleMergedReviewerFix(ctx, entry, outcome.merged);
     return;
   }
+  // The merged-tree check over the rebased tree held the merge back (BUGS.md 2026-11-23): a
+  // `rejected` verdict already settled the entry open with its failure counted in the reject
+  // closure, and an unverified check counts nothing — both stay untouched here so the failure is
+  // not spent twice.
+  if (outcome.mergedTreeWithheld) return;
   await settleFailedReviewerFix(ctx, entry, outcome.result);
 }
 
@@ -449,13 +456,27 @@ async function precheckReviewerFix(ctx: MergePipelineContext, entry: PostReview,
  * reset-and-merge cannot collide with a fresh review.
  * Resolves `merged` to the commit that actually landed — from our own `merged` event (not the
  * pre-rebase `fix`), falling back to main's head — and unsubscribes in `finally`. A failed merge
- * returns a non-terminal RunResult and names no merged commit, so it never reads main's head. */
+ * returns a non-terminal RunResult and names no merged commit, so it never reads main's head.
+ * `mergedTreeWithheld` says the merge's own check over the REBASED tree rejected it and the
+ * entry was already settled open with its failure counted (BUGS.md 2026-11-23). */
 async function mergeReviewerFixCommit(
   ctx: MergePipelineContext,
   entry: PostReview,
   fix: string,
+  finding: string[],
   author: ReturnType<typeof resolveAuthor>,
-): Promise<{ result: "changed"; merged: string } | { result: Exclude<RunResult, "changed">; merged: null }> {
+): Promise<
+  | { result: "changed"; merged: string }
+  | {
+      result: Exclude<RunResult, "changed">;
+      merged: null;
+      /** Set when the merged-tree check over the REBASED tree held the merge back: "rejected" means
+       * the reject closure already settled the entry open with its failure counted, "unverified"
+       * means the check made no verdict about the tree, so the entry stays exactly as it was for
+       * the next poll's retry. Either way the caller must not settle the entry again. */
+      mergedTreeWithheld?: "rejected" | "unverified";
+    }
+> {
   const runPi = async (wt: string, prompt: string, sessionName: string, config?: Parameters<typeof author.runMergePi>[3]) => {
     const hooks = resolveWaitStage(ctx.root, entry.role);
     if (!ctx.semaphore.canLeaseAtOnce(MERGE_TIER)) hooks.waiting();
@@ -484,6 +505,66 @@ async function mergeReviewerFixCommit(
     }
   });
   let result: RunResult;
+  // The merged-tree check over the tree the rebase produced (BUGS.md 2026-11-23). The pre-check
+  // judged the fix AS PINNED — based on the reviewed commit, main's history as of the review — but
+  // main may have moved since, and mergeToMain's automatic rebase then builds a tree nobody ever
+  // checked. git resolves a line both sides add WITHOUT a conflict, keeping both copies, so the
+  // bytes that land can fail the project's check while the pinned tree was green (main's tip
+  // 1706a712: a duplicated import, TS2300). mergeToMain calls this under the merge lock, after
+  // rebaseOntoMain and before the fast-forward, and only when that rebase rewrote the head — so a
+  // fix that landed on an unmoved main pays no extra check. The worktree stands at the merged head
+  // here, so the gate check runs in place over the tree that would land.
+  let mergedTreeWithheld: "rejected" | "unverified" | undefined;
+  const verifyMergedTree = async (mergeWt: string, mergedHead: string): Promise<boolean> => {
+    const pre = await gateBuildPrecheck(
+      {
+        root: ctx.root,
+        role: entry.role,
+        wt: mergeWt,
+        mainBranch: ctx.mainBranch,
+        config: ctx.liveConfig,
+        runNumber: author.state.runs,
+        sessionDir: reviewRunSessionDir(ctx.root, entry.role, `post-${shortSha(fix)}-merged`),
+        signal: ctx.signal,
+        // Deterministic like the pinned pre-check: no model run, no reviewer budget.
+        runGatePi: async () => setupFailureResult("precheck", "the merged-tree check is deterministic; no reviewer run"),
+      },
+      author.state,
+      mergedHead,
+      async (reasons) => {
+        // The shared reject shape, identical to the pinned pre-check's: the rejection is recorded
+        // for the authoring role, the reviewed commit stays the event's `head` with the withheld
+        // sha as `withheldFix` (INV-BT8), and the entry stays OPEN with its finding kept. Here
+        // `withheldFix` names the MERGED head — the tree that actually failed — not the pinned fix.
+        mergedTreeWithheld = "rejected";
+        recordReview(author.state, "reject", [...finding, ...reasons], mergedHead);
+        saveRunnerStateBestEffort(ctx.root, author.state);
+        logEventBestEffort(ctx.root, {
+          source: entry.role,
+          type: "review_rejected",
+          head: entry.commit,
+          reasons,
+          ...(finding.length > 0 ? { finding } : {}),
+          withheldFix: mergedHead,
+          afterMerge: true,
+        });
+        warnEventBestEffort(ctx.root, entry.role, `the post-merge fix of ${shortSha(entry.commit)} failed its merged-tree check on the rebased tree and was withheld: ${firstReason(reasons)}`);
+        await settleWithheldReviewerFix(ctx, entry, finding, reasons);
+        return { decision: "rejected" as const, detail: firstReason(reasons) };
+      },
+    );
+    // A green check (or one excused as main's own failure) lands the rebased tree. A `rejected`
+    // verdict withheld it above. A `failed` verdict made no verdict about the tree (a sleep- or
+    // signal-killed check): hold it from main like the pinned pre-check does and leave the entry
+    // for the next poll, with no failure counted.
+    const decision = pre.resolved?.decision;
+    if (decision === "rejected") return false;
+    if (decision === "failed") {
+      mergedTreeWithheld = "unverified";
+      return false;
+    }
+    return true;
+  };
   try {
     result = await useWorktree(ctx.root, postReviewWorktreePath(ctx.root), async () => {
       const wt = await ensureDetachedWorktree(ctx.root, postReviewWorktreePath(ctx.root), fix);
@@ -496,6 +577,7 @@ async function mergeReviewerFixCommit(
           runNumber: author.state.runs,
           mergedTag,
           runPi,
+          verifyMergedTree,
           // A conflict resolution of the reviewer's fix is resolver-authored bytes the reviewer
           // never judged, so a resolved tree must not land silently on the fix's pre-check alone
           // (BUGS.md 2026-10-01: a resolver had restored code main deliberately reverted). But a
@@ -549,7 +631,7 @@ async function mergeReviewerFixCommit(
     const merged = mergedMine.get(entry.role) ?? (await headOf(ctx.root, ctx.mainBranch));
     return { result, merged };
   }
-  return { result, merged: null };
+  return { result, merged: null, ...(mergedTreeWithheld ? { mergedTreeWithheld } : {}) };
 }
 
 /** Settle a fix that landed on main as `fixed`: delete the fix ref, settle the entry naming the

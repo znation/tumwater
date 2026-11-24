@@ -76,9 +76,9 @@ function fakeRunner(role: string, verdict: string): RoleRunner {
   } as unknown as RoleRunner;
 }
 
-function setup(verdict: string) {
+function setup(verdict: string, initialFile = "x") {
   const root = makeRepo();
-  fs.writeFileSync(path.join(root, "x.txt"), "x");
+  fs.writeFileSync(path.join(root, "x.txt"), initialFile);
   sh(root, "git", "add", "--", "x.txt");
   sh(root, "git", "commit", "-m", "add x");
   const commit = headSha(root);
@@ -1306,6 +1306,72 @@ test("an approving review that edits the worktree without a FIX line lands nothi
   assert.equal(fs.readFileSync(path.join(root, "x.txt"), "utf8"), "x");
   assert.equal(readPostReviews(root).length, 0);
   assert.equal(sh(root, "git", "for-each-ref", reviewFixRef(commit)).trim(), "", "no review-fix ref is left");
+});
+
+test("a fix whose rebase onto a main that moved mid-precheck breaks the build is withheld (BUGS.md 2026-11-23)", async () => {
+  // The pre-check syncs the fix pin onto main and checks the synced tree — but it runs OUTSIDE the
+  // merge lock. When main moves between that check and mergeToMain's own in-lock rebase, the rebase
+  // builds a DIFFERENT tree, and git resolves a line both sides added without a conflict, keeping
+  // both copies. The recorded case is main's tip 1706a712: a duplicated import, TS2300, on a
+  // tree no check ever saw. The merge itself must check the tree it fast-forwards onto.
+  const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract", "x\n");
+  // The check fails exactly when the import line appears twice: green on the fix (one copy) and on
+  // main's new commit (one copy), red on the rebase's output (two copies). Its first run also
+  // stands in for the concurrent merge that moves main DURING the pre-check — guarded on main's
+  // old tip, so it fires exactly once, on the pre-check's run and not on any later one.
+  const initial = headSha(root);
+  const config = (ctx as { liveConfig: unknown }).liveConfig as Record<string, unknown>;
+  config.check = {
+    command:
+      `if [ "$(git -C '${root}' rev-parse main)" = '${initial}' ]; then ` +
+      `printf 'import x\\nx\\n' > '${root}/x.txt'; git -C '${root}' add -- x.txt; ` +
+      `git -C '${root}' commit -m 'another role adds the same line concurrently'; fi; ` +
+      `[ "$(grep -c '^import x$' x.txt)" -le 1 ]`,
+  };
+  (ctx as { runners: RoleRunner[] }).runners = [
+    {
+      role: "improve",
+      baseRole: "improve",
+      state: freshRunnerState("improve"),
+      // The fix adds the SAME line main's concurrent commit adds, at a nearby position: git
+      // auto-merges that pair and keeps both copies.
+      runGatePi: async (opts: { cwd: string }) => {
+        fs.writeFileSync(path.join(opts.cwd, "x.txt"), "x\nimport x\n");
+        return { ok: true, verdictText: "VERDICT: reject\n1. breaks the contract\nFIX: x.txt" };
+      },
+      foldMergeUsage: () => {},
+    } as unknown as RoleRunner,
+  ];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  // The fix passed its pre-check on the synced tree, and main moved under that check. The merge's
+  // own gate over the rebase's output convicted the doubled tree before main moved onto it.
+  const movedMain = sh(root, "git", "rev-list", "--grep=concurrently", "--max-count=1", "main").trim();
+  assert.ok(movedMain, "the pre-check's run recorded a concurrent commit on main");
+  assert.equal(headSha(root), movedMain, "the rebased fix never fast-forwards main");
+  assert.equal(fs.readFileSync(path.join(root, "x.txt"), "utf8"), "import x\nx\n", "main keeps one copy of the line");
+  assert.equal(eventsOfType(root, "merged").length, 0, "no merge of the fix is recorded");
+  // The withheld tree, not the pinned fix, is what the record names: the rebased head is a child of
+  // the moved main and holds the doubled line, so a reader can see the bytes that were held back.
+  const pinnedFix = sh(root, "git", "rev-parse", reviewFixRef(commit)).trim();
+  const rejected = eventsOfType(root, "review_rejected");
+  assert.equal(rejected.length, 2, "the reviewer's verdict and the withheld merge are both recorded");
+  const withheld = rejected[1]!;
+  assert.equal(withheld.head, commit, "the event stays a record about the reviewed commit");
+  const withheldFix = String(withheld.withheldFix);
+  assert.notEqual(withheldFix, pinnedFix, "withheldFix names the rebased tree, not the pinned fix commit");
+  assert.equal(sh(root, "git", "rev-parse", `${withheldFix}^`).trim(), movedMain, "the withheld tree sits on the moved main");
+  assert.equal(sh(root, "git", "show", `${withheldFix}:x.txt`).trim().split("\n").filter((l) => l === "import x").length, 2, "the withheld tree is the doubled-line tree that would have landed");
+  // The fix ref survives so the fix stays reachable for the next poll's retry, and the entry counts
+  // the withholding exactly ONCE: the merged-tree check settled it, so the failed-merge settle must
+  // not spend the drop limit a second time for one attempt.
+  assert.ok(pinnedFix, "the review-fix ref survives the withheld merge");
+  const reviewed = readPostReviews(root).find((e) => e.commit === commit)!;
+  assert.equal(reviewed.fixed, undefined, "no fix is recorded as landed");
+  assert.equal(reviewed.failures, 1, "the withheld merge counts one failure, not two");
+  assert.match(reviewed.lastFailure ?? "", /fix pre-check/, "the failure names the pre-check as the cause");
+  assert.deepEqual(reviewed.finding, ["breaks the contract"], "the reviewer's finding survives");
 });
 
 test("a fix that lands on a main which moved under the review records the actually-merged sha", async () => {
