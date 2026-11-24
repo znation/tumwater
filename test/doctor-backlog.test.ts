@@ -5,7 +5,7 @@ import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledEntries, checkStrandedPlans, checkValidationGaps, fixClaimProblems, planDependencyProblem } from "../src/doctor/doctor-backlog-plans.js";
 import { fixedRecordsToCheck, FIX_CLAIMS_CHECKED } from "../src/doctor/doctor-backlog.js";
 import { checkHeldBugs, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, failureMentions, quotedTestName } from "../src/doctor/doctor-backlog-bugs.js";
-import { checkPostReviews, atRiskPostReviews, atRiskPostReviewsPhrase, POST_REVIEW_AT_RISK_FAILURES, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, backlogCommitLines, backlogCommitMessage } from "../src/doctor/doctor-backlog.js";
+import { checkPostReviews, atRiskPostReviews, atRiskPostReviewsPhrase, POST_REVIEW_AT_RISK_FAILURES, parkedPostReviews, parkedPostReviewsPhrase, POST_REVIEW_PARKED_STREAK, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, backlogCommitLines, backlogCommitMessage } from "../src/doctor/doctor-backlog.js";
 import type { DirtyBacklogFiles } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
@@ -1247,4 +1247,94 @@ test("atRiskPostReviews and atRiskPostReviewsPhrase preserve order, exclude unde
     { commit: "2".repeat(40), role: "improve", summary: "b", failures: 3 },
   ]);
   assert.match(multi ?? "", /and 1 more: improve 22222222/);
+});
+
+test("parkedPostReviews names a review parked by provider failures and skips settled, past-deadline, short-streak and at-risk entries", () => {
+  const now = 1_700_000_000_000;
+  const root = makeRepo();
+  writeJsonFile(postReviewPath(root), {
+    pending: [
+      { commit: "a".repeat(40), role: "feature", summary: "add the parser", notBeforeMs: now + 240_000, consecutiveTransientFailures: POST_REVIEW_PARKED_STREAK },
+      { commit: "b".repeat(40), role: "improve", summary: "b", notBeforeMs: now + 240_000, consecutiveTransientFailures: POST_REVIEW_PARKED_STREAK - 1 },
+      { commit: "c".repeat(40), role: "clean", summary: "c", notBeforeMs: now - 1, consecutiveTransientFailures: 5 },
+      { commit: "d".repeat(40), role: "feature", summary: "d", notBeforeMs: now + 240_000, consecutiveTransientFailures: 5, fixed: "9".repeat(40) },
+      { commit: "e".repeat(40), role: "clean", summary: "e", notBeforeMs: now + 240_000, consecutiveTransientFailures: 5, rejected: ["no"] },
+      { commit: "f".repeat(40), role: "organize", summary: "f", notBeforeMs: now + 240_000, consecutiveTransientFailures: 3, failures: POST_REVIEW_AT_RISK_FAILURES },
+      { commit: "g".repeat(40), role: "feature", summary: "g", consecutiveTransientFailures: 4 },
+    ],
+  });
+  const rows = parkedPostReviews(root, now);
+  assert.deepEqual(rows.map((r) => r.commit), ["a".repeat(40)], "only the parked entry is kept");
+  assert.equal(rows[0]!.notBeforeMs, now + 240_000);
+  assert.equal(rows[0]!.consecutiveTransientFailures, POST_REVIEW_PARKED_STREAK);
+  assert.equal(rows[0]!.role, "feature");
+  assert.deepEqual(parkedPostReviews(makeRepo(), now), []);
+});
+
+test("parkedPostReviewsPhrase names the first parked review with its streak and countdown, and reads null on empty", () => {
+  const now = 1_700_000_000_000;
+  assert.equal(parkedPostReviewsPhrase([], now), null);
+  const one = parkedPostReviewsPhrase(
+    [{ commit: "ab12cd3e".padEnd(40, "f"), role: "feature", summary: "add the parser", notBeforeMs: now + 240_000, consecutiveTransientFailures: 3 }],
+    now,
+  );
+  assert.equal(
+    one,
+    "the post-merge review of feature ab12cd3e — \"add the parser\" — is parked by 3 consecutive provider " +
+      "failures and resumes in 4m; the queue is not moving because the reviewer backend cannot be reached " +
+      "— fix it or accept the commit unreviewed deliberately",
+  );
+  const two = parkedPostReviewsPhrase(
+    [
+      { commit: "ab12cd3e".padEnd(40, "f"), role: "feature", summary: "add the parser", notBeforeMs: now + 240_000, consecutiveTransientFailures: 3 },
+      { commit: "2".repeat(40), role: "improve", summary: "b", notBeforeMs: now + 3_600_000, consecutiveTransientFailures: 2 },
+    ],
+    now,
+  );
+  assert.match(two ?? "", /and 1 more: improve 22222222/);
+});
+
+test("checkPostReviews warns on a review parked by provider failures and carries both clauses when each applies", () => {
+  const now = 1_700_000_000_000;
+  const commit = "ab12cd3e".padEnd(40, "f");
+  const root = makeRepo();
+  writeJsonFile(postReviewPath(root), {
+    pending: [{ commit, role: "feature", summary: "add the parser", notBeforeMs: now + 240_000, consecutiveTransientFailures: POST_REVIEW_PARKED_STREAK }],
+  });
+  const parked = checkPostReviews(root, now);
+  assert.equal(parked.level, "warn");
+  assert.match(parked.detail, /feature ab12cd3e — "add the parser" — is parked by 2 consecutive provider failures and resumes in 4m/);
+  // A one-minute hiccup, a deadline already passed, and no backoff at all each read ok.
+  for (const entry of [
+    { commit, role: "feature", summary: "add the parser", notBeforeMs: now + 60_000, consecutiveTransientFailures: POST_REVIEW_PARKED_STREAK - 1 },
+    { commit, role: "feature", summary: "add the parser", notBeforeMs: now - 1, consecutiveTransientFailures: 4 },
+    { commit, role: "feature", summary: "add the parser", failures: 1 },
+  ]) {
+    writeJsonFile(postReviewPath(root), { pending: [entry] });
+    const out = checkPostReviews(root, now);
+    assert.equal(out.level, "ok");
+    assert.equal(out.detail, "no post-merge review is one failed run from being dropped");
+  }
+  // One entry at the at-risk bar and one parked entry: one warn row carrying both clauses, and
+  // the at-risk entry is not named twice.
+  const atRisk = "cd3ef4".padEnd(40, "a");
+  writeJsonFile(postReviewPath(root), {
+    pending: [
+      { commit: atRisk, role: "improve", summary: "fix x", failures: POST_REVIEW_AT_RISK_FAILURES },
+      { commit, role: "feature", summary: "add the parser", notBeforeMs: now + 240_000, consecutiveTransientFailures: POST_REVIEW_PARKED_STREAK },
+    ],
+  });
+  const both = checkPostReviews(root, now);
+  assert.equal(both.level, "warn");
+  assert.match(both.detail, /improve cd3ef4aa — "fix x" — has ended without a verdict 2 times/);
+  assert.equal(both.detail.match(/cd3ef4aa/g)!.length, 1, "the at-risk entry is named once");
+  assert.ok(both.detail.endsWith("; 1 more post-merge review parked by provider failures"), both.detail);
+  writeJsonFile(postReviewPath(root), {
+    pending: [
+      { commit: atRisk, role: "improve", summary: "fix x", failures: POST_REVIEW_AT_RISK_FAILURES },
+      { commit: "9".repeat(40), role: "clean", summary: "y", notBeforeMs: now + 240_000, consecutiveTransientFailures: 3 },
+      { commit: "8".repeat(40), role: "organize", summary: "z", notBeforeMs: now + 240_000, consecutiveTransientFailures: 2 },
+    ],
+  });
+  assert.ok(checkPostReviews(root, now).detail.endsWith("; 2 more post-merge reviews parked by provider failures"));
 });

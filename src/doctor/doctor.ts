@@ -270,7 +270,7 @@ function doctorSteps(
     { name: "held bugs", run: () => checkHeldBugs(root) },
     { name: "regressed fixes", run: () => checkRegressedFixes(root) },
     { name: "stale merge-queue entries", run: () => checkStaleQueuedMerges(root, Date.now()) },
-    { name: "post-merge reviews", run: () => checkPostReviews(root) },
+    { name: "post-merge reviews", run: () => checkPostReviews(root, Date.now()) },
     { name: "main diff rules", run: () => checkMainDiffRules(root) },
     { name: "dropped post-merge reviews", run: () => checkDroppedPostMergeReviews(root) },
     { name: "stale prompts", run: () => checkStalePrompts(root, Date.now()) },

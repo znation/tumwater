@@ -12,6 +12,18 @@ considered and set aside on purpose, and every state change is dated so stalenes
 ### A post-merge review whose reviewer's fix was withheld names the kept finding on the `tumwater
   reviews` list and the dashboard card, not only under `reviews --show`
 
+**Needs review 2026-11-23 by feature: plan defect — nothing to build: this entry is a duplicate
+copy of one already on main.** `git merge-base --is-ancestor 2fcd1e04 HEAD` is true (2fcd1e04
+“tumwater(feature): Name a withheld fix’s kept finding on the reviews list and card”, merged by the
+feature role), and `sed -n '12,91p' PLANS.md` against `sed -n '8,87p' PLANS-DONE.md` diffs only in
+that entry’s `— done 2026-11-23 by the feature role` closing stamp: main’s PLANS.md `## Planned`
+holds a second copy of it. Every deliverable is live on main — `postReviewFindingNote` in
+src/review/post-merge-review-render.ts (called at its line 201), its browser twin in
+src/ui/gui/gui-client-pending.ts:277, the cli-help-text/docs/cli.md/docs/how-it-works.md clauses,
+INV-BT8’s sentence and the four test files — and grep shows no `postReviewFindingNote` plan still
+unimplemented. The plan role should retire this copy; the plan implemented in its place was the
+following entry, now under `## Done`.
+
 **Goal.** INV-BT8 keeps the reviewer's objection alive when its own repair is withheld by its
 pre-check: `settleWithheldReviewerFix` (src/merge/merge-post-review-drain.ts) records one failed
 review run and rides the reviewer's objection in `PostReview.finding`
@@ -89,96 +101,5 @@ test/help.test.ts.
 writes; fold the bracket into `postReviewStatusLabel`; print it on a `fixed` or `rejected` row; add
 a flag, a new endpoint, a `--json` key, or a second finding source in the browser bundle; touch
 `--grep`'s field list (it already searches `finding` whole).
-
-### The `post-merge reviews` doctor row names a review parked inside its provider-failure backoff,
-so a stalled review queue is never a silently green row (planned 2026-11-23 by the plan role; two
-other changes edit the post-review surfaces this reads — the waiting `## Planned` entry (its
-finding bracket, in src/review/post-merge-review-render.ts, src/ui/gui/gui-client-pending.ts,
-src/cli/cli-help-text.ts, docs/cli.md, docs/how-it-works.md and docs/invariants.md INV-BT8) and an
-unmerged planned change (the backoff bracket, same render/card files plus docs/invariants.md
-INV-BT6's **Binds**) — this entry edits none of those except docs/invariants.md, and there the
-INV-BT6 paragraph, so whichever of the INV-BT6 edits lands second rebases it; touches
-src/doctor/doctor-backlog.ts src/doctor/doctor.ts
-test/doctor-backlog.test.ts docs/invariants.md)
-
-**Goal.** A review the reviewer backend cannot finish on infrastructure grounds is kept by
-INV-BT5 — it is not counted in `failures` and never filed — and INV-BT6 parks it: `unreviewed`
-(src/merge/merge-post-review-drain.ts) skips any entry whose `notBeforeMs` is in the future, so the
-drain leaves it alone until the deadline passes. The at-risk bar this row reads
-(`POST_REVIEW_AT_RISK_FAILURES = POST_REVIEW_FAILURE_LIMIT - 1`, src/doctor/doctor-backlog.ts)
-counters only verdict-less *content* failures, which a transient failure never bumps, so a queue of
-entries each sitting behind an escalating `notBeforeMs` leaves `checkPostReviews` at exactly
-`no post-merge review is one failed run from being dropped` — in src/doctor the only `notBeforeMs`
-reader is `checkStalePrompts`'s, and that is a **prompt** field (`deliverableAt`,
-src/inbox/prompt-not-before.ts), not a post-review entry's, so no doctor surface reads a review
-backoff. The operator sees a green row while the queue has stopped moving.
-
-**Approach (one new selection, one new phrase, one caller).**
-
-- src/doctor/doctor-backlog.ts: beside `POST_REVIEW_AT_RISK_FAILURES` add
-  `export const POST_REVIEW_PARKED_STREAK = 2;` (doc-comment it: the drain stamps `notBeforeMs` on
-  the *first* transient failure too, with the one-minute team-hold base, so the bar is what makes
-  the row meaningful — a single hiccup that clears in a minute is noise, a second consecutive one
-  means the pause has escalated and the wall is still up) and an
-  `interface ParkedPostReview { commit: string; role: string;
-  summary: string; notBeforeMs: number; consecutiveTransientFailures: number }` beside
-  `AtRiskPostReview`. Add `export function parkedPostReviews(root: string, now: number): ParkedPostReview[]`,
-  one traversal beside `atRiskPostReviews` in the same shape: keep entries with
-  `rejected === undefined && fixed === undefined && (notBeforeMs ?? 0) > now &&
-  (consecutiveTransientFailures ?? 0) >= POST_REVIEW_PARKED_STREAK`, in the same file (FIFO) order
-  as `atRiskPostReviews`, and deliberately exclude anything at `failures >=
-  POST_REVIEW_AT_RISK_FAILURES` — the at-risk phrase already names that entry, so no entry is
-  named twice in one row. `readPostReviews` already normalizes both fields
-  (`parsePostReview`, src/review/post-merge-review.ts), so neither needs a coercion here.
-- Add `export function parkedPostReviewsPhrase(rows: readonly ParkedPostReview[], now: number): string | null`,
-  modelled on `atRiskPostReviewsPhrase`: the first entry in full — role, short commit, quoted
-  summary and the countdown — the rest folded through `andMore`, e.g.
-  `the post-merge review of feature a1b2c3d4 — add the parser — is parked by 3 consecutive provider
-  failures and resumes in 4m`, using `humanUntil(first.notBeforeMs, now)` (src/text/datetime.ts —
-  add it to that file's existing import of `humanSeconds, humanSince, HOUR_MS, DAY_MS`).
-  Return `null` for an empty list. The `(notBeforeMs ?? 0) > now` filter holds by construction, so
-  `humanUntil`'s past-instant `0s` clamp can never show here.
-- `checkPostReviews(root, now = Date.now())`: three arms, at-risk first. At-risk non-null: the
-  existing `warnOutcome(atRiskPhrase)` plus, when the parked list is non-empty, one appended clause
-  built in the same template style — `` `${atRiskPhrase}; ${parked.length} more ` +
-  `post-merge review${parked.length === 1 ? "" : "s"} parked by provider failures` `` — so the at-risk
-  advice still ends its own sentence and the parked count rides after it. At-risk null and parked
-  non-null: `warnOutcome(parkedPostReviewsPhrase(parked, now))`. Both empty: the existing ok
-  outcome text, unchanged. Never a `fail` — the checkStaleQueuedMerges and at-risk precedent: a
-  failing reviewer backend is operator signal, not a broken environment.
-- src/doctor/doctor.ts: pass the clock the way the neighbouring stale rows do —
-  `{ name: "post-merge reviews", run: () => checkPostReviews(root, Date.now()) }`, the exact shape
-  `checkStaleQueuedMerges(root, Date.now())` and `checkStalePrompts(root, Date.now())` already use
-  in that list. No new import, no row rename, no new row.
-- Do not name the pause's cap in the row's wording and do not import `HOLD_CAP_MS`/`HOLD_BASE_MS`
-  into src/doctor: `reviewBackoffMs` (src/merge/merge-post-review-drain.ts) delegates to
-  `escalatedHoldMs` in src/team/team-hold.ts, whose base/cap constants are that module's business,
-  so the phrase counts down with `humanUntil` instead of quoting a number that could drift.
-- docs/invariants.md INV-BT6: name the third reader of `notBeforeMs`'s meaning in **Binds**
-  (`src/doctor/doctor-backlog.ts` — `parkedPostReviews`, `parkedPostReviewsPhrase`,
-  `checkPostReviews`) and add this entry's new doctor test names to **Pinned by**.
-
-**Acceptance criteria.**
-
-- A `post-review.json` holding one entry with `notBeforeMs` 4 minutes ahead, `consecutiveTransientFailures: 2`
-  and no `failures` key makes `tumwater doctor`'s `post-merge reviews` row read `warn`, and its
-  detail names that entry's role, short sha and summary and counts down with `in 4m`; the row for a
-  queue with no entry like that keeps reading `no post-merge review is one failed run from being dropped`.
-- An entry with `consecutiveTransientFailures: 1` and a future `notBeforeMs`, and an entry whose
-  `notBeforeMs` is in the past, each leave the row at that same ok detail on their own.
-- One entry at the at-risk bar and one parked entry in the same queue produce a single `warn` row
-  that carries both clauses, and no entry appears twice in it.
-- `parkedPostReviews(root, now)` returns `[]` for a `fixed` entry and for a `rejected` entry, each
-  carrying `notBeforeMs` in the future and `consecutiveTransientFailures: 3`.
-- The `invariants-doc`, `backlog-structure` and `stage` guards stay green with the INV-BT6 edit in
-  step.
-
-**Do not:** change `unreviewed`, `settleWithheldReviewerFix`, the drain's backoff arithmetic,
-`reviewBackoffMs`, `escalatedHoldMs`, `POST_REVIEW_AT_RISK_FAILURES`, `atRiskPostReviews` or
-`atRiskPostReviewsPhrase`; change the at-risk row's wording, level or ok text; raise the row to
-`fail`; add a second doctor row, a glance badge, a status/`--json` payload field, a dashboard
-surface or a `--show` line; import `HOLD_CAP_MS`/`HOLD_BASE_MS` into src/doctor; touch
-src/review/post-merge-review-render.ts or src/ui/gui/gui-client-pending.ts (the waiting entry
-owns them).
 
 ## Done

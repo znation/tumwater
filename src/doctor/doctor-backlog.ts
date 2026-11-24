@@ -3,13 +3,13 @@ import fs from "node:fs";
 import { errorMessage, truncate } from "../text/text.js";
 import { joinOr, shortSha } from "../text/format.js";
 import { readPostReviews, POST_REVIEW_FAILURE_LIMIT } from "../review/post-merge-review.js";
-import { humanSeconds, humanSince, HOUR_MS, DAY_MS } from "../text/datetime.js";
+import { humanSeconds, humanSince, humanUntil, HOUR_MS, DAY_MS } from "../text/datetime.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventsSince } from "../events/event-window.js";
 import { finiteNumber } from "../files/json-object.js";
 import { distinctOrdered, medianAndMax } from "../collections.js";
 import path from "node:path";
-import { trailingDayMedianPhrase } from "../text/phrases.js";
+import { agree, trailingDayMedianPhrase } from "../text/phrases.js";
 import { readMergePins } from "../merge/merge-pins.js";
 import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
 import { listWideScope, queuedListRows, type QueuedListRow } from "../inbox/inbox.js";
@@ -236,6 +236,67 @@ export function atRiskPostReviewsPhrase(rows: readonly AtRiskPostReview[]): stri
     `one more failed run drops it and the commit stays on main unreviewed — fix the reviewer backend or accept the commit unreviewed deliberately`;
 }
 
+/** How many consecutive transient provider failures make a parked post-merge review worth a
+ * doctor warn: two. The drain stamps `notBeforeMs` on the entry's FIRST transient failure too,
+ * with the one-minute team-hold base (reviewBackoffMs, src/merge/merge-post-review-drain.ts), so
+ * a single hiccup that clears in a minute is noise a doctor row should not raise; a second
+ * consecutive one means the pause has escalated and the wall is still up. An opinionated default
+ * with no knob, like POST_REVIEW_AT_RISK_FAILURES beside it. */
+export const POST_REVIEW_PARKED_STREAK = 2;
+
+/** A post-merge review parked inside its transient-provider-failure backoff (INV-BT6: the drain
+ * skips an entry whose `notBeforeMs` is in the future) that has also failed transiently
+ * POST_REVIEW_PARKED_STREAK times or more — the queue stopped moving because the reviewer backend
+ * cannot be reached, not because a change is hard. `notBeforeMs` is the deadline the drain waits
+ * for and `consecutiveTransientFailures` how many runs in a row ended on the wall. */
+interface ParkedPostReview {
+  commit: string;
+  role: string;
+  summary: string;
+  notBeforeMs: number;
+  consecutiveTransientFailures: number;
+}
+
+/** The post-merge reviews parked by provider failures, in file (FIFO) order like
+ * atRiskPostReviews: every entry with no settle (`rejected`/`fixed` both unset) whose
+ * `notBeforeMs` is still in the future and whose `consecutiveTransientFailures` has reached
+ * POST_REVIEW_PARKED_STREAK. An entry at the at-risk bar is deliberately excluded — the at-risk
+ * phrase already names it, so no entry is named twice in one row. `parsePostReview`
+ * (src/review/post-merge-review.ts) already normalizes both fields, so neither needs a coercion
+ * here. One traversal beside atRiskPostReviews, so the doctor row's two selections cannot drift
+ * on the settled-entry rule. */
+export function parkedPostReviews(root: string, now: number): ParkedPostReview[] {
+  return readPostReviews(root)
+    .filter((e) =>
+      e.rejected === undefined &&
+      e.fixed === undefined &&
+      (e.notBeforeMs ?? 0) > now &&
+      (e.consecutiveTransientFailures ?? 0) >= POST_REVIEW_PARKED_STREAK &&
+      (e.failures ?? 0) < POST_REVIEW_AT_RISK_FAILURES)
+    .map((e) => ({
+      commit: e.commit,
+      role: e.role,
+      summary: e.summary,
+      notBeforeMs: e.notBeforeMs as number,
+      consecutiveTransientFailures: e.consecutiveTransientFailures ?? 0,
+    }));
+}
+
+/** The doctor's one sentence naming a post-merge review parked by provider failures, modelled on
+ * atRiskPostReviewsPhrase: the first in full — role, short commit, quoted summary, the streak and
+ * the countdown to its deadline through humanUntil — the rest folded through andMore, so the
+ * wording lives in one place. The `(notBeforeMs ?? 0) > now` filter holds by construction, so
+ * humanUntil's past-instant `0s` clamp can never show here. null for an empty list. */
+export function parkedPostReviewsPhrase(rows: readonly ParkedPostReview[], now: number): string | null {
+  const [first, ...rest] = rows;
+  if (!first) return null;
+  const more = andMore(rest, (r) => `${roleLabel(r.role)} ${shortSha(r.commit)}`);
+  return `the post-merge review of ${roleLabel(first.role)} ${shortSha(first.commit)} — ${quoteHeading(first.summary)} — ` +
+    `is parked by ${first.consecutiveTransientFailures} consecutive provider failures and resumes in ` +
+    `${humanUntil(first.notBeforeMs, now)}${more}; the queue is not moving because the reviewer backend ` +
+    `cannot be reached — fix it or accept the commit unreviewed deliberately`;
+}
+
 /** A post-merge review one failed run from being dropped (src/review/post-merge-review.ts, the
  * drain drops an entry at POST_REVIEW_FAILURE_LIMIT failed runs) — the last moment an operator
  * can fix the reviewer backend or deliberately accept the commit unreviewed before the drain
@@ -245,10 +306,20 @@ export function atRiskPostReviewsPhrase(rows: readonly AtRiskPostReview[]): stri
  * never a fail — the checkStaleQueuedMerges precedent: a failing reviewer is operator signal,
  * not a broken environment; readPostReviews never throws (a missing or torn file degrades to the
  * well-formed subset or `[]`), so the check needs no read-error arm. */
-export function checkPostReviews(root: string): CheckOutcome {
+export function checkPostReviews(root: string, now = Date.now()): CheckOutcome {
   const rows = atRiskPostReviews(root);
   const phrase = atRiskPostReviewsPhrase(rows);
-  return phrase === null ? okOutcome("no post-merge review is one failed run from being dropped") : warnOutcome(phrase);
+  if (phrase !== null) {
+    const parked = parkedPostReviews(root, now);
+    if (parked.length === 0) return warnOutcome(phrase);
+    return warnOutcome(`${phrase}; ${parked.length} more ` +
+      `${agree(parked.length, "post-merge review", "post-merge reviews")} parked by provider failures`);
+  }
+  const parked = parkedPostReviews(root, now);
+  const parkedPhrase = parkedPostReviewsPhrase(parked, now);
+  return parkedPhrase === null
+    ? okOutcome("no post-merge review is one failed run from being dropped")
+    : warnOutcome(parkedPhrase);
 }
 
 /** How long a queued prompt may wait for its role to dequeue it before the stale-prompt check

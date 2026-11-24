@@ -5198,16 +5198,23 @@ review of the same commit while it is inside its transient-failure backoff; a la
 review still runs, and a plain content failure stamps no `notBeforeMs` and keeps the today retry.
 
 **Binds.** `src/merge/merge-post-review-drain.ts` (`unreviewed`, `drainPostReviews`),
-`src/review/post-merge-review.ts` (`PostReview.notBeforeMs`, `parsePostReview`), and the two
+`src/review/post-merge-review.ts` (`PostReview.notBeforeMs`, `parsePostReview`), and the three
 readers of that field's meaning: `src/review/post-merge-review-render.ts`
-(`postReviewBackoffNote`, the CLI list's bracket and the `--show` detail's backoff lines) and
-`src/ui/gui/gui-client-pending.ts` (`postReviewsHtml`, the dashboard card's bracket).
+(`postReviewBackoffNote`, the CLI list's bracket and the `--show` detail's backoff lines),
+`src/ui/gui/gui-client-pending.ts` (`postReviewsHtml`, the dashboard card's bracket), and
+`src/doctor/doctor-backlog.ts` (`parkedPostReviews`, `parkedPostReviewsPhrase`,
+`checkPostReviews` — the `post-merge reviews` row's parked clause, which reads `notBeforeMs` with
+`POST_REVIEW_PARKED_STREAK` and never imports the hold's base or cap constants).
 
 **Pinned by.** `test/post-merge-review.test.ts` — "a post-merge review that ended on a transient
 provider failure is not re-run on the next poll (regression, BUGS.md 2026-11-16)", "a later queue
 entry is reviewed while an entry inside its transient-failure backoff waits", and "a re-probe that
 ends on the wall again doubles the pause: the consecutive-failure counter rides the record the
-drain writes".
+drain writes"; `test/doctor-backlog.test.ts` — "parkedPostReviews names a review parked by
+provider failures and skips settled, past-deadline, short-streak and at-risk entries",
+"parkedPostReviewsPhrase names the first parked review with its streak and countdown, and reads
+null on empty", and "checkPostReviews warns on a review parked by provider failures and carries
+both clauses when each applies".
 
 ### INV-BT7: a post-merge review's final run is folded into the author's usage and failure stamps
 
