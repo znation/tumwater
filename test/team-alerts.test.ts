@@ -46,6 +46,7 @@ test("the gh banner rides the actionable alerts and the scan banners follow the 
     untrusted: 3,
     waitingPush: 0,
     mirrorLabel: "tumwater",
+    upstreamClosed: 0,
   };
   const alerts = teamAlerts({ ...base, githubIssues: gh }, ["which repo?"], [], Date.UTC(2026, 10, 21, 10, 5, 0));
   const keys = alerts.map((a) => a.key);
@@ -74,6 +75,7 @@ test("the scan-stall banner rides the scan alerts, after the backlog ones", () =
       untrusted: 0,
       waitingPush: 0,
       mirrorLabel: "tumwater",
+      upstreamClosed: 0,
     },
     githubScanStall: { repo: "acme/widgets", checkedAt: now - 4 * 86_400_000 },
   };
@@ -81,6 +83,24 @@ test("the scan-stall banner rides the scan alerts, after the backlog ones", () =
     teamAlerts(stalled, [], [], now).map((a) => [a.key, a.tone]),
     [["github-error", "gray"], ["github-scan-stalled", "amber"], ["github-mirror", "blue"]],
   );
+});
+
+test("an upstream-close banner goes last in the team's order and does not count as needing you", () => {
+  const now = Date.UTC(2026, 10, 21, 10, 0, 0);
+  const gh = {
+    repo: "acme/widgets",
+    gh: "ok" as const,
+    checkedAt: now - 60 * 60 * 1000,
+    unmirrored: 0,
+    untrusted: 0,
+    waitingPush: 0,
+    mirrorLabel: "tumwater",
+    upstreamClosed: 2,
+  };
+  const alerts = teamAlerts({ ...base, githubIssues: gh }, [], [], now);
+  assert.deepEqual(alerts.map((a) => a.key), ["github-upstream-closes"]);
+  assert.equal(alerts[0]?.tone, "blue");
+  assert.equal(alertNeedsYou(alerts[0]!), false, "a count the team cannot act on is information");
 });
 
 test("a red doctor orphan scan raises the standing amber orphans alert naming the count", () => {

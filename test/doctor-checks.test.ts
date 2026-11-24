@@ -74,7 +74,8 @@ import { checkRoleNotes } from "../src/doctor/doctor-role-notes.js";
 import { checkSalvagePatches } from "../src/doctor/doctor-salvage.js";
 import { ROLE_NOTES_MAX_BYTES, ROLE_LESSONS_MAX_COUNT } from "../src/roles/role-notes-write.js";
 import { githubIssuesPath, roleNotesPath, roleLessonsPath, salvageDir, salvagePendingDir } from "../src/paths.js";
-import { GITHUB_ISSUES_STALE_MS, githubScanStalled, readGithubIssues } from "../src/github/github-issues-state.js";
+import { GITHUB_ISSUES_STALE_MS, countUpstreamClosed, githubIssuesSummary, githubScanStalled, githubUpstreamClosedSentence, readGithubIssues } from "../src/github/github-issues-state.js";
+import { buildGithubScanAlerts } from "../src/ui/team-alert-status.js";
 import { writeOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { BRIEF_TEXT_MAX_CHARS } from "../src/brief/brief.js";
 import { fakeGh } from "./fakes/fake-gh.js";
@@ -463,6 +464,72 @@ function writeIssuesLedger(repo: string, checkedAt: number): void {
   }));
 }
 
+/** The same ledger with the scan's upstream-close record (issue-scan.ts `recordUpstreamCloses`):
+ * `count` lost rows, each the last listing's row plus the `closedAt` instant of that listing. */
+function writeIssuesLedgerWithLosses(repo: string, checkedAt: number, count: number): void {
+  writeFileDeep(githubIssuesPath(repo), JSON.stringify({
+    repo: "znation/tumwater",
+    branch: "main",
+    checkedAt,
+    gh: "ok",
+    open: [],
+    upstreamClosed: Array.from({ length: count }, (_unused, i) => ({
+      number: 400 + i,
+      title: `Lost issue ${400 + i}`,
+      url: `https://github.com/o/r/issues/${400 + i}`,
+      author: "someone",
+      trusted: true,
+      mirrored: false,
+      labels: [],
+      updatedAt: "2026-11-20T00:00:00Z",
+      closedAt: checkedAt,
+    })),
+  }));
+}
+
+test("checkGithubIssues names the upstream closes on its ok row over a fresh ledger", async () => {
+  const now = 1_764_000_000_000;
+  const repo = githubRepoFixture();
+  writeIssuesLedgerWithLosses(repo, now - 60 * 60 * 1000, 2);
+  const gh = fakeGh();
+  const outcome = await checkGithubIssues(repo, githubConfig(), envPath(), gh.probe, now);
+  assert.deepEqual(outcome, {
+    level: "ok",
+    detail:
+      "gh ready — tumwater mirrors znation/tumwater's open issues · " +
+      githubUpstreamClosedSentence("znation/tumwater", 2),
+  });
+  // The clause is a read of .tumwater/, not a gh call: the probe count stays the readiness pair.
+  assert.deepEqual(gh.calls, [["--version"], ["auth", "status", "--hostname", "github.com"]]);
+});
+
+test("checkGithubIssues drops the clause for an empty or absent upstreamClosed list", async () => {
+  const now = 1_764_000_000_000;
+  const ok = { level: "ok", detail: "gh ready — tumwater mirrors znation/tumwater's open issues" };
+
+  const empty = githubRepoFixture();
+  writeIssuesLedgerWithLosses(empty, now - 60 * 60 * 1000, 0);
+  assert.deepEqual(await checkGithubIssues(empty, githubConfig(), envPath(), fakeGh().probe, now), ok);
+
+  // The list key present but not an array (a hand-edited ledger) is 0, never a guessed count.
+  const malformed = githubRepoFixture();
+  writeFileDeep(githubIssuesPath(malformed), JSON.stringify({
+    repo: "znation/tumwater", branch: "main", checkedAt: now - 60 * 60 * 1000, gh: "ok",
+    open: [], upstreamClosed: "yes",
+  }));
+  assert.deepEqual(await checkGithubIssues(malformed, githubConfig(), envPath(), fakeGh().probe, now), ok);
+});
+
+test("a stalled mirror reports its loss once — the warn carries no upstream-close clause", async () => {
+  const now = 1_764_000_000_000;
+  const repo = githubRepoFixture();
+  // One millisecond past the window, with two losses recorded: the stall half answers first.
+  writeIssuesLedgerWithLosses(repo, now - GITHUB_ISSUES_STALE_MS - 1, 2);
+  const outcome = await checkGithubIssues(repo, githubConfig(), envPath(), fakeGh().probe, now);
+  assert.equal(outcome?.level, "warn");
+  assert.equal(outcome!.detail.includes("closed upstream"), false);
+});
+
 test("checkGithubIssues warns when the mirror's last scan is past the stall window", async () => {
   const now = 1_764_000_000_000;
   const repo = githubRepoFixture();
@@ -507,6 +574,23 @@ test("a stalled ledger never outranks an unreadable gh", async () => {
   assert.equal(outcome?.level, "warn");
   assert.match(outcome!.detail, /^gh is missing — install GitHub CLI/);
   assert.deepEqual(missing.calls, [["--version"]]);
+});
+
+test("the doctor row and the alert band count one written ledger the same way", async () => {
+  const now = 1_764_000_000_000;
+  const repo = githubRepoFixture();
+  writeIssuesLedgerWithLosses(repo, now - 60 * 60 * 1000, 3);
+  const outcome = await checkGithubIssues(repo, githubConfig(), envPath(), fakeGh().probe, now);
+  const ledger = readGithubIssues(repo)!;
+  const summary = githubIssuesSummary(ledger, "tumwater");
+  const banner = buildGithubScanAlerts({
+    snap: { githubIssues: summary, githubScanStall: undefined },
+    now,
+  }).find((a) => a.key === "github-upstream-closes");
+  // INV-DG2: both surfaces render the one sentence over the one count — no second count source.
+  assert.equal(summary.upstreamClosed, countUpstreamClosed(ledger));
+  assert.equal(banner?.detail, githubUpstreamClosedSentence("znation/tumwater", summary.upstreamClosed));
+  assert.equal(outcome!.detail.endsWith(` · ${banner!.detail}`), true);
 });
 
 test("the github issues row and githubScanStalled agree on one ledger", async () => {

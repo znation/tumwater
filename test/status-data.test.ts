@@ -351,6 +351,7 @@ test("snapshot folds the GitHub issues ledger to its counts and omits it when ab
     untrusted: 1,
     waitingPush: 0,
     mirrorLabel: "tumwater",
+    upstreamClosed: 0,
   });
 
   writeConfig(repo, { githubIssues: { enabled: false } });
@@ -398,6 +399,7 @@ test("the snapshot's unmirrored count spares a director-declined issue and still
     untrusted: 0,
     waitingPush: 0,
     mirrorLabel: "tumwater",
+    upstreamClosed: 0,
   });
   const [declinedBanner] = (await statusPayload(repo, now)).alerts.filter((a) => a.key === "github-mirror");
   assert.equal(
@@ -524,7 +526,71 @@ test("the snapshot counts only the well-formed rows of a ledger holding a malfor
     untrusted: 0,
     waitingPush: 0,
     mirrorLabel: "tumwater",
+    upstreamClosed: 0,
   });
+});
+
+// The mirror's upstream-close count onto the snapshot (INV-DG2): the doctor row and the alert band
+// both read this one fold, so the ledger's `upstreamClosed` list is the single count source.
+test("the snapshot counts the ledger's upstream closes, screened rows only", async () => {
+  const lost = (number: number): GithubIssueRow => ({
+    number,
+    title: `lost ${number}`,
+    url: `https://github.com/acme/widgets/issues/${number}`,
+    author: "someone",
+    trusted: true,
+    mirrored: false,
+    labels: [],
+    updatedAt: "2026-11-21T00:00:00Z",
+    closedAt: 900,
+  });
+  const writeLost = async (rows: GithubIssueRow[] | undefined): Promise<string> => {
+    const repo = makeRepo();
+    await initProject(repo, "test project");
+    writeGithubIssues(repo, {
+      repo: "acme/widgets",
+      branch: "main",
+      checkedAt: 1000,
+      gh: "ok",
+      open: [],
+      ...(rows === undefined ? {} : { upstreamClosed: rows }),
+    });
+    return repo;
+  };
+
+  assert.equal((await snapshot(await writeLost([lost(7), lost(8)]))).githubIssues?.upstreamClosed, 2);
+
+  // An absent list — the shape every ledger had before the record existed — folds to 0.
+  assert.equal((await snapshot(await writeLost(undefined))).githubIssues?.upstreamClosed, 0);
+
+  // The standing banner rides the same fold: a positive count is the doctor row's one sentence.
+  const bannerRepo = await writeLost([lost(7), lost(8)]);
+  const [banner] = (await statusPayload(bannerRepo, 1000)).alerts.filter((a) => a.key === "github-upstream-closes");
+  assert.equal(banner?.tone, "blue");
+  assert.equal(
+    banner?.detail,
+    "2 open issues on acme/widgets were closed upstream with no fix merged by tumwater",
+  );
+});
+
+test("the snapshot counts only the screened rows of a hand-edited upstreamClosed list", async () => {
+  // The same row guard the `open` list passes (readGithubIssues screens both lists), so a
+  // hand-edited list counts what survives instead of what the file names.
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  writeJsonFile(githubIssuesPath(repo), {
+    repo: "acme/widgets",
+    branch: "main",
+    checkedAt: 1000,
+    gh: "ok",
+    open: [],
+    upstreamClosed: [
+      { number: 7, title: "seven", url: "u", author: "a", trusted: true, mirrored: false, labels: [], updatedAt: "t", closedAt: 900 },
+      null,
+      { number: 8, title: "half a row" },
+    ],
+  });
+  assert.equal((await snapshot(repo)).githubIssues?.upstreamClosed, 1);
 });
 
 // The mirror's stall onto the snapshot (the standing-banner plan): the poll decides it where the

@@ -695,7 +695,9 @@ stale settings.
   stuck role, a stopped team, disk and install drift, orphaned processes, open questions, refused
   entries, running on the fallback chain, a model that failed its model check, a stalled poll
   loop, the GitHub-issues mirror family (no `gh`, a failed scan, a scan gone quiet, issues the
-  director has not declined and has not mirrored, fixes waiting on a push), the background
+  director has not declined and has not mirrored, fixes waiting on a push, and — blue, asking
+  nothing, so it does not raise the needs-you count — issues GitHub closed upstream that this
+  workspace never merged a fix for), the background
   maintenance pass, and the standing doctor
   twins `no-check`, `no-brief`, `brief-truncated`, `role-notes-truncated`, `role-lessons-over-cap`,
   `salvage-patches`,

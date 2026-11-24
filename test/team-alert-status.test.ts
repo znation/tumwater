@@ -165,6 +165,7 @@ const ghSummary = (over: Partial<NonNullable<StatusSnapshot["githubIssues"]>>) =
   untrusted: 0,
   waitingPush: 0,
   mirrorLabel: "tumwater",
+  upstreamClosed: 0,
   ...over,
 });
 
@@ -287,4 +288,47 @@ test("no stall field, or no ledger, raises no stall banner", () => {
   );
   // A snapshot with no ledger section at all: the builder returns before the stall arm.
   assert.deepEqual(buildGithubScanAlerts({ snap: { githubScanStall: stalled() }, now: stallNow }), []);
+});
+
+// The upstream-close count (INV-DG2): the mirror's one standing signal for issues GitHub closed
+// upstream that this workspace never merged a fix for. Blue, and its detail is the doctor row's one
+// sentence over the same count.
+test("two upstream closes raise one blue github-upstream-closes banner with the doctor's sentence", () => {
+  const alerts = buildGithubScanAlerts({ snap: ghSnap(ghSummary({ upstreamClosed: 2 })), now: stallNow });
+  assert.equal(alerts.length, 1);
+  const alert = alerts[0];
+  assert.equal(alert?.key, "github-upstream-closes");
+  assert.equal(alert?.tone, "blue");
+  assert.equal(alert?.title, "GitHub issues closed upstream");
+  assert.equal(alert?.detail, "2 open issues on acme/widgets were closed upstream with no fix merged by tumwater");
+  assert.deepEqual(alert?.actions, []);
+});
+
+test("one upstream close agrees with its count", () => {
+  const [alert] = buildGithubScanAlerts({ snap: ghSnap(ghSummary({ upstreamClosed: 1 })), now: stallNow });
+  assert.equal(alert?.detail, "1 open issue on acme/widgets was closed upstream with no fix merged by tumwater");
+});
+
+test("a zero upstream-close count raises no banner and moves no other banner", () => {
+  // The blue mirror banner and the upstream-close banner are separate arms at separate keys.
+  const both = buildGithubScanAlerts({
+    snap: ghSnap(ghSummary({ unmirrored: 1, upstreamClosed: 2 })),
+    now: stallNow,
+  });
+  assert.deepEqual(both.map((a) => a.key), ["github-mirror", "github-upstream-closes"]);
+  assert.deepEqual(
+    buildGithubScanAlerts({ snap: ghSnap(ghSummary({ unmirrored: 1, upstreamClosed: 0 })), now: stallNow }).map((a) => a.key),
+    ["github-mirror"],
+  );
+});
+
+test("the upstream-close banner sits after every existing scan banner", () => {
+  const snap = {
+    ...ghSnap(ghSummary({ gh: "error" as const, reason: "gh api failed", unmirrored: 1, untrusted: 1, upstreamClosed: 4 })),
+    githubScanStall: stalled(),
+  };
+  assert.deepEqual(
+    buildGithubScanAlerts({ snap, now: stallNow }).map((a) => a.key),
+    ["github-error", "github-scan-stalled", "github-mirror", "github-upstream-closes"],
+  );
 });

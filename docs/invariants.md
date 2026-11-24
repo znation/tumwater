@@ -6232,6 +6232,48 @@ words, and an empty mirror in its header"; `test/cli-issues-follow.test.ts` — 
 repaints the lost subset at its whole-list position"; `test/github-issue-close.test.ts` — "a
 waitingPush record the scan dropped leaves githubCloseForStatus with nothing to count".
 
+### INV-DG2: an upstream close is counted once and said in one sentence, on the doctor row and the alert band
+
+**Guarantee.** The record INV-DG1 keeps is invisible unless a standing surface says it: the loss
+ drops its `waitingPush` promise, so `githubCloseForStatus` raises no `github-close` banner and the
+ queue never offers the issue. There is exactly one count — `GithubIssuesSummary.upstreamClosed`, the
+ length of the ledger's `upstreamClosed` list through `countUpstreamClosed`, over the rows
+ `readGithubIssues` already screened with `isGithubIssueRow`, the same fold `issuesHeader` applies as
+ `upstreamClosedCount` — and exactly one phrasing, `githubUpstreamClosedSentence(repo, n)`, singular
+ for a count of exactly 1 and plural for every other count, naming the repo and saying tumwater
+ merged no fix, with no age clause (a loss reads the same however fresh or stale the scan is). Both
+ standing surfaces render that sentence over that count: `checkGithubIssues` appends it to the
+ `github issues` row's ok detail when the count is above 0, after the readiness sentence
+ `gh ready — tumwater mirrors <repo>'s open issues` and after the stall warn returns its own detail,
+ so a stalled mirror reports its loss once; `buildGithubScanAlerts` raises one blue
+ `github-upstream-closes` banner with that detail when the count is above 0, last among the scan
+ banners, with no `actions` entry, so `alertNeedsYou` stays false and the dashboard's needs-you count
+ and page title do not move while `tumwater status`'s banner block prints the line. A count of 0 —
+ an absent, empty or hand-edited non-list — raises no banner and adds no clause. No surface gets its
+ own count or its own wording: the summary is folded by `githubIssuesForPoll` into the snapshot both
+ readers take, so a status poll spawns no `gh`, and the CLI render, the alert builder and the browser
+ bundle re-read nothing.
+
+**Binds.** `src/github/github-issues-state.ts` (`GithubIssuesSummary.upstreamClosed`,
+`countUpstreamClosed`, `githubIssuesSummary`, `githubUpstreamClosedSentence`),
+`src/doctor/doctor-project-checks.ts` (`checkGithubIssues`), `src/ui/team-alert-status.ts`
+(`buildGithubScanAlerts`), `src/ui/team-alerts.ts` (its section order and `alertNeedsYou`), and
+`src/status/status-data.ts` (`githubIssuesForPoll`, which fills the summary both readers render).
+
+**Pinned by.** `test/github-issues-state.test.ts` — "the summary's upstreamClosed counts the ledger's
+lost-issue list", "an absent, empty or malformed upstreamClosed list counts 0" and "the upstream-close
+sentence agrees with its count and names the repo"; `test/doctor-checks.test.ts` — "checkGithubIssues
+names the upstream closes on its ok row over a fresh ledger", "checkGithubIssues drops the clause for
+an empty or absent upstreamClosed list", "a stalled mirror reports its loss once — the warn carries no
+upstream-close clause" and "the doctor row and the alert band count one written ledger the same way";
+`test/status-data.test.ts` — "the snapshot counts the ledger's upstream closes, screened rows only"
+and "the snapshot counts only the screened rows of a hand-edited upstreamClosed list";
+`test/team-alert-status.test.ts` — "two upstream closes raise one blue github-upstream-closes banner
+with the doctor's sentence", "one upstream close agrees with its count", "a zero upstream-close count
+raises no banner and moves no other banner" and "the upstream-close banner sits after every existing
+scan banner"; `test/team-alerts.test.ts` — "an upstream-close banner goes last in the team's order and
+does not count as needing you".
+
 ## Once rounds: every starting hold settles its runner, so a held team still exits
 
 A `tumwater start --once` round ends when `OnceRound.exitReady` sees a settle (a run or a skip

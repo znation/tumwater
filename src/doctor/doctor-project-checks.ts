@@ -39,7 +39,10 @@ import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { readCiParity, currentCiParityState, parityIsCurrent, ciParityStalled, CI_PARITY_STALE_MS } from "../observer/ci-parity.js";
 import { githubTarget, readRemoteCi, type RemoteCiEntry, remoteCiStalled, remoteCiTarget } from "../observer/remote-ci.js";
 import { ghReadiness, ghRunner, ghUnreadableSentence, type GhRunner } from "../github/gh.js";
-import { githubScanStalled, githubScanStalledSentence, readGithubIssues } from "../github/github-issues-state.js";
+import {
+  countUpstreamClosed, githubScanStalled, githubScanStalledSentence,
+  githubUpstreamClosedSentence, readGithubIssues,
+} from "../github/github-issues-state.js";
 import { newestExercise, readQaCoverage, qaCoverageStalled, QA_COVERAGE_STALE_MS } from "../observer/qa-coverage.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./doctor-outcome.js";
 
@@ -544,8 +547,13 @@ export async function checkRemoteCi(
  * `githubScanStalled` — the one home of that decision — and warns when the last scan is older than
  * `GITHUB_ISSUES_STALE_MS` (the scan rewrites `checkedAt` on every attempt even when `gh` fails, so
  * an old stamp means the scan itself stopped). Not stalled — including no ledger at all — keeps the
- * ok detail byte-identical to the readiness-only row. Read-only against .tumwater/ and the local gh
- * install and its login (ghReadiness): no GitHub API call. */
+ * ok detail byte-identical to the readiness-only row. The ok detail then appends the upstream-close
+ * clause (INV-DG1) when the ledger's `upstreamClosed` list is non-empty, counted by the mirror's
+ * one count source `countUpstreamClosed` over the ledger this row already read — no second read, no
+ * new `gh` call. A stalled mirror is reported once: the warn returns before the clause is built. At
+ * a zero count the clause drops out, so a fixture with no `upstreamClosed` key or an empty list
+ * answers exactly as pinned before. Read-only against .tumwater/ and the local gh install and its
+ * login (ghReadiness): no GitHub API call. */
 export async function checkGithubIssues(
   root: string,
   config: TumwaterConfig | undefined,
@@ -564,7 +572,11 @@ export async function checkGithubIssues(
   if (ledger !== null && githubScanStalled(ledger, now)) {
     return warnOutcome(`gh ready — but ${githubScanStalledSentence(target.repo, ledger.checkedAt, now)}`);
   }
-  return okOutcome(`gh ready — tumwater mirrors ${target.repo}'s open issues`);
+  const lost = ledger === null ? 0 : countUpstreamClosed(ledger);
+  return okOutcome(
+    `gh ready — tumwater mirrors ${target.repo}'s open issues` +
+      (lost > 0 ? ` · ${githubUpstreamClosedSentence(target.repo, lost)}` : ""),
+  );
 }
 
 /** The doctor's `qa coverage` row: has the `qa` observer — the team's only flow-level

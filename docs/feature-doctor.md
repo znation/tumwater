@@ -67,7 +67,9 @@ example rather than enumerated — the full list is `tumwater doctor --list-chec
 - **Main and the build** — `main's check`, `check` (`checkBuildCheck`,
   src/doctor/doctor-project-checks.ts), `ci parity`, `remote CI`, `github issues` (src/doctor/doctor-project-checks.ts; `gh` readiness
   for the GitHub issues mirror, plus a warn when the mirror's last scan is older than the
-  three-day stall window `GITHUB_ISSUES_STALE_MS`), `qa coverage`, `update`.
+  three-day stall window `GITHUB_ISSUES_STALE_MS`, and on its ok row a clause counting the issues
+  GitHub closed upstream that tumwater never merged a fix for — the same sentence the dashboard's
+  blue `github-upstream-closes` banner prints), `qa coverage`, `update`.
 - **Backlog health** — `plans stuck in Planned`, `backlog headings`, `refusals`,
   `stalled entries`, `plan dependencies`, `stale questions`, `stale bugs`, `held bugs`,
   `regressed fixes`, `flaky checks`, `uncommitted backlog` (the backlog rows live in

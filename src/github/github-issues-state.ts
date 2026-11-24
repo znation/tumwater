@@ -12,6 +12,7 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { githubIssuesPath } from "../paths.js";
 import { DAY_MS, humanAgo } from "../text/datetime.js";
+import { agree, plural } from "../text/phrases.js";
 
 /** What the last scan learned from `gh`: `ok` when it read the issues, `missing` or
  * `unauthenticated` from the readiness probe, `error` when the listing itself failed. */
@@ -111,6 +112,21 @@ export interface GithubIssuesSummary {
   waitingPush: number;
   /** The label that lets an outside issue in, named by the alerts. */
   mirrorLabel: string;
+  /** How many issues the ledger holds in its upstream-close list — open rows a listing came back
+   * without, with no close tumwater recorded (INV-DG1). 0 when the ledger names none, which is
+   * also what a ledger written before the list existed folds to. */
+  upstreamClosed: number;
+}
+
+/** The count the surfaces show for INV-DG1: how many issues the ledger holds as closed upstream.
+ * Read off the ledger's own `upstreamClosed` list — the one record `recordUpstreamCloses` writes —
+ * over the rows `readGithubIssues` already screens with `isGithubIssueRow`, the same list
+ * `issuesHeader` counts as `upstreamClosedCount`. This is the mirror's only count source: the
+ * snapshot fold, the doctor row and the alert band all call it, none re-reads the ledger. An absent
+ * or malformed list is 0, never a guess. */
+export function countUpstreamClosed(ledger: GithubIssuesLedger): number {
+  const rows = Array.isArray(ledger.upstreamClosed) ? ledger.upstreamClosed : [];
+  return rows.length;
 }
 
 /** Fold a ledger to its summary. Pure: the caller supplies the configured mirror label. */
@@ -130,6 +146,7 @@ export function githubIssuesSummary(ledger: GithubIssuesLedger, mirrorLabel: str
     untrusted,
     waitingPush: 0,
     mirrorLabel,
+    upstreamClosed: countUpstreamClosed(ledger),
   };
 }
 
@@ -267,6 +284,20 @@ export function githubScanStalled(ledger: GithubIssuesLedger | null, now: number
  * prints `checked NaN ago`. */
 export function githubScanStalledSentence(repo: string, checkedAt: number, now: number): string {
   return `the last scan checked ${repo} ${humanAgo(checkedAt, now)}, over ${GITHUB_ISSUES_STALE_MS / DAY_MS} days ago, so tumwater is not mirroring its open issues`;
+}
+
+/** The one clause that counts the upstream closes (INV-DG1) — what the doctor's ok `GitHub issues`
+ * row appends after its readiness phrase, and what the status page's `github-upstream-closes`
+ * banner prints as its whole detail, so the two surfaces cannot drift on how a lost issue is
+ * phrased. One form for a count of 1, one for many; it names the repo and that tumwater merged no
+ * fix for them. No age clause — a loss says the same thing however fresh or stale the scan is — and
+ * no alarm: GitHub made the close and may have merged the fix, so the clause counts and no more.
+ * Call it only with a positive count; both surfaces drop it at 0. */
+export function githubUpstreamClosedSentence(repo: string, count: number): string {
+  return (
+    `${plural(count, "open issue", "open issues")} on ${repo} ${agree(count, "was", "were")} ` +
+    "closed upstream with no fix merged by tumwater"
+  );
 }
 
 /** The shortest hold one issue's `queued` record may impose: one scan interval. A director run

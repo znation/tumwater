@@ -7,7 +7,7 @@ import { POLL_STALL_MS } from "../status/status-data.js";
 import type { StatusSnapshot } from "../status/status-types.js";
 import type { GithubIssuesSummary } from "../github/github-issues-state.js";
 import { ghUnreadableSentence } from "../github/gh.js";
-import { githubScanStalledSentence } from "../github/github-issues-state.js";
+import { githubScanStalledSentence, githubUpstreamClosedSentence } from "../github/github-issues-state.js";
 import {
   openRoleActions, listRoles, listRoleIds, stuckDetail,
   type TeamAlert, type AlertRole,
@@ -326,8 +326,9 @@ function pushGithubMirrorAlert(out: TeamAlert[], gh: GithubIssuesSummary): void 
 }
 
 /** The GitHub issue alerts that follow the backlog alerts: the gray scan-failure banner, the amber
- * scan-stall banner, and the blue mirror-waiting banner (the amber `github-gh` banner rides
- * buildStatusAlerts). Empty when the snapshot carries no ledger summary. */
+ * scan-stall banner, the blue mirror-waiting banner, and the blue upstream-close count banner (the
+ * amber `github-gh` banner rides buildStatusAlerts). Empty when the snapshot carries no ledger
+ * summary. */
 export function buildGithubScanAlerts(input: {
   snap: Pick<StatusSnapshot, "githubIssues" | "githubScanStall">;
   now: number;
@@ -338,7 +339,26 @@ export function buildGithubScanAlerts(input: {
   pushGithubErrorAlert(out, gh, input.now);
   pushGithubScanStallAlert(out, input.snap, input.now);
   pushGithubMirrorAlert(out, gh);
+  pushGithubUpstreamClosesAlert(out, gh);
   return out;
+}
+
+// Issues GitHub closed upstream while the ledger held them open (INV-DG1, INV-DG2): the mirror
+// recorded the loss and nothing else speaks it — a lost issue drops its `waitingPush` promise, so
+// no `github-close` banner fires for it and the queue never offers it. Blue: it asks nothing of the
+// operator, the same rule the gray `github-error` and blue `github-mirror` arms follow — the
+// director has no issue to take and the team has no retry to run. The detail is the doctor row's
+// one sentence over the summary's own count, so the two surfaces cannot disagree on a written
+// ledger.
+function pushGithubUpstreamClosesAlert(out: TeamAlert[], gh: GithubIssuesSummary): void {
+  if (gh.upstreamClosed <= 0) return;
+  out.push({
+    key: "github-upstream-closes",
+    tone: "blue",
+    title: "GitHub issues closed upstream",
+    detail: githubUpstreamClosedSentence(gh.repo, gh.upstreamClosed),
+    actions: [],
+  });
 }
 
 // The mirror's scan gone quiet (plans/github-issues.md, the standing-banner plan): the ledger's
