@@ -81,7 +81,7 @@ your own hand-made commit on main with `tumwater land`.
 ## Status
 
 <!-- tumwater:status:start -->
-**v0.10.1**: working tumwater. The director and 15 of the 17 roles are enabled by default; `selfcheck`,
+**v0.11.0**: working tumwater. The director and 15 of the 17 roles are enabled by default; `selfcheck`,
 which files tumwater bugs from tumwater's own event log, and `feedback`, which files them as GitHub
 issues on znation/tumwater, are opt-in (`roles.selfcheck.enabled`, `roles.feedback.enabled`).
 `feature` and `bugfix` each run 3 parallel work instances unless `tumwater.json` sets
