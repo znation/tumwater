@@ -500,3 +500,17 @@ test("buildSalvageRestoreNote caps what it quotes and points at the patch for th
   assert.match(note, /\(\d+ more files? not shown: they are in the patch below\.\)/);
   assert.ok(note.length < 20_000, `the note stays bounded (${note.length} chars)`);
 });
+
+test("buildSalvageRestoreNote names a single cut file in the singular", () => {
+  // Each diff is 3611 characters after trimEnd (12 + 1200 × "+x\n" minus the trailing newline), so
+  // four fit the 16_000-character budget (14_444) and the fifth, 1_556 short of room, is the only
+  // file cut — the cut count reads "1 more file", never "1 more files" or "1 more file(s)".
+  const diff = (n: number): string => `@@ -1 +1 @@\n${"+x\n".repeat(n)}`;
+  const note = buildSalvageRestoreNote(
+    [],
+    Array.from({ length: 5 }, (_, i) => ({ path: `f${i}.md`, diff: diff(1_200) })),
+    "/r/p.patch",
+  )!;
+  assert.match(note, /\(1 more file not shown: they are in the patch below\.\)/);
+  assert.doesNotMatch(note, /more files not shown/, "one cut file never takes the plural");
+});
