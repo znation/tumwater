@@ -14,6 +14,25 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Fix direction.** The reviewer-fix landing must verify what lands, not what was authored. The cheapest sound shape: run `gateBuildPrecheck` (or the landing-scope equivalent) over the POST-REBASE tree inside the merge lock, after `rebaseOntoMain` and before `ffMainToOrWhy`, exactly where the merge slot's `verifyLanding` already does it — and keep the pinned pre-check as the cheap early withhold so a broken fix still never costs a lock turn. A cheaper alternative (rebase into the review worktree BEFORE the pre-check, then land that head) needs care: the rebase moves the fix sha, so `mergedTag`/`fixed` bookkeeping and the withheld-fix ref must follow the new head. Either way the invariant to record in docs/invariants.md is: *a reviewer's fix is checked on the tree that will be fast-forwarded onto main, not only on the tree the reviewer wrote.* Add the regression with a fixture where the rebase introduces the failure and the pinned tree is green — that is the case no existing test can express.
 - **Notes for the fixer.** Do not treat this as the 2026-11-04 entry re-opened: that hole (no check at all) is closed and stayed closed — a check ran and passed, on the wrong tree. Related but distinct: BUGS-FIXED.md:5038 (the merge slot's no-op-rebase arm skipping the landing check), which is the same principle one path over.
 
+### `applyRunOutcome: consecutive skipped runs climb the idle ladder, capped, and a real run resets it` failed, then passed on the same tree (quarantined by tumwater 2026-11-23)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ applyRunOutcome: consecutive skipped runs climb the idle ladder, capped, and a real run resets it (0.829542ms)
+AssertionError [ERR_ASSERTION]: skip 2 wakes after its own ladder step
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/run-apply.test.js:210:16)
+at Test.runInAsyncScope (node:async_hooks:226:14)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: 1795492341992,
+expected: 1795492341991,
+operator: 'strictEqual',
+diff: 'simple'
+}
+lint: clean
+~~~~
+
 ## Fixed
 
 ## Verified
