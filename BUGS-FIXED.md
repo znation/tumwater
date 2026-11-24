@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `applyRunOutcome: consecutive skipped runs climb the idle ladder, capped, and a real run resets it` failed, then passed on the same tree (quarantined by tumwater 2026-11-23) — fixed 2026-11-23 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+**Fix:** the test, not the scheduler. The skip arm's wake is the sum of two wall-clock reads: the test's own read and `scheduleBackoff`'s own `Date.now()` inside `applyRunOutcome`, so the wake is the LATER read plus the rung. The assertion pinned it to the EARLIER read — the rung added to the `before` the test captured — which can hold only while the clock returns the same millisecond twice in a row. A 1 ms advance across the call (the gate host crossing a millisecond boundary between the two reads) put it one over, exactly the recorded actual 1795492341992 against expected 1795492341991, and on the re-run both reads landed inside one millisecond, so the same tree passed. `test/run-apply.test.ts` now brackets the wake instead of pinning it: at least the earlier read plus the rung and at most the later read plus the rung, the latter captured after the call — the bracket shape the neighbouring ladder tests already use. The rung itself stays pinned exactly: the deep-equal over the eight step values, the cap, and both streak resets are unchanged, so only the cross-clock equality that could never hold is gone. A new test mocks `Date.now` to advance one millisecond per read and reproduces the flake deterministically: with the old strict equality it fails by 2 ms every run, and the bracket passes. The ladder arithmetic was checked, not assumed — nextBackoffSeconds doubles from the current value and caps at idleBackoff.maxSeconds, which is what the recorded steps show.
+
+~~~~
+✖ applyRunOutcome: consecutive skipped runs climb the idle ladder, capped, and a real run resets it (0.829542ms)
+AssertionError [ERR_ASSERTION]: skip 2 wakes after its own ladder step
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/run-apply.test.js:210:16)
+at Test.runInAsyncScope (node:async_hooks:226:14)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: 1795492341992,
+expected: 1795492341991,
+operator: 'strictEqual',
+diff: 'simple'
+}
+lint: clean
+~~~~
+
+**Validation gap:** no-fake — the failure needed a wall clock that advances between the test's read and the scheduler's, and no such fake existed (test/helpers/sleep-clock.ts fakes the sleep sampler, not `Date.now`); built one, and it reproduced the exact 1 ms the gate reported, so the closest tag `no-repro` describes the symptom, not what was missing.
+
 ### A re-filed `## Open` bug reworded under a *different* heading slips past `refiledFixedBugFinding`, because that guard keys on whole-heading text (found by the bugfix role 2026-11-23) — fixed 2026-11-23 by the bugfix role
 
 **Symptom.** `refiledFixedBugFinding` (merged 2026-11-23 01:47, INV-N7) gives a re-filed

@@ -233,22 +233,27 @@ test("applyRunOutcome: consecutive skipped runs climb the idle ladder, capped, a
   // bookkeeping" — so a role that declines to run over and over (nothing worth doing, a
   // deferral, a skip gate) woke on the fixed minimum forever while an idle role climbed the
   // idle ladder. It now advances the same ladder, so its wake is bounded by idleBackoff.max.
+  // The schedule is the sum of TWO wall-clock reads — this test's and scheduleBackoff's inside
+  // the call — so it is bracketed, never pinned: a clock that advances across the call (the
+  // 1 ms the merge gate saw on 2026-11-23) made the old strict equality fail on a green tree.
   const cfg = testConfig(); // idleBackoff: 30 s base, ×2, cap 3600 s
   const s = freshRunnerState("ci");
   const ladders: number[] = [];
   for (let i = 0; i < 8; i++) {
     const before = Date.now();
     applyRunOutcome(s, cfg, s.role, { result: "skipped" });
+    const after = Date.now();
     ladders.push(s.backoffSeconds);
     assert.equal(s.skippedStreak, i + 1, `skip ${i + 1} counts the streak`);
     assert.ok(
       s.backoffSeconds <= cfg.idleBackoff.maxSeconds,
       `skip ${i + 1} never passes the idle cap`,
     );
-    assert.equal(
-      s.nextRunAt,
-      before + s.backoffSeconds * 1000,
-      `skip ${i + 1} wakes after its own ladder step`,
+    assert.ok(
+      s.nextRunAt !== null &&
+        s.nextRunAt >= before + s.backoffSeconds * 1000 &&
+        s.nextRunAt <= after + s.backoffSeconds * 1000,
+      `skip ${i + 1} wakes one ladder step after a clock read taken around the call`,
     );
   }
   // 30, 60, 120, 240, 480, 960, 1920, then the cap holds at 3600.
@@ -260,14 +265,47 @@ test("applyRunOutcome: consecutive skipped runs climb the idle ladder, capped, a
   assert.equal(s.backoffSeconds, 0, "and the shared ladder");
   applyRunOutcome(s, cfg, s.role, { result: "skipped" });
   assert.equal(s.skippedStreak, 1);
+  const afterSkip = Date.now();
   assert.ok(
-    s.nextRunAt - Date.now() <= cfg.idleBackoff.initialSeconds * 1000 + 500,
+    s.nextRunAt !== null &&
+      s.nextRunAt >= afterSkip &&
+      s.nextRunAt - afterSkip <= cfg.idleBackoff.initialSeconds * 1000 + 500,
     "the skip after real work is back at the ladder's first step",
   );
   // A rejected run resets it too — the entry names that arm.
   s.skippedStreak = 4;
   applyRunOutcome(s, cfg, s.role, { result: "rejected" });
   assert.equal(s.skippedStreak, 0, "a rejected run clears the skip streak");
+});
+
+test("applyRunOutcome: a skipped run's wake is bracketed when the clock ticks inside the call", (t) => {
+  // The 2026-11-23 flake, made deterministic. The skip arm's wake is the sum of TWO wall-clock
+  // reads: this test's `before` and scheduleBackoff's own `Date.now()` inside applyRunOutcome. On
+  // a fast machine the two reads return the same millisecond, so
+  // the old strict equality held; when the clock advanced by 1 ms across the call it could not —
+  // the gate's actual 1795492341992 against expected 1795492341991. A clock that advances one
+  // millisecond per read reproduces that every time, which is why the arm's wake is bracketed
+  // above rather than pinned to one read.
+  const cfg = testConfig();
+  const BASE = 1_795_492_341_000; // a fixed epoch: this test never reads the live wall clock
+  let clock = BASE;
+  const stepper = t.mock.method(Date, "now", () => clock++);
+  try {
+    const s = freshRunnerState("ci");
+    s.backoffSeconds = 30; // so the next skip climbs to the second rung — the rung that flaked
+    const before = Date.now();
+    applyRunOutcome(s, cfg, s.role, { result: "skipped" });
+    const after = Date.now();
+    assert.equal(s.backoffSeconds, 60, "the second skip is one doubling off the base");
+    assert.ok(
+      s.nextRunAt !== null &&
+        s.nextRunAt >= before + s.backoffSeconds * 1000 &&
+        s.nextRunAt <= after + s.backoffSeconds * 1000,
+      "the wake sits one rung out from a clock read taken around the call",
+    );
+  } finally {
+    stepper.mock.restore();
+  }
 });
 
 test("applyRunOutcome: the director's skipped run still schedules at exactly the minimum interval", () => {
