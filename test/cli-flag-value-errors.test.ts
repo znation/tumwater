@@ -21,10 +21,16 @@ test("a malformed flag value is named before the ready-repo gate", async () => {
     [["logs", "--since", "bogus"], /logs --since needs a duration like 45s, 90m, 1h30m, or 2d \(got "bogus"\) — the unit must be one of d, h, m, or s, not "bogus"/],
     [["history", "--since", "0s"], /history --since needs a duration like 45s, 90m, 1h30m, or 2d \(got "0s"\) — a component's count may not be 0 or start with 0/],
     [["report", "--since", "45"], /report --since needs a duration like 45s, 90m, 1h30m, or 2d \(got "45"\) — it has no unit; the units are d, h, m, and s/],
-    [["logs", "-n", "0"], /-n needs a positive integer \(got "0"\)/],
+    [["logs", "-n", "0"], /-n needs a positive integer \(got "0"\) — the count must be at least 1/],
     [["history", "-n", "abc"], /-n needs a positive integer \(got "abc"\)/],
     [["report", "--days", "abc"], /--days needs a positive integer \(got "abc"\)/],
     [["gui", "--port", "abc"], /--port must be an integer between 1 and 65535 \(got "abc"\)/],
+    // The count shapes the plain-decimal rule refuses without saying why: a grouped, a signed, a
+    // zero-padded and a fractional spelling each gain the clause naming what to retype.
+    [["logs", "-n", "1,000"], /-n needs a positive integer \(got "1,000"\) — the digits may not be grouped with , or ;/],
+    [["logs", "-n", "-2"], /-n needs a positive integer \(got "-2"\) — the count may not carry a \+ or - sign/],
+    [["history", "-n", "007"], /-n needs a positive integer \(got "007"\) — the count may not start with 0/],
+    [["gui", "--port", "8080.5"], /--port must be an integer between 1 and 65535 \(got "8080\.5"\) — the count must be a whole number, not a decimal fraction/],
     [["pause", "--for", "xyz"], /pause --for needs a duration like 45s, 90m, 1h30m, or 2d \(got "xyz"\) — the unit must be one of d, h, m, or s, not "xyz"/],
     // The natural-language slip and the truncated composite: the two shapes the grammar line
     // alone left the operator to diagnose. Each clause names the part to fix.

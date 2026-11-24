@@ -2623,6 +2623,29 @@ not stripped, so machine-readable output stays byte-exact.
 **Pinned by.** `test/text.test.ts` — "stripTerminalControls removes ESC/C0/C1/DEL and keeps only
 newline and tab".
 
+### INV-AD6: a refused count names its slip, and no spelling the parsers accept gains one
+
+**Guarantee.** `decimalSlipClause` answers a value `parsePositiveInt`/`parseNonNegativeInt` refused
+with one appended clause naming which slip it is (whitespace, an inner space, digit grouping, a
+sign, a `0x` spelling, scientific notation, a fractional part, a zero where the caller's kind wants
+a positive one, leading-zero padding, or a digit run past `MAX_SAFE_INTEGER`), or `""` when it
+cannot name one better than the standing refusal does — including the empty value and a leading `-`
+with no digits after it, which is a dropped flag rather than a signed count. It never quotes the
+value and never rewords the standing message, so every existing `… (got "…")` refusal keeps its
+shape. No spelling the parsers accept gains a clause — checked over a generated space of accepted
+counts, which is what holds the branches in order. The `kind` argument decides the zero clause
+alone.
+
+**Binds.** `src/text/text.ts` (`decimalSlipClause`); consumers `src/cli/cli-args.ts`
+(`parseCountFlag`, `parsePositionFlag`, `parsePortFlag`) and `src/cli/cli-question-commands.ts`
+(`questions answer <n>`).
+
+**Pinned by.** `test/text-count-slip.test.ts` — "decimalSlipClause names nothing for a count the
+parsers accept", "decimalSlipClause names the shape of each rejected count",
+"decimalSlipClause's zero clause follows the caller's kind" and "decimalSlipClause is always an
+appended clause, never a report of its own"; end-to-end shape pins in
+`test/cli-flag-value-errors.test.ts`.
+
 ## Untrusted JSON: a torn, foreign or wrong-shaped value reads as no data, never as a throw or a stand-in
 
 `src/files/json-object.ts` and `src/files/json-files.ts` are the one home of the reads every state

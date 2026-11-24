@@ -14,7 +14,7 @@ import { followView, type FollowViewSeams } from "../follow.js";
 import { refuseTeamWorkspace } from "./cli-repo-gate.js";
 import { promptFileValue, readPromptFileArg } from "./cli-prompt-file.js";
 import { editInEditor } from "../editor.js";
-import { gotSuffix, parsePositiveInt } from "../text/text.js";
+import { decimalSlipClause, gotSuffix, parsePositiveInt } from "../text/text.js";
 import { validPositionRange } from "../text/phrases.js";
 import { typoSuffix } from "../text/suggest.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
@@ -305,7 +305,9 @@ async function runQuestionsAnswer(root: string, inv: QuestionsInvocation): Promi
   const n = raw === undefined ? null : parsePositiveInt(raw);
   if (n === null)
     fail(
-      `questions answer needs a positive question number: questions answer <n> "<decision>"${gotSuffix(raw)}`,
+      `questions answer needs a positive question number: questions answer <n> "<decision>"${gotSuffix(raw)}${
+        raw === undefined ? "" : decimalSlipClause(raw, "positive")
+      }`,
     );
   if (file !== undefined) return answerFromFile(root, n, file, words, jsonFlag);
   if (words.length === 2) return answerFromEditor(root, n, jsonFlag);

@@ -252,12 +252,52 @@ export function truncateWithNote(text: string, max: number, label: string): stri
  * (fail vs HTTP 400), and bounded variants like --port add their upper limit. */
 function parseDecimalInt(raw: string): number | null {
   if (!/^\d+$/.test(raw)) return null; // Decimal digits only — no hex, exponent, sign, or whitespace padding.
-  // Leading-zero padding ("007", "08", "00") is rejected too: no count or position is typed
-  // that way, so the documented plain-decimal rule reads it as not-a-count rather than
-  // silently reading "007" as 7. A lone "0" stays valid — it is the plain spelling of zero.
-  if (raw.length > 1 && raw.charCodeAt(0) === 48) return null;
+  if (isZeroPaddedDecimal(raw)) return null;
   const n = Number(raw);
   return Number.isSafeInteger(n) ? n : null;
+}
+
+/** Whether `raw` is a digit run with leading-zero padding ("007", "08", "00"): no count or
+ * position is typed that way, so the documented plain-decimal rule reads it as not-a-count
+ * rather than silently reading "007" as 7. A lone "0" is not padding — it is the plain spelling
+ * of zero. One home for the rule, read by parseDecimalInt and by decimalSlipClause. */
+function isZeroPaddedDecimal(raw: string): boolean {
+  return raw.length > 1 && raw.charCodeAt(0) === 48;
+}
+
+/** Name, as one clause to append after a refused count's existing `… (got "…")` suffix, which
+ * slip in the spelling its parser rejected — an operator told only `got "1,000"` learns nothing
+ * about what to retype. The clause is append-only: the standing sentence before it keeps its exact
+ * wording, the clause never quotes the value (the `(got "…")` suffix stays the one echo), and the
+ * first clause named is the first thing to fix. `kind` is the caller's own kind, because a count of
+ * 0 is a slip only for `"positive"`: naming it for `"non-negative"` would refuse a legal zero. The
+ * parsers accept the value exactly when this returns `""`. It also returns `""` for the empty
+ * string, which the `(got "")` suffix already shows, and for a leading `-` with no digits after it
+ * — a bare `-` or a `--json` in a value slot is a dropped flag, not a signed count, and naming one
+ * as a sign would be a guess. */
+export function decimalSlipClause(raw: string, kind: "positive" | "non-negative"): string {
+  if (/^\s|\s$/.test(raw)) return " — it has leading or trailing whitespace";
+  if (/\s/.test(raw)) return " — the digits may not have a space between them";
+  if (/[,;]/.test(raw)) return " — the digits may not be grouped with , or ;";
+  // A signed count is the common slip, so it is named, but only when digits follow the sign: a
+  // bare `-`, a `--`-token or a `-x` in a value slot is a dropped flag, not a signed count, and
+  // calling one a sign would be a guess — the duration clause applies the same carve-out, and
+  // the CLI's valued-flag slots refuse `--` tokens before this clause (rejectFlagLookingValue).
+  if (/^[+-]\d/.test(raw)) return " — the count may not carry a + or - sign";
+  if (raw.startsWith("-")) return "";
+  if (/^0[xXbBoO]/.test(raw)) return " — the count must be decimal, not a 0x hexadecimal spelling";
+  if (isExponentSpelling(raw))
+    return " — scientific notation is not a count; write out the digits";
+  if (raw.includes(".")) return " — the count must be a whole number, not a decimal fraction";
+  // Zero is a real value for a non-negative surface and a slip for a positive one, so only the
+  // kind decides whether this clause may fire at all.
+  if (raw === "0" && kind === "positive") return " — the count must be at least 1";
+  if (isZeroPaddedDecimal(raw)) return " — the count may not start with 0";
+  // A digit run past MAX_SAFE_INTEGER has no exact value to return, which the bare echo of the
+  // value does not say; the guard here is what keeps an ordinary accepted count out of the clause.
+  if (/^\d+$/.test(raw) && !Number.isSafeInteger(Number(raw)))
+    return ` — the count is past what tumwater can hold exactly (at most ${Number.MAX_SAFE_INTEGER})`;
+  return "";
 }
 
 /** Parse `raw` as a positive integer — the one definition of what counts as a valid count or

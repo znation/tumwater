@@ -1,7 +1,7 @@
 import { fail } from "../terminal.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
-import { gotSuffix, parsePositiveInt, splitCommaList } from "../text/text.js";
+import { decimalSlipClause, gotSuffix, parsePositiveInt, splitCommaList } from "../text/text.js";
 import { durationLabel, durationSlipClause, parseDurationMs } from "../text/duration.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
@@ -235,7 +235,7 @@ export function parseCountFlag(flag: string, raw: string | undefined, max?: numb
   // and still reads as one. The sibling parsePositionFlag applies the same guard.
   rejectFlagLookingValue(flag, raw);
   const n = parsePositiveInt(raw);
-  if (n === null) fail(`${flag} needs a positive integer${gotSuffix(raw)}`);
+  if (n === null) fail(`${flag} needs a positive integer${gotSuffix(raw)}${decimalSlipClause(raw, "positive")}`);
   if (max !== undefined && n > max)
     fail(`${flag} must be between 1 and ${max}${gotSuffix(raw)}`);
   return n;
@@ -256,7 +256,7 @@ export function parsePositionFlag(flag: string, raw: string | undefined, example
   // reporting "(got \"--json\")" as a malformed position number.
   rejectFlagLookingValue(flag, raw);
   const n = parsePositiveInt(raw);
-  if (n === null) fail(`${flag} needs a positive integer${gotSuffix(raw)}`);
+  if (n === null) fail(`${flag} needs a positive integer${gotSuffix(raw)}${decimalSlipClause(raw, "positive")}`);
   return n;
 }
 
@@ -377,7 +377,7 @@ export function parsePortFlag(raw: string | undefined): number {
   rejectFlagLookingValue("--port", raw);
   const n = parsePositiveInt(raw);
   if (n === null || n > 65535)
-    fail(`--port must be an integer between 1 and 65535${gotSuffix(raw)}`);
+    fail(`--port must be an integer between 1 and 65535${gotSuffix(raw)}${decimalSlipClause(raw, "positive")}`);
   return n;
 }
 
