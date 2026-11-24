@@ -683,6 +683,42 @@ still elevated", "recheckQuietHost defers a host that re-saturated after it was 
 `test/orchestrator-quiet-gate.test.ts` — "the pin-drain e2e test gates on awaitQuietHost before it
 runs".
 
+### INV-F3: a live-orchestrator test reads a merge's queue events only after the shared settle waiter has seen that merge settle
+
+**Guarantee.** A test that drives the live orchestrator (`test/*.e2e.test.ts` and
+`test/orchestrator-director.test.ts`, which starts the same orchestrator but runs in the gating
+tier because its name carries no `.e2e.` part) asserts a merge's queue events
+(`merge_done`/`merge_failed`) or their fields only after `test/fixtures/orchestrator-fixtures.ts`'
+`awaitMergeSettled` has seen that role's terminal settle event, never immediately after a ref-,
+runner-state-, or queue-shaped wait. The ordering is fixed by the code: a merged change's pin is
+deleted inside the merge on `result === "changed"` (`src/merge/merge-core.ts`), the role's runner
+state is saved in `settleMergeOutcome` (`src/merge/merge-slot.ts`) and the queue entry is dropped
+there, and only then is the `merge_done`/`merge_failed` event appended — the merge marker's removal
+is the one write that follows the event. So each of those effects can be true while the event is
+still unwritten, and on a loaded host the gap widens past a poll cycle: an exact event count or a
+`deepEqual` over the settle events is the first thing to notice (six BUGS.md records in this area,
+most closed by hand-writing a wait for the settle's event at one site each). The waiter is
+source-keyed, so a leftover settle from an earlier round or another role can never answer for this
+merge, and it returns the settle event so a caller takes its count and its `result` from one read.
+No production behaviour depends on it; the fix stays in the tests — the pin is deleted at the gate
+on purpose so a restart cannot re-merge a change whose merge already ran, and the settle's later
+event stays the record of the outcome. A wait for a marker's removal needs no converter: the
+marker's removal follows the event, so it already implies the settle.
+
+**Binds.** `test/fixtures/orchestrator-fixtures.ts` (`awaitMergeSettled`, `mergeSettlement`).
+
+**Pinned by.** `test/orchestrator-fixtures.test.ts` — "awaitMergeSettled returns the merge_done
+event a landed settle logged", "awaitMergeSettled returns the merge_failed event a rejected settle
+logged", "awaitMergeSettled keys on the settling role, so another role's merge never answers",
+"awaitMergeSettled times out on a log with no settle for the role" and "awaitMergeSettled answers
+with the role's latest settle when an earlier one is in the log". The converted live sites are
+driven by `test/orchestrator-3.e2e.test.ts` — "a user abort during a merge kills it and discards
+the pinned ref", "a pin surviving a restart drains through the gate on next start", "an entry whose
+sha main already holds is dropped at the drain without a merge run" and "an abort for the verifying
+role discards its pin and the next queued change starts and merges" — and by
+`test/orchestrator-director.test.ts` — "restart hand-off: an in-flight merge outliving its deadline
+is aborted, not waited out".
+
 ## The merge gate's deterministic rejections
 
 The gate rejects some changes without running a reviewer, because the exempt fast path for

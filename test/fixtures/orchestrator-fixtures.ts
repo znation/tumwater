@@ -13,6 +13,8 @@ import { refSha } from "../../src/git/git.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
 import { loadRunnerState } from "../../src/runner/runner-state-load.js";
 import { logEvent } from "../../src/events/events.js";
+import { readEvents } from "../../src/events/event-read.js";
+import type { HarnessEvent } from "../../src/events/events.js";
 import type { RedeployDeps } from "../../src/redeploy/redeploy-policy.js";
 import { Redeployer } from "../../src/redeploy/redeployer.js";
 import type { RoleRunner } from "../../src/runner/runner.js";
@@ -20,6 +22,7 @@ import { fakePi, fakePiIdle } from "../fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { writeModelsFile } from "./models-fixtures.js";
 import { waitFor } from "../helpers/wait.js";
+import type { WaitClock } from "../helpers/wait.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import type { RunResult } from "../../src/run/run-outcome.js";
 
@@ -336,6 +339,50 @@ export async function awaitSettledRun(
     what,
     ms,
   );
+}
+
+/** The role's latest merge-queue settle event, or undefined while its merge is still queued.
+ * Source-keyed (INV-F3): a merge event's `source` is the role whose change is merging, so a
+ * leftover settle from an earlier round or another role can never answer for this one. */
+function mergeSettlement(repo: string, role: string): HarnessEvent | undefined {
+  return readEvents(repo)
+    .filter((e) => (e.type === "merge_done" || e.type === "merge_failed") && e.source === role)
+    .at(-1);
+}
+
+/** Waits for `role`'s merge of a change to settle and returns the settle's terminal event — the
+ * one seam the live-orchestrator tests hand off on (INV-F3). A role's run ends and releases its
+ * permit before the merge it queued lands, and the merge's pin delete, runner-state save and
+ * queue-entry drop all reach disk before `settleMergeOutcome` appends the `merge_done` /
+ * `merge_failed` event — so a caller that waits on a ref-, state-, or queue-shaped effect and
+ * then counts merge events reads them short; that window is today's merge-queue flake. Wait on
+ * the settle itself: this polls the log for the role's `merge_done`/`merge_failed` event, so the
+ * hand-off costs one poll interval and the assertions after it read a settled queue. Read the
+ * event's `result` (the RunResult the merge reached — `"changed"` landed, `"aborted"` was
+ * stopped, `"rejected"` failed the gate) and its `type` off the returned event, so an exact
+ * count and a field pin come from one read. Pass `clock` (test/fakes/time.ts) to unit-test the
+ * timeout without spending real time. */
+export async function awaitMergeSettled(
+  repo: string,
+  role: string,
+  what: string,
+  ms = 90_000,
+  clock?: WaitClock,
+): Promise<HarnessEvent> {
+  // waitFor answers void, so the settle it polled for is captured beside the predicate and
+  // handed back — reaching the return means the predicate held, so the capture is set.
+  let settle: HarnessEvent | undefined;
+  await waitFor(
+    () => {
+      settle = mergeSettlement(repo, role);
+      return settle !== undefined;
+    },
+    `the ${role} role's merge of ${what} to settle`,
+    ms,
+    clock,
+  );
+  assert.ok(settle !== undefined, "waitFor held the settle predicate, so the settle is set");
+  return settle;
 }
 
 /** Drive the expected role's merge pin through the orchestrator's own merge pipeline

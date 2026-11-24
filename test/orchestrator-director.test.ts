@@ -38,6 +38,7 @@ import { pauseTeam } from "../src/team/team-state.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import {
   FAST_POLL_MS,
+  awaitMergeSettled,
   awaitSettledRun,
   makeFastRepo,
   onceRound,
@@ -309,6 +310,11 @@ test("restart hand-off: an in-flight merge outliving its deadline is aborted, no
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
     assert.equal(swaps.length, 1, "the new build was swapped in");
+    // The hand-off's abort reaches the settle's merge_failed after the swap is reported: the
+    // runner-state save lands before that event and the queue-entry drop after it (INV-F3), so
+    // the deepEqual below waits on the settle itself rather than racing the event write.
+    const aborted = await awaitMergeSettled(repo, "clean", "its outlived merge");
+    assert.equal(aborted.result, "aborted", "the hand-off settled the merge aborted");
     assert.ok(
       eventsOfType(repo, "warning").some((e) => /outlived its .*deadline/.test(String(e.message))),
       "the hand-off announced the lapse before stopping",

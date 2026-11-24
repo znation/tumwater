@@ -26,6 +26,7 @@ import {
 import { enqueueMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { refAbsentFromFiles, setRef } from "../src/git/git.js";
 import {
+  awaitMergeSettled,
   fastConfig,
   mergeRefExists,
   makeFastRepo,
@@ -106,6 +107,11 @@ test("a user abort during a merge kills it and discards the pinned ref", async (
     // The team consumes the request, aborts the in-flight merge, and the drain discards
     // the pinned ref: a deliberate stop kills the work under review, the merge's
     // counterpart of the pre-3/5 mid-review user abort. (A shutdown abort keeps the ref.)
+    // The settle's merge_failed event is the hand-off point (INV-F3): the runner-state save
+    // lands before it and the pin discard after it, so an effect- or state-keyed wait alone
+    // can read the event count short. Wait on the settle, then on the effects it straddles.
+    const aborted = await awaitMergeSettled(repo, "clean", "its aborted merge", 60_000);
+    assert.equal(aborted.result, "aborted", "the merge, not the run, was aborted");
     await waitFor(
       () => loadRunnerState(repo, "clean").lastResult === "aborted" && !mergeRefExists(repo, "clean"),
       "the aborted merge to settle and discard its pinned ref",
@@ -207,18 +213,14 @@ test("a pin surviving a restart drains through the gate on next start", async (t
   seedSurvivorPin(repo, "crash.txt", "crash survivor");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // The merge deletes the pin the moment the result is `changed` (src/merge/merge-core.ts) but
-    // logs merge_done a settle turn later (settleMergeOutcome -> writeMergeOutcome), so the pin
-    // being gone and main holding the change is true before the outcome event exists. Wait for
-    // the settle as well — the shape this file's sibling dedup test uses — or a read landing in
-    // that window counts 0 merge_done for a merge that did happen.
-    await waitFor(
-      () =>
-        refAbsentFromFiles(repo, mergeRefName("clean")) &&
-        fs.existsSync(path.join(repo, "crash.txt")) &&
-        eventsOfType(repo, "merge_done").length === 1,
-      "the surviving pin to drain onto main and log its merge_done",
-    );
+    // The pin is deleted inside the merge the moment the result is `changed`
+    // (src/merge/merge-core.ts) but the settle appends merge_done a turn later, so a wait on
+    // the pin or on main holding the change can precede the event. Hand off on the settle
+    // itself (INV-F3) — the event exists once the waiter returns, and a landed merge's pin
+    // delete and fast-forward both precede it, so the effects below already hold.
+    const settled = await awaitMergeSettled(repo, "clean", "the surviving pin");
+    assert.equal(settled.result, "changed", "the surviving pin drained through the gate");
+    assert.ok(fs.existsSync(path.join(repo, "crash.txt")), "the change is on main");
     assert.ok(refAbsentFromFiles(repo, mergeRefName("clean")), "the pin was consumed");
     assert.equal(
       eventsOfType(repo, "merge_done").length,
@@ -262,15 +264,15 @@ test("an entry whose sha main already holds is dropped at the drain without a me
     // One real change merges end to end. hello.txt reaches the PRIMARY repo only via the merge's
     // fast-forward (its ff writes the file into the primary checkout), so its presence there is
     // the faithful "merged to main" signal — unlike lastResult, which a later no_change run
-    // overwrites and would otherwise make this wait flaky.
-    // The slot logs merge_done only after the fast-forward writes hello.txt, so wait for both:
-    // a stale pin planted in that gap is dropped before the first merge_done lands.
-    await waitFor(
-      () => fs.existsSync(path.join(repo, "hello.txt")) && eventsOfType(repo, "merge_done").length === 1,
-      "the change to merge on main and log merge_done",
-    );
+    // overwrites and would otherwise make this wait flaky. The settle's merge_done is the
+    // hand-off point (INV-F3); the fast-forward that writes hello.txt precedes it.
+    const settled = await awaitMergeSettled(repo, "clean", "the hello change");
+    assert.equal(settled.result, "changed", "the change merged through the gate");
+    assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change reached main");
     // …and the crash-between-ff-and-drop residue is simulated the pin way: the pin repointed
     // at main's head (a sha main already holds), which the drain drops stale without a merge.
+    // A stale drop logs no event, so the settle already seen fixes the counts below: the only
+    // way they could move is a second merge, which is what the dedup forbids.
     await setRef(repo, mergeRefName("clean"), headSha(repo));
     await waitFor(
       () => refAbsentFromFiles(repo, mergeRefName("clean")),
@@ -316,12 +318,11 @@ test("a stale marker beside a stale pin is dropped at the drain without a merge 
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // The slot logs merge_done only after the fast-forward writes hello.txt, so wait for both:
-    // a stale pin planted in that gap is dropped before the first merge_done lands.
-    await waitFor(
-      () => fs.existsSync(path.join(repo, "hello.txt")) && eventsOfType(repo, "merge_done").length === 1,
-      "the change to merge on main and log merge_done",
-    );
+    // One real change merges end to end, hand-off on the settle's merge_done (INV-F3); the
+    // fast-forward that writes hello.txt precedes the event.
+    const settled = await awaitMergeSettled(repo, "clean", "the hello change");
+    assert.equal(settled.result, "changed", "the change merged through the gate");
+    assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change reached main");
     // …and the crash residue is the pin way: the pin repointed at main's head (a sha main
     // already holds — a pin that resolves nowhere new) with a stale in-flight marker left
     // behind by a drain that crashed. The drain must drop both in the same pass: the pin
@@ -520,6 +521,10 @@ test("an abort for the verifying role discards its pin and the next queued chang
     const markerFile = abortRequestPath(repo, "clean");
     writeMarker(markerFile, { at: Date.now() });
 
+    // The settle's merge_failed is the hand-off point (INV-F3) — see the abort test above — so
+    // the deepEqual below reads a settled queue, not one still mid-write.
+    const aborted = await awaitMergeSettled(repo, "clean", "its aborted verify", 60_000);
+    assert.equal(aborted.result, "aborted", "the verify's merge settled aborted, not merged");
     await waitFor(
       () => loadRunnerState(repo, "clean").lastResult === "aborted" && !mergeRefExists(repo, "clean"),
       "clean's aborted verify to settle and discard its pin",
