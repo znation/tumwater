@@ -22,7 +22,7 @@ import { mergeRefName } from "../src/paths.js";
 import type { RunOutcome } from "../src/run/run-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { StagedDescription } from "../src/prompt/gate-prompts.js";
-import type { RunnerState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state-types.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { truncate } from "../src/text/text.js";
 import { readEvents } from "../src/events/event-read.js";

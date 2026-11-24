@@ -1,5 +1,5 @@
 import type { HandBackCause, RunOutcome } from "../run/run-outcome.js";
-import type { RunnerState } from "./runner-state.js";
+import type { RunnerState } from "./runner-state-types.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { aheadOfMain, headOf, setRef } from "../git/git.js";
 import { resetWorktreeToMain } from "../git/worktree.js";

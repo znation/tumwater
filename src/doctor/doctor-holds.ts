@@ -8,7 +8,7 @@ import { budgetReached, budgetWarning, teamDailyCost } from "../budget/budget.js
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota-gates.js";
 import { maintenanceQuotaForPoll } from "../status/status-polls.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { baseRoleOf, runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import { ERROR_STREAK_BREAKER, errorStreakAtWarn } from "../run/run-apply.js";

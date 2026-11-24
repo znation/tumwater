@@ -1,6 +1,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { MergeEntry } from "../merge/merge-queue.js";
-import { conflictAttempts, hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";
+import { conflictAttempts, hasOutstandingWork } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import {

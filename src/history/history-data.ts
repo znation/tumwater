@@ -197,7 +197,7 @@ export interface RunRow {
   tokens: number;
   costUsd: number;
   /** The run's largest single-request context, from the `run_end`'s `peakContextTokens`
-   * (runner-state.ts's peakContextTokens, written when the run reported one), positive-only
+   * (runner-state-types.ts's peakContextTokens, written when the run reported one), positive-only
    * like the event's own omit-when-zero convention: the key is absent when the run_end
    * carried none (or zero), so an older run_end or one that reported no peak keeps today's
    * exact row and `history --json` shape. */

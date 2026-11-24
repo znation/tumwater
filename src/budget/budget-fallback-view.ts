@@ -34,7 +34,7 @@ import { piPairFree, seamFree, type PiModelDef } from "../pi/pi-models.js";
 import type { OpencodeCatalogCache } from "../agent/opencode/opencode-catalog.js";
 import type { SubscriptionAccount } from "../agent/subscription-account.js";
 import type { ClaudeAccount, ClaudeWindow } from "../agent/claude/claude-account.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import type { ChainTierInfo } from "../team/team-orchestrator-info-types.js";
 import { dayAt } from "../text/datetime.js";
 import type { BudgetGateState } from "../gates/budget-gates.js";

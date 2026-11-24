@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import * as path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { resolvedGitBin } from "../git/git-run.js";
 import { currentBranchFromHeadFile, targetBranch } from "../git/git.js";
 import { readTextOrNull } from "../files/files.js";

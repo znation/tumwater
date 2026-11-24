@@ -30,7 +30,8 @@ import { recordReview } from "../run/run-apply.js";
 import { firstReason } from "../text/phrases.js";
 import { escalatedHoldMs } from "../team/team-hold.js";
 import { seamHoldKey, seamPairName } from "../config/config-views.js";
-import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
+import { saveRunnerStateBestEffort } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import type { RoleRunner } from "../runner/runner.js";
 import type { RunResult } from "../run/run-outcome.js";
 

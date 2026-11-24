@@ -1,6 +1,6 @@
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import type { StatusSnapshot } from "../status/status-types.js";
 import { errorStreakAtWarn, QUIET_KILL_RESUME_LIMIT } from "../run/run-apply.js";
 import { readLiveProgress, type LiveProgress } from "./progress-data.js";

@@ -125,5 +125,5 @@ export interface RunOutcome {
  * run prompt injects (run-prompt.ts's buildRejectedReviewNote) and the same-head strike
  * counter reads (review.ts's unreviewFailures). Mutates `s` in place; the timestamp is
  * stamped here so every call site shares one Date.now() read and the shape stays in one place
- * (runner-state.ts's lastReview). */
+ * (runner-state-types.ts's lastReview). */
 

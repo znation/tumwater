@@ -1,5 +1,5 @@
 import { callBuffersOutput, callClassifiedCommand } from "../pi/command-shape.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress-data.js";
 import { compactTokens } from "../text/format.js";
 import { pad2 } from "../text/datetime.js";

@@ -36,7 +36,7 @@ import { readAccount, windowEntries } from "../agent/subscription-account.js";
 import { CONFIG_BASENAME, configPath, roleLessonsPath, roleNotesPath } from "../paths.js";
 import { parseRoleLessonsText, roleLessonsText } from "./role-notes-write.js";
 import { coverageRows, readQaCoverage, type CoverageRow } from "../observer/qa-coverage.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { filingRows, readFeedbackFilings, type FilingRow } from "../observer/feedback-filings.js";
 import { readRegularTextOrNull, statOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
@@ -446,7 +446,7 @@ function notesAndWindowsOf(
   return { note, noteSavedAt, lessons, quietHours, contextWindow };
 }
 
-/** The role's persisted schedule (runner-state.ts) surfaced read-only in the payload: the
+/** The role's persisted schedule (runner-state-types.ts) surfaced read-only in the payload: the
  * epoch-ms instant before which it must not run again, the backoff it is currently serving
  * (0 when not), the yield multiplier its recent-yield ring earns right now, and — absent until
  * the role has run — when its last run ended. One shape, shared by `previewRun`'s return and

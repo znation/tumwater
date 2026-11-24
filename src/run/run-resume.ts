@@ -1,4 +1,4 @@
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { backendSessionResumable } from "../agent/agent-backend.js";
 import { latestSession, type SessionRecord } from "../agent/session-ledger.js";
 import { RETRIABLE_MERGE_RESULTS } from "../merge/merge-core.js";

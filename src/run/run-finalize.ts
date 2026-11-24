@@ -1,5 +1,6 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { hasOutstandingWork, saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
+import { hasOutstandingWork, saveRunnerStateBestEffort } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { branchHead } from "../git/git.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { observeAccount } from "../agent/subscription-account.js";
@@ -256,7 +257,7 @@ function logRunEnd(
     // renders byte-identically.
     ...(usage.checkpointCompactions > 0 ? { checkpointCompactions: usage.checkpointCompactions } : {}),
     // The run's peak single-request context: how hot the run's largest model call ran
-    // against the model's declared window (runner-state.ts's peakContextTokens, reset at
+    // against the model's declared window (runner-state-types.ts's peakContextTokens, reset at
     // run start). Omitted when zero like the prompt-token fields, so a run that reported
     // no context — and every run_end written by an older build — renders byte-identically.
     ...(state.peakContextTokens > 0 ? { peakContextTokens: state.peakContextTokens } : {}),

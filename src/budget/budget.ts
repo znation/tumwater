@@ -11,7 +11,7 @@
 import { MODEL_TIERS, type TumwaterConfig } from "../config/config-schema.js";
 import { compareCodeUnits } from "../collections.js";
 import { nonNegativeNumber, setOwn } from "../files/json-object.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { dayAt, dayKey } from "../text/datetime.js";
 
 /** The local calendar day as YYYY-MM-DD — the same local-time convention as every other

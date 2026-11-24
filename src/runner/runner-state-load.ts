@@ -1,6 +1,7 @@
 // vocabulary: plain
-import type { RunnerState } from "./runner-state.js";
-import { freshRunnerState, SKIP_REASONS } from "./runner-state.js";
+import type { RunnerState } from "./runner-state-types.js";
+import { freshRunnerState } from "./runner-state.js";
+import { SKIP_REASONS } from "./runner-state-types.js";
 import path from "node:path";
 import { dirEntryNames } from "../files/files.js";
 import { readJsonFile } from "../files/json-files.js";
@@ -12,8 +13,9 @@ import { allRoleIds } from "../roles/roles.js";
 
 /** The read side of the runner's persisted state: the tolerant load of one role's file (heals
  * every field a hand edit or an older build could leave unusable, and renames the keys an older
- * build wrote) and the live-claim scan over every role's file. The type, the fresh-state
- * defaults, the atomic save and zeroCounters stay in runner-state.ts. */
+ * build wrote) and the live-claim scan over every role's file. The published type lives in
+ * runner-state-types.ts; the fresh-state defaults, the atomic save and zeroCounters stay in
+ * runner-state.ts. */
 
 /** A persisted numeric field, healed to a finite non-negative number (the fallback when it is
  * absent, foreign, NaN/±Infinity, or negative). Every numeric field on RunnerState — top-level or

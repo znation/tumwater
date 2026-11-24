@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { HandBackCause, RunOutcome, RunResult } from "../run/run-outcome.js";
-import type { RunnerState } from "./runner-state.js";
+import type { RunnerState } from "./runner-state-types.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { branchExists, headOf } from "../git/git.js";
 import { git, gitTry } from "../git/git-run.js";

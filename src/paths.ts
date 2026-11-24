@@ -111,7 +111,8 @@ export function branchName(role: string): string {
   return `tumwater/${role}`;
 }
 
-/** A role's state file (.tumwater/state/<role>.json; runner-state.ts). */
+/** A role's state file (.tumwater/state/<role>.json; runner-state.ts, shape in
+ * runner-state-types.ts). */
 export function statePath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "state", `${role}.json`);
 }

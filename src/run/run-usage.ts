@@ -2,7 +2,7 @@ import type { BackendFailureKind } from "../pi/pi.js";
 import { endedBeforeAnyReply, runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import type { RateWindow } from "../pi/pi-stream.js";
 import type { ClaudeBilling } from "../agent/claude/claude-account.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { recordDailyCost } from "../budget/budget.js";
 import { nonNegativeNumber } from "../files/json-object.js";
 

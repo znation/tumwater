@@ -8,7 +8,7 @@ import { cancelQueuedFile } from "../src/inbox/inbox-cancel.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { imageReferenceLines, imageReferencePaths, savePromptImages } from "../src/inbox/inbox-attachments.js";
 import { roleInboxDir } from "../src/paths.js";
-import type { RunnerState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state-types.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // pending-prompt.ts holds the requeue policy for every run outcome that leaves a user

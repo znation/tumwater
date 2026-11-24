@@ -7,7 +7,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunOutcome } from "./run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { commitAll, headOf, isDirty } from "../git/git.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import {

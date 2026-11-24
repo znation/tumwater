@@ -22,7 +22,8 @@ import {
 import { parsePositiveInt } from "../text/text.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
-import { stateSkipReason, type RunnerState } from "../runner/runner-state.js";
+import { stateSkipReason } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { isTeamPaused, pausedRoles } from "../team/team-state.js";
 import { runnerPaused } from "../roles/runner-ids.js";
 

@@ -8,7 +8,8 @@ import { mergeRefName, withdrawnRefName } from "../paths.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { stripEntryStamp } from "../backlog/backlog-md.js";
 import { shortSha } from "../text/format.js";
-import { conflictAttempts, type RunnerState } from "./runner-state.js";
+import { conflictAttempts } from "./runner-state.js";
+import type { RunnerState } from "./runner-state-types.js";
 
 /** Salvaging a commit a previous run left unmerged (plans/merge-queue.md). Since merge queue
  * 2/5 the role's branch is reset to main the moment its commit is pinned, so the leftover

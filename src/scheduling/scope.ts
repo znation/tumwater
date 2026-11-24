@@ -13,12 +13,8 @@ import { DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import { HOUR_MS } from "../text/datetime.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota-gates.js";
 import { INSTANCE_ROLES, baseRoleOf, runnerEnabled, runnerPaused } from "../roles/runner-ids.js";
-import {
-  conflictAttempts,
-  hasOutstandingWork,
-  saveRunnerStateBestEffort,
-  type SkipReason,
-} from "../runner/runner-state.js";
+import { conflictAttempts, hasOutstandingWork, saveRunnerStateBestEffort } from "../runner/runner-state.js";
+import type { SkipReason } from "../runner/runner-state-types.js";
 import { MERGE_CONFLICT_LIMIT } from "../runner/runner-leftover.js";
 import { queuedMerges } from "../merge/merge-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";

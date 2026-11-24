@@ -10,7 +10,8 @@ import { baseRoleOf, configuredInstances, runnerPaused } from "../roles/runner-i
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import { deferRunReason, isEligible, type DeferReason } from "./scheduling.js";
 import { inboxSize, deliverablePromptStamps } from "../inbox/inbox.js";
-import { freshlyWoken, type SkipReason } from "../runner/runner-state.js";
+import { freshlyWoken } from "../runner/runner-state.js";
+import type { SkipReason } from "../runner/runner-state-types.js";
 import { MERGE_CONFLICT_LIMIT } from "../runner/runner-leftover.js";
 import { noteSkip, type SchedulingScope } from "./scope.js";
 import { heldStarts } from "../team/team-hold.js";

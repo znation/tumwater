@@ -16,7 +16,7 @@ import { piModelImageInput, piPairFree, piModelsPath, readPiProviders, type PiMo
 import { piListedImageInput, type PiListedModels } from "../pi/pi-listed-models.js";
 import type { ClaudeAccount } from "./claude/claude-account.js";
 import { backendById } from "./agent-backend.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 
 /** The subset of a resolved seam the capability resolver reads: an `agent` when the config
  * routed one, else a `provider`/`model` pair. ResolvedModelConfig and the doctor's SeamPair

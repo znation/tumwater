@@ -1,4 +1,4 @@
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import type { StatusSnapshot } from "../status/status-types.js";
 import type { SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import { dailyCost } from "../budget/budget.js";

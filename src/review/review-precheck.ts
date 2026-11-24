@@ -7,7 +7,7 @@
 
 import type { ReviewContext, GateResult } from "./review.js";
 import { abortedGateResult } from "./gate-result.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";

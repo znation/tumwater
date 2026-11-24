@@ -8,7 +8,7 @@ import { mergeApprovedChange } from "../src/merge/merge-core.js";
 import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
 import { mergeRefName, mergeWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
-import type { RunnerState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state-types.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { withdrawnPinReason } from "../src/merge/merge-withdrawn.js";
 import { assertClean, mainSha, pinOffMain, sh, tmpdir, makeRepo } from "./fixtures/repo-fixtures.js";

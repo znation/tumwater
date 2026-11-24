@@ -21,7 +21,8 @@ import {
   type ClaimRunner,
 } from "../src/scheduling/claims.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state-types.js";
 import { buildAssignmentNote } from "../src/prompt/gate-notes.js";
 import { refreshPendingPlans } from "../src/backlog/backlog-pending.js";
 import { makeRepo, commitIn, headSha, sh } from "./fixtures/repo-fixtures.js";

@@ -18,7 +18,7 @@ import {
   finishRecoveryRunPhase,
   pinAndResetPhase,
 } from "../src/runner/runner-recovery.js";
-import type { RunnerState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state-types.js";
 import { mergeRefName } from "../src/paths.js";
 import { shortSha } from "../src/text/format.js";
 import { commitIn, headSha, initializedRepo, initializedWorktree, mainSha, tmpdir } from "./fixtures/repo-fixtures.js";

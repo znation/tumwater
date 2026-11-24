@@ -23,7 +23,7 @@ import { changeBaseRev, deleteRef, fileContentAt } from "../git/git.js";
 import { gitTryStarted } from "../git/git-run.js";
 import { mergeRefName } from "../paths.js";
 import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { movedOutEntries } from "../scheduling/claims.js";
 
 /** The backlog entry a queued change's run was assigned (RunnerState.claim without its

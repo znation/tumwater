@@ -3,7 +3,7 @@ import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { teamHold, TEAM_OPEN, type TeamHold, type HoldObservation } from "./team-hold.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./team-failure-spread.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import type { BackendFailureKind } from "../pi/pi.js";
 import { groupBy } from "../collections.js";
 

@@ -17,7 +17,7 @@ import type { RunnerRunContext } from "./runner-run.js";
 import type { RunStartPlan } from "../run/run-resume.js";
 import type { RunOutcome } from "../run/run-outcome.js";
 import type { LeftoverRecovery } from "./runner-leftover.js";
-import type { RunnerState } from "./runner-state.js";
+import type { RunnerState } from "./runner-state-types.js";
 
 /** How does a run recover a leftover? A previous run may have left a commit unmerged
  * (runner-leftover.ts): recovery re-pins it, so it merges through the

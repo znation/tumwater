@@ -124,7 +124,7 @@ export interface RoleViewPayload {
   /** The next run's assembled prompt, verbatim, through the preview seam — or null when
    * the role has nothing to run (a director with an empty inbox). */
   nextPrompt: string | null;
-  /** The role's persisted schedule (runner-state.ts): the epoch-ms instant before which it
+  /** The role's persisted schedule (runner-state-types.ts): the epoch-ms instant before which it
    * must not run again and the backoff in seconds it is currently serving (0 when not
    * backing off) — the same two fields the status `next run` cell reads. `nextRunAt` is 0
    * for a role that has never been scheduled; `backoffSeconds` is 0 unless a wake-clearing

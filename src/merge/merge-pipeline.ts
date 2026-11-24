@@ -11,7 +11,7 @@ import { mergeRefName, rejectedRefName } from "../paths.js";
 import type { AbortableMerge } from "../operator/operator-requests.js";
 import type { MergeEntry } from "./merge-queue.js";
 import type { RunResult } from "../run/run-outcome.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 
 /** One merge task the pipeline owns (merge queue 3/5, land-queue speed 2c) — the merge slot's
  * one gate-then-merge task, or a post-merge review: its task, the controller that aborts it

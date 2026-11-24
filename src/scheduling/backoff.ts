@@ -1,5 +1,5 @@
 import type { BackoffConfig } from "../config/config-schema.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import type { RunResult } from "../run/run-outcome.js";
 import { yieldScaledRole } from "../roles/roles.js";
 

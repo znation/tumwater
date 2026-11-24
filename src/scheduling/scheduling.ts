@@ -9,7 +9,8 @@
  * module only reads RoleRunner through its public fields and imports no runtime from it. */
 
 import type { RoleRunner } from "../runner/runner.js";
-import { freshlyWoken, hasOutstandingWork, type RunnerState, type SkipReason } from "../runner/runner-state.js";
+import { freshlyWoken, hasOutstandingWork } from "../runner/runner-state.js";
+import type { RunnerState, SkipReason } from "../runner/runner-state-types.js";
 import { scheduleConfigForRole } from "../config/config-views.js";
 import {
   BUGFIX_ROLE,

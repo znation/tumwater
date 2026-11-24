@@ -14,7 +14,7 @@ import {
   ERROR_STREAK_WARN,
   QUIET_KILL_RESUME_LIMIT,
 } from "../src/run/run-apply.js";
-import type { RunnerState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state-types.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";

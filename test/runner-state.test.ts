@@ -9,7 +9,7 @@ import { allLiveClaims, loadRunnerState } from "../src/runner/runner-state-load.
 import { isTeamPaused, pauseTeam, resumeTeam } from "../src/team/team-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/team/team-orchestrator-info.js";
 import { dailyCost, todayStamp } from "../src/budget/budget.js";
-import type { RunnerState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state-types.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
 import { tmpdir, initializedRepo, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
@@ -19,10 +19,10 @@ import { writeOrchestratorMarker, warningMessages } from "./fixtures/log-fixture
 import { ensureParentDir } from "../src/files/files.js";
 import { backdate } from "./helpers/backdate.js";
 
-/** The persisted-state file's own tests (src/runner/runner-state.ts): fresh defaults, the tolerant
- * load,
- * the atomic save, the counter reset — and the orchestrator info file, whose readers live in
- * team/team-orchestrator-info.ts but whose shape is pinned beside the state convention it mirrors.
+/** The persisted-state file's own tests (src/runner/runner-state.ts, whose published shape is
+ * runner-state-types.ts): fresh defaults, the tolerant load, the atomic save, the counter reset —
+ * and the orchestrator info file, whose readers live in team/team-orchestrator-info.ts but whose
+ * shape is pinned beside the state convention it mirrors.
  * The run-apply.ts scheduling policy's tests live in run-apply.test.ts. */
 
 /** Every field a fresh state has must hold its default value (extra junk keys are allowed). */

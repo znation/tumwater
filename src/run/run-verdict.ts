@@ -5,7 +5,7 @@
  * the run IS fulfillable, which the pipeline answers with stageRunMerge. Split out of runner.ts so
  * the runner keeps only its plumbing (state saves, prompt assembly, the pi wiring) and the verdict
  * tree reads next to its sibling outcome modules (run-outcome, run-apply, run-stage). */
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { imageReroute } from "../agent/image-input.js";

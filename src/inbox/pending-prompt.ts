@@ -1,5 +1,5 @@
 import { renameSync } from "node:fs";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { enqueueRolePrompt, removeSameStemSiblings, takeQueuedFile } from "./inbox.js";
 import { movePromptImages, stripVanishedImageReferences } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";

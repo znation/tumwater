@@ -50,7 +50,7 @@ export interface RunDetail {
   costUsd: number;
   usage: string;
   /** The run's largest single-request context, from the `run_end`'s `peakContextTokens`
-   * (runner-state.ts's peakContextTokens, written when the run reported one); 0 when the
+   * (runner-state-types.ts's peakContextTokens, written when the run reported one); 0 when the
    * run carried none or is in flight. The header renders it as `peak ctx …` (
    * run-detail-render.ts) against `contextWindow` below. */
   peakContextTokens?: number;

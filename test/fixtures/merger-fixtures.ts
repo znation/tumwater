@@ -8,7 +8,7 @@ import { mergeRefName } from "../../src/paths.js";
 import { defaultConfig } from "../../src/config/config.js";
 import type { RunResult } from "../../src/run/run-outcome.js";
 import type { PiRunResult } from "../../src/pi/pi-run-result.js";
-import type { RunnerState } from "../../src/runner/runner-state.js";
+import type { RunnerState } from "../../src/runner/runner-state-types.js";
 import { projManifest, writeScript } from "../fakes/fake-commands.js";
 import { mainSha, makeRepo, pinOffMain, sh } from "./repo-fixtures.js";
 import { piRunResult } from "../fakes/fake-pi.js";

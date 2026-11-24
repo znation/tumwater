@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { RunUsage } from "../src/run/run-usage.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
-import type { RunnerState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state-types.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
 // RunUsage's accounting (src/run/run-usage.ts): the once-per-run choke point every pi run of a

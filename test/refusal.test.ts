@@ -6,7 +6,7 @@ import { handleRefusal, newlyRefusedTitles, refusalContradiction, withoutBlocked
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { RunOutcome, RunResult } from "../src/run/run-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
-import type { RunnerState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state-types.js";
 import { assertClean, commitIn, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { readEvents } from "../src/events/event-read.js";
 import { patchFsMethod, errnoError } from "./helpers/fs-faults.js";

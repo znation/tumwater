@@ -14,7 +14,8 @@ import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { qaCoveragePath, roleNotesPath, roleLessonsPath, feedbackFilingsPath } from "../src/paths.js";
 import { ROLE_LESSONS_MAX_BYTES, ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
-import { freshRunnerState, saveRunnerState, type RunnerState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state-types.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { applyMergeOutcome } from "../src/run/run-apply.js";
 import { tmpdir, makeRepo, commitIn, headSha, sh } from "./fixtures/repo-fixtures.js";
@@ -38,8 +39,9 @@ function root(): string {
 
 function state(overrides: Partial<RunnerState> = {}): RunnerState {
   // The production constructor, not a hand-rolled literal: a copied field list drifts
-  // silently when runner-state.ts grows a field (this one had already dropped dayStamp and
-  // dayCostUsd), while a spread over freshRunnerState picks the shape up automatically.
+  // silently when the shape (runner-state-types.ts) grows a field (this one had already
+  // dropped dayStamp and dayCostUsd), while a spread over freshRunnerState picks the shape up
+  // automatically.
   return { ...freshRunnerState("coverage"), ...overrides };
 }
 

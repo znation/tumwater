@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage, type Role } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { planBacklogTarget, projectedPlanEligibleCount } from "../scheduling/claims.js";

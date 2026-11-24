@@ -35,7 +35,7 @@
  * it is not running, and the role_streak_paused event tells the operator why. */
 
 import { ERROR_STREAK_BREAKER } from "../run/run-apply.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { saveRunnerStateBestEffort } from "../runner/runner-state.js";
 import { runnerPaused } from "../roles/runner-ids.js";
 import { pauseRole } from "../team/team-state.js";

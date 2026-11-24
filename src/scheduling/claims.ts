@@ -10,7 +10,8 @@
 import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { DAY_MS } from "../text/datetime.js";
-import { hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";
+import { hasOutstandingWork } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { type EligibleEntry, claimedElsewhereKeys, eligibleAmong, eligibleEntries, entryHoldAgainst, roleSection } from "../backlog/backlog-eligibility.js";
 import { entryKey, plannedPartKeys } from "../backlog/backlog-parts.js";
 import { projectedPlannedEntries } from "../backlog/backlog-pending.js";

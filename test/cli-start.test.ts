@@ -8,7 +8,7 @@ import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { pauseTeam } from "../src/team/team-state.js";
-import type { RunnerState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state-types.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { sleep } from "./helpers/wait.js";
 

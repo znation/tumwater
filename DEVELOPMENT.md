@@ -260,7 +260,10 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 
 ## Layout
 
-- `src/runner/runner.ts`: the runner class and its lifecycle/public surface. `src/runner/runner-pi.ts`
+- `src/runner/runner.ts`: the runner class and its lifecycle/public surface. The persisted state
+  file's published shape is its own contract file (`runner-state-types.ts`, the same
+  `status-types.ts` pattern above, so the observers that only read a role's schedule never import
+  the writer), `src/runner/runner-pi.ts`
   holds its pi-run plumbing, `runner-run.ts` the run pipeline phases (it calls the leftover-recovery
   and change-apply halves — `runner-leftover-recovery.ts` and `runner-apply.ts` — before the author
   run), `runner-recovery.ts` the phases that settle a run killed mid-flight (distinct from the leftover

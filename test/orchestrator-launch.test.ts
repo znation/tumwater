@@ -22,7 +22,7 @@ import { DIRECTOR_ROLE, roleTier } from "../src/roles/roles.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { mainRedHealPrompt } from "../src/baseline/main-red.js";
 import type { RoleRunner } from "../src/runner/runner.js";
-import type { RunnerState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state-types.js";
 import type { RunOutcome } from "../src/run/run-outcome.js";
 import type { TeamGateStates } from "../src/gates/gate-polls.js";
 import { IDLE_FALLBACK_BREAKER, rekeyFallbackBreaker, FALLBACK_BREAKER_POLICY, type FallbackBreaker } from "../src/budget/fallback-breaker.js";

@@ -16,7 +16,7 @@ import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { clearSupersededRejection } from "../run/run-apply.js";
 import type { RunOutcome, RunResult } from "../run/run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 
 /** Handling a refused run (plans/refusal-and-thrash.md): the run declined its work and ended
  * with TUMWATER_REFUSED. Only the markdown objection note may merge — it is the durable record

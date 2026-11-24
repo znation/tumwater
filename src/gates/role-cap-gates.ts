@@ -27,7 +27,7 @@
  * 80% re-logs one `role_cap_warning` (the durable-cause honest report the streak-gates doc
  * accepts). */
 
-import type { RunnerState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state-types.js";
 import { groupBy } from "../collections.js";
 import { budgetWarning, dailyCost, todayStamp } from "../budget/budget.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
