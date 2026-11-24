@@ -119,7 +119,8 @@ export function formatGB(n: number): string {
 /** A byte count for display, picking the largest of the B/KB/MB/GB tiers so the unit keeps the
  * number small (`2.0 KB`, `1.5 MB`) — one decimal everywhere. The single home of the tiered
  * byte format shared by the doctor's claude transcript size (doctor-checks.ts's `formatBytes`)
- * and the opencode db/spill sizes (doctor-model-checks.ts's `opencodeBytes`), so the tiers and
+ * and the opencode db/spill sizes (doctor-opencode-checks.ts's `opencodeStorageNote`), so the
+ * tiers and
  * decimal width cannot drift per consumer. Distinct from `formatGB` above, which always renders
  * a disk size in GB regardless of magnitude. The GUI's file-size label still formats from its
  * own inline JS in gui-client-composer.ts: a separate runtime that cannot import TypeScript. */

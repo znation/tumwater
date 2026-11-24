@@ -530,8 +530,8 @@ function pushReportTail(lines: string[], data: ReportData): void {
   // How long each finished plan or bug waited from filing to done, per completion day — the
   // median backlog age at which the day's items closed. Team-only (a lag has no role) and
   // zero-means-absent: no line when no day carries one. Values are whole days from
-  // daysBetween, so a plain `${n}d` is exact where medianLine's shortSpanPhrase would print
-  // minutes.
+  // daysBetween, so a plain `${n}d` is exact where dayCameoLine's default shortSpanPhrase would
+  // print minutes.
   if (data.role === undefined) {
     const lags = data.series.flatMap((d) =>
       d.backlogLagMedianDays === undefined

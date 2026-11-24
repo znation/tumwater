@@ -413,7 +413,7 @@ function buildOrchestratorRuntime(setup: OrchestratorSetup, opts: RunOptions): O
     });
   });
   // Per-role deferred-due state for one-shot tick_deferred events: the previous poll's
-  // deferral per role (like prevBudgetPaused/prevUserPaused, but per role), so each episode
+  // deferral per role (like prevUserPaused/prevGate, but per role), so each episode
   // logs exactly once — on the transition in, never while merely not-due and never on exit.
   // In-memory only: a restart mid-episode can re-log at most one event.
   const deferredDue = new Map<string, boolean>();

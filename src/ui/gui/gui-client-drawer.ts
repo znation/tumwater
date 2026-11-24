@@ -465,7 +465,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     refreshTranscript(true);
   }
 
-  // A plan/bug cancel waits for its confirming click, the confirmAbort shape: the first click
+  // A plan/bug cancel waits for its confirming click, the confirmSlot shape (defined in
+  // gui-client-roles.ts, the earliest splice): the first click
   // arms it for 5 s, a second inside the window fires, and a timeout disarms. The slot records
   // the title too: a list that shifted between the clicks must re-arm, not cancel whatever
   // entry now sits at that position.

@@ -488,9 +488,10 @@ export function resultFlagSpec(missingValue: string): FlagSpec {
  * result — a boolean flag leaves no value to carry — so the pair lives as a const pair. */
 export const OPEN_FLAG: FlagSpec = { names: ["--open"] };
 
-/** The `--closed` filter flag of `issues`, twin of OPEN_FLAG: it admits the closed rows the
- * ledger keeps, which the unfiltered read drops (the ledger stores open and closed in separate
- * keys, and githubIssuesLedgerViews reads only the open one). */
+/** The `--closed` filter flag of `issues`, twin of OPEN_FLAG: it keeps only the rows of the
+ * issues tumwater closed (the ledger stores open and closed in separate keys, and
+ * github-issues-render.ts's `issueRows` lists the closed ones last, so the unfiltered read
+ * shows them too and this flag is what isolates them). */
 export const CLOSED_FLAG: FlagSpec = { names: ["--closed"] };
 
 /** The `--lost` filter flag of `issues`, third of the state triple: it keeps the rows the ledger
@@ -598,8 +599,9 @@ export const GUI_FLAG_SPECS: FlagSpec[] = [PORT_FLAG, ALL_INTERFACES_FLAG, TOKEN
  * can mask it from an operator typing `tumwater pause --role` outside an initialized repo. A
  * repeated flag fails: the parsers in cli/cli-args.ts read flags with indexOf, so a second
  * occurrence used to be silently dropped and the operator's later value (gui --port 8000 --port
- * 9000, logs -n 5 -n 10) never took effect — the same "may only be given once" rule parseInitArgs
- * and parsePromptArgs apply to their own flags. The check is keyed by spec, so alias spellings (-f
+ * 9000, logs -n 5 -n 10) never took effect — the same "may only be given once" rule
+ * rejectDuplicateFlags (cli-command-args.ts) applies to the free-form parsers' flags. The check
+ * is keyed by spec, so alias spellings (-f
  * and --follow) count as one flag, while a flag-shaped VALUE claimed by an earlier flag is not a
  * repeat. */
 export function rejectUnknownArgs(command: string, args: string[], specs: FlagSpec[]): void {

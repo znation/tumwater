@@ -71,7 +71,8 @@ function applyClause(live: boolean, when: string, verb: string): string {
 
 /** The state files the offline arms of reset-counters and wake may write for a listed id.
  *
- * A listed id is expanded the way the live consumer's applyResetRequest/applyWakeRequest matches
+ * A listed id is expanded the way the live consumer's consumeResetRequest/consumeWakeRequest
+ * matches
  * its payload: `requested.includes(r.role) || requested.includes(r.baseRole)`, so a base id names
  * its whole instance family and a listed instance id names that runner alone — it never fans out
  * to its siblings or to its base id. The family comes from runnerIds, the same source the live
@@ -110,7 +111,7 @@ export function requestResetCounters(root: string, roles: string[]): string {
   // is no concurrent writer and the direct write is what carries the reset to the next run.
   const { live, when } = markerApplyNote(root);
   // A listed base id is expanded to its instance family: the live consumer zeroes every runner of
-  // that family (applyResetRequest's baseRole match), so writing the base id alone would zero one
+  // that family (roleRequestTargets' baseRole match), so writing the base id alone would zero one
   // instance of an N-instance role and leave its siblings dirty. offlineWriteTargets keeps a listed
   // instance id at one instance.
   if (!live)

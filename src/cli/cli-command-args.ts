@@ -68,9 +68,10 @@ const LIST_TEMPLATES_PROMPT_ERROR =
   "--list-templates takes no prompt — run `tumwater init --list-templates` alone";
 
 /** The two parsers' shared "each flag at most once" rule: refuse a repeated flag with the
- * same "may only be given once" wording parseFlagSpecs' spec-driven check applies to the
- * spec-parsed commands. Two call sites: parseInitArgs (over every known flag) and
- * parsePromptArgs (over --list/--cancel/--role/--json). */
+ * same "may only be given once" wording the spec-driven gate applies to the spec-parsed
+ * commands (cli-flag-specs.ts's rejectUnknownArgs, through rejectRepeatFlag). Two call
+ * sites: assertInitFlags (over every known flag) and scanPromptFlags (over every prompt flag
+ * but the repeatable --attach and the follow pair, whose repeat parsePromptFollow refuses). */
 function rejectDuplicateFlags(args: readonly string[], flags: readonly string[]): void {
   for (const flag of flags) rejectRepeatFlag(args.filter((a) => a === flag).length > 1, flag);
 }

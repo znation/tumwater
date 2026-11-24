@@ -441,9 +441,10 @@ export function reviewRunConfig(
 
 /** The optional provider/model/thinking fields of a resolved model seam, with each unset
  * (empty) field left out so the result carries only what was resolved — the one home of that
- * assembly. The fallback layer (config-fallbacks.ts's fallbackSelectorFields and
- * fallbackPair/tierOwnFallback) and role-view-types.ts's RoleViewPayload (its model fields) all
- * build a triple this way and follow the same rule — an absent or empty
+ * assembly. The fallback layer (config-fallbacks.ts's seamKeyedPairFields, reached through
+ * fallbackSelectorFields and legacyFallbackPair) and the role view (role-view.ts's modelFields,
+ * whose fields land in RoleViewPayload) all build a triple this way and follow the same rule —
+ * an absent or empty
  * value is
  * omitted rather than written as undefined/"" (an empty selector field would read as
  * "override present," so it must not appear). */

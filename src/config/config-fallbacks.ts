@@ -505,7 +505,8 @@ function legacyPairConfig(config: TumwaterConfig, pair: FallbackModelConfig): Tu
  * is left out (it inherits default's entry, harmless because the gate holds its roles), raw
  * per-role selector overrides are dropped so a paid pin cannot keep spending, and tier-name
  * role overrides (`roles.<id>.model: "strong"`) are kept since the map now serves the tier
- * itself. The director's exemption lives in the gates (roleForConfig), not here. A
+ * itself. The director's exemption lives in the gates (budget-gates.ts's gateRoleConfig), not
+ * here. A
  * subscription claude seam is never moved (`free`): the gate passes one predicate over the
  * resolved seam, so a free tier keeps its own primary in the map — with the ambient thinking
  * level it resolved with — a free role keeps its own override, and a free reviewer keeps its own

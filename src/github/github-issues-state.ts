@@ -84,8 +84,9 @@ export interface GithubIssuesLedger {
   /** Issues whose director prompt was queued (part 4c/5), by issue number: when it was queued, and
    * the issue's `updatedAt` then. The queue offers the issue again once this record is 24 h old
    * (decision 5), or once its hold is shortened — see `recheckAfterMs`.
-   * An optional third field, `recheckAfterMs`, shortens that hold: `releaseQueuedIssueRetry`
-   * writes it when the director run the queue started ended without settling the issue (no
+   * An optional third field, `recheckAfterMs`, shortens that hold: `releaseIssueRetryHold`
+   * (src/github/issue-outcome.ts) writes it when the director run the queue started ended
+   * without settling the issue (no
    * `ISSUE:` line recorded), so a run that died on a checkpoint abort does not cost the issue a
    * full day. An absent field means the full 24 h; so does any value that is not a finite
    * non-negative number (a hand-edited ledger), which falls back to the timed hold rather than
@@ -274,7 +275,7 @@ export function githubScanStalledSentence(repo: string, checkedAt: number, now: 
  * burn a director run per poll. The queue cannot read the outcome itself: the prompt it composes
  * is deleted from the queue as soon as the run dequeues it, and a run that dies before it replies
  * records no verdict, so the ledger record carries the shortened span instead — see
- * `releaseQueuedIssueRetry` (src/github/issue-outcome.ts). */
+ * `releaseIssueRetryHold` (src/github/issue-outcome.ts). */
 export const ISSUE_RETRY_HOLD_MS = 60 * 60 * 1000;
 
 /** How long an issue's `queued` record holds the queue from offering it again: the record's own

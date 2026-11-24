@@ -223,7 +223,7 @@ export function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfi
   };
   // Seed each user-defined role into roles BEFORE the overlay loop so a file's `roles` section
   // overrides per-key for a custom exactly like for built-ins (enabled, instructions,
-  // runInterval, provider/model); seeding after would silently ignore those overrides.
+  // minRunIntervalSeconds, provider/model); seeding after would silently ignore those overrides.
   // A custom absent from `roles` stays enabled. Insertion order = built-ins then customs in
   // array order — the display and startup tie-break order.
   for (const c of merged.customRoles) {

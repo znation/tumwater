@@ -527,8 +527,9 @@ function writeInstances(root: string, id: string, rest: string[], clearInstances
   // message names the key.
   if (isExponentSpelling(n.trim()))
     fail(`${cfgKey} must be a plain integer from 1 to 8 — no exponent notation${gotSuffix(n)}`);
-  // An absent count already means 1 (instanceCount's default), so asking for 1 is a no-op —
-  // but only for a role that may split; any other role falls through to validateConfig's refusal.
+  // An unset key plus a request for 1 is the no-op shortcut here: the command answers
+  // `unchanged` with value 1 and writes nothing — but only for a role that may split; any other
+  // role falls through to validateConfig's refusal.
   // A tumwater.json that fails to load is no basis for "already": fall through to the failure.
   if (loaded.config && !clearInstances && n.trim() === "1" && INSTANCE_ROLES.has(base) && cfg.roles[base]?.instances === undefined) {
     if (json)

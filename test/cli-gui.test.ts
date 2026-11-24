@@ -483,7 +483,8 @@ test("the gui reloads onto a newer build: closes, re-execs, re-binds the same po
 // The spawn tests above exercise cmdGui end to end, but a killed child's coverage never
 // reaches the suite's report, so the banner's exact wording, the LAN announcement block, and
 // the busy-port message stayed invisible to the coverage table. cmdGui takes seams (the same
-// discipline runTui's TuiSeams established): these tests pin that policy in-process.
+// discipline the removed TUI's seams and cmdQuestions' FollowViewSeams keep): these tests pin
+// that policy in-process.
 
 /** A startGui seam stub that records the arguments and resolves without listening. */
 function startRecorder(started: Array<{ port: number; allInterfaces: boolean; token: string }>) {

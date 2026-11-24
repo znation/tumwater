@@ -514,7 +514,8 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
   // outranks any autonomous gate, quiet hours included): the once-mode settle below and
   // the start gate must agree on exactly when a team gate holds, so the compound lives
   // here once. Quiet hours fold in beside the operator pause and the budget gate — the
-  // schedule is not probe-worthy the way a paused budget is, so no probeDue exception.
+  // schedule is not probe-worthy the way a paused budget is, so it gets no exception like
+  // probeRoles gives a budget-held role.
   // The per-role windows (quietHoursPerRole) fold in beside the team one as a fourth
   // disjunct — a role held by either window (or both, held once) starts no new runs;
   // the director stays exempt by the same role check that covers the other disjuncts.

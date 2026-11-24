@@ -351,7 +351,8 @@ function scanFileReadState(file: string): EventLogState {
  * than the wide day key can) — and the narrow coverage follows from the same scan:
  * a retained line older than the narrow day key is either older than the wide day key too
  * (coversFullWindow, which therefore covers the narrow window as well) or sits inside the wide
- * event list, whose day keys span [wideFromKey, now); the same-day case a day key cannot decide
+ * event list, whose day keys span the wide read's own day-key window; the same-day case a day
+ * key cannot decide
  * is decided by the narrow window's oldest retained event predating the narrow cutoff, exactly
  * as eventWindowCovers decides it for a single read. Calling readEventsSince twice instead
  * re-scanned and re-parsed the same log bytes a second time — on this repo's own log, a
@@ -391,8 +392,9 @@ function narrowWindowEvents(joinEvents: HarnessEvent[], cutoff: number): Harness
 }
 
 /** Coverage of the NARROW window, decided from the one wide scan. The narrow day's local
- * midnight turns the day-key comparisons into ts comparisons — day(ts) < narrowFromKey is
- * exactly ts < that midnight — so the checks below are numeric and the event list's
+ * midnight turns the day-key comparisons into ts comparisons — a line whose day key falls
+ * before the narrow day's is exactly a line with ts < that midnight — so the checks below are
+ * numeric and the event list's
  * oldest-first order makes them one bounded pass instead of a day-key formatting per event.
  * Returns true when one wide day-key scan proves the narrow window fully covered: the wide
  * read reached back before its own key, or the oldest retained line predates the narrow day,

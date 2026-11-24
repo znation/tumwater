@@ -237,7 +237,8 @@ export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): 
   void ctx.launchServicesWatch?.poll();
 
   // Consume CLI request markers: a reset-counters request, a wake request, a forced-restart
-  // request, a model-check re-check request (before pollGates runs the model-check poll, so a
+  // request, a model-check re-check request (before pollGatesAndHolds runs the model-check
+  // poll, so a
   // requested re-check takes effect on the same poll), and per-role abort requests.
   consumeResetRequest(root, runners);
   consumeWakeRequest(root, runners);

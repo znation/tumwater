@@ -29,7 +29,8 @@ export function lanAddresses(
   return out;
 }
 
-/** Injectable seams for cmdGui, mirroring runTui's TuiSeams: the server it starts, the LAN
+/** The dashboard's seams, the shape the removed TUI's seams had and cmdQuestions'
+ * FollowViewSeams keeps: the server it starts, the LAN
  * address list and the printer its banner names, and the serve-until-Ctrl+C wait. Production
  * callers omit it and get the real server, interfaces, stdout, and wait; tests inject fakes
  * so the CLI's gui-specific policy (the banner wording, the LAN announcement, the
