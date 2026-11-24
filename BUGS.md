@@ -6,6 +6,64 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
+### A re-filed `## Open` bug reworded under a *different* heading slips past `refiledFixedBugFinding`, because that guard keys on whole-heading text (found by the bugfix role 2026-11-23)
+
+**Symptom.** `refiledFixedBugFinding` (merged 2026-11-23 01:47, INV-N7) gives a re-filed
+`## Open` bug a staging finding when a closed record already holds it — but only while the
+copy keeps the archived heading. It is silent when the copy names the same defect in other
+words: two entries landed 31 minutes apart — `f09f20a66` (qa) filed "…`npm run build` fails at
+main's tip with a duplicate `isJsonObject` import…", and `707b85ff` (readme) fixed and archived
+the same defect as "main's tip does not typecheck: `isJsonObject` is imported twice in
+`src/github/github-issues-state.ts`". The qa copy stayed under `## Open`, the backlog index kept
+handing it out, and a bugfix run spent itself on work already merged.
+
+**Reproduce.** Offline, no model, no gate. Replay both guards over the two real commits, with
+BUGS-FIXED.md read at `707b85ff` (the fix). With base `5dc4f317` — BUGS.md as of the last
+commit before the filing that touched it, so the entry IS new over base and the guard's base-skip
+is not the reason —
+`refiledFixedBugFinding` returns `undefined` and `finishedDuplicateFindings` returns `[]`,
+though the live `## Open` entry and the archived `## Fixed` twin name one defect. Control 1
+(rules out the merge-base rule): the same call with base `f09f20a66`, the filing commit itself,
+is also silent — both bases miss it. Control 2 (rules out a broken guard): paste the archived
+heading verbatim, its `— fixed …` stamp removed, under `## Open`, and the same guard FIRES and
+names the closed entry. So only the rewording defeats it, and the keys show why:
+`finishedKey(open, FIXED_DATE_RE)` is 201 characters against its archived twin's 102, and
+`entryKey` is unequal too, because `finishedKey` is `collapseWhitespace(finishedTitle(title))`
+— the whole heading with only the stamp stripped — so any rewording changes the identity.
+
+**Why the 2026-11-23 guards do not cover it.** The plan-side twin's own **Notes for the fixer**
+(BUGS-FIXED.md) warned "Do not key on exact title text … Key on `entryKey` … or `finishedKey`
+with the stamp stripped" — but neither key strips the *wording*, only the date. Every existing
+duplicate guard keys on heading text (`duplicatePlannedEntries`, `duplicateHeadings`,
+`finishedDuplicateFindings`' exact-copy skip), so the class that survives all of them is a
+reworded twin — which is exactly what both archived entries say happened.
+
+**The filing side never asked either.** The qa charter's filing step (src/roles/role-catalog.ts,
+step 4 of the qa entry) says only "record ONE reproducible bug in BUGS.md" — it carries no
+dedupe step, unlike selfcheck's step 4 (which greps BUGS.md's `## Open` and its own role's
+commits) and the feedback role's step 4 (which greps the "Previously filed from this install"
+block and `gh issue list`, i.e. upstream issues only). Neither of those two reaches this case
+either: the earlier copy was already archived out of `## Open`, and the fix was a
+`tumwater(readme):` commit that a role-scoped `git log --grep="tumwater(<role>)"` excludes by
+construction (`roleCommitGrep` in src/roles/legacy-role-ids.ts names only the role's own id and
+its retired ids).
+
+**Expected.** A copy of an already-fixed bug never reaches `## Open`, and if it does, a run is
+told so before it spends itself.
+
+**Fix direction (not one site).** A bug-side duplicate needs an identity that survives
+rewording. The cheapest defensible seam is a filing/staging *warning*, not a refusal: when an
+`## Open` entry's body cites a file-and-symbol set that an archived `## Fixed` entry also cites
+(here both name `src/github/github-issues-state.ts` and `isJsonObject`), report a suspected
+duplicate naming both headings, and let the run carry on — a false positive must not block a
+real fix, so this cannot be the merge-gate refusal `refiledFixedBugFinding` deliberately is
+not. Keep it staging-only, mirroring INV-N7, and reuse the citation spans `fixSymbols`
+(src/verdict/fix-claim.ts) already extracts. Fixture archives under a scratch dir, never this
+repo's real BUGS-FIXED.md.
+
+**Validation gap:** none — the miss was reproduced by calling the two guards over the two
+commits that produced it (`undefined` and `[]` above), not inferred.
+
 ### A reviewer's fix is pre-checked on the fix tree as PINNED, never on the tree `mergeToMain` rebases onto main's tip, so an auto-merged rebase that duplicates a line both sides added lands unchecked and turns main red (found by the bugfix role 2026-11-23)
 
 - **Symptom:** main's tip `1706a712` ("tumwater(reviewer): Fix e3572db9 — …") fails `node scripts/tsc.mjs` with `error TS2300: Duplicate identifier 'isJsonObject'` at `src/github/github-issues-state.ts:10` and `:12`; its parent `1706a712^` (`e279ac3d`) compiles clean (rc=0). The main watch logged `main_check status=failed` for it and named `improve` as `main_culprit` — the wrong role: the breaking commit is reviewer-authored, and the author's own change had passed its gate. The team's own build check is the only thing that caught it; no merge-stage check did.
@@ -13,63 +71,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Cause:** `precheckReviewerFix` (src/merge/merge-post-review-drain.ts:330) runs `gateBuildPrecheck` over the fix tree **as pinned** — checked out detached at `fix`, i.e. based on the reviewed commit, which is main's history as of the review, not as of the merge. Then `mergeReviewerFixCommit` → `mergeToMain` rebases that fix onto main's CURRENT tip (merge-to-main.ts:136) and fast-forwards with no check of the REBASED tree: since part 4l/3 removed the in-lock `verifyMerge`, `tryMerge`'s only re-check arm is `ctx.recheckResolved`, which fires only for a conflict whose resolution diverges (merge-to-main.ts:111). A rebase git resolves WITHOUT a conflict — an auto-merge that keeps both sides' added lines — so nothing ever looks at the bytes that actually land. The 2026-11-04 fix (BUGS-FIXED.md:2538-2544) closed the no-check-at-all hole by adding the pre-check, and its own text records the limitation: "It runs OUTSIDE the merge lock, over the fix tree as pinned." The pinned-tree check cannot see a rebase-introduced failure. Contrast the merge slot's rule (BUGS-FIXED.md:5038, verifiedHead / no-op-rebase): there the landing checks the post-rebase head.
 - **Fix direction.** The reviewer-fix landing must verify what lands, not what was authored. The cheapest sound shape: run `gateBuildPrecheck` (or the landing-scope equivalent) over the POST-REBASE tree inside the merge lock, after `rebaseOntoMain` and before `ffMainToOrWhy`, exactly where the merge slot's `verifyLanding` already does it — and keep the pinned pre-check as the cheap early withhold so a broken fix still never costs a lock turn. A cheaper alternative (rebase into the review worktree BEFORE the pre-check, then land that head) needs care: the rebase moves the fix sha, so `mergedTag`/`fixed` bookkeeping and the withheld-fix ref must follow the new head. Either way the invariant to record in docs/invariants.md is: *a reviewer's fix is checked on the tree that will be fast-forwarded onto main, not only on the tree the reviewer wrote.* Add the regression with a fixture where the rebase introduces the failure and the pinned tree is green — that is the case no existing test can express.
 - **Notes for the fixer.** Do not treat this as the 2026-11-04 entry re-opened: that hole (no check at all) is closed and stayed closed — a check ran and passed, on the wrong tree. Related but distinct: BUGS-FIXED.md:5038 (the merge slot's no-op-rebase arm skipping the landing check), which is the same principle one path over.
-
-### `npm run build` fails at main's tip with a duplicate `isJsonObject` import, and `status`, `gui`, `issues`, `doctor` and a started team all die with `Identifier 'isJsonObject' has already been declared` (found by the qa role 2026-11-23)
-
-**Symptom.** A fresh `npm run build` of main tip `1706a712b` fails, and the commands that read the
-GitHub-issues ledger — `status`, `gui`, `issues`, `doctor` and a started team — each exit 1 with one
-line of output. The README quick start is dead: no team starts, no dashboard is served, no status reads.
-
-```
-$ npm run build
-> tumwater@0.10.1 build
-> rm -rf dist && node scripts/tsc.mjs && node scripts/stamp-build.mjs
-
-src/github/github-issues-state.ts(10,10): error TS2300: Duplicate identifier 'isJsonObject'.
-src/github/github-issues-state.ts(12,10): error TS2300: Duplicate identifier 'isJsonObject'.
-```
-
-`tsc` exits 2 so `stamp-build.mjs` never runs, but the native compiler still emitted `dist/`, and the
-emitted module carries the import twice — so a `dist/` produced by the failed build loads with a
-SyntaxError:
-
-```
-$ node dist/src/cli.js status
-tumwater: Identifier 'isJsonObject' has already been declared
-$ echo $?
-1
-```
-
-**Reproduce** (offline, no model, no network): from a clean worktree at `1706a712b`, `npm run build`
-(the `node_modules` borrow makes `npm run build` work in a team worktree); then in a scratch dir made
-with `mktemp -d`, `git init -b main`, one empty commit, and `node <wt>/dist/src/cli.js init "hi"`.
-`status`, `gui`, `issues` and `doctor` each print that one line and exit 1; `gui` prints it instead of
-the documented `tumwater gui at http://127.0.0.1:7180 — Ctrl+C to stop` banner and binds nothing
-(`lsof -nP -iTCP:<port> -sTCP:LISTEN` returns no row). `start --once` prints its banner and role list,
-then the same line, exit 1 — the crash lands on the lazy import when the round first reads the ledger.
-
-Scoped by running each command against that `dist/` and against a scratch copy of it with the duplicate
-import line deleted: exit 1 with that message on `status`, `gui`, `issues`, `doctor` and `start
---once`; exit 0 unchanged on `help`, `init`, `logs`, `report`, `guide`, `history`, `role feature`,
-`prompt --list`, `plan --list`, `bug --list`, `questions`, `config get`, `brief --json`, `completion
-bash` and `version`. With that one line removed from the copy, every crashing command exits 0 and the
-dashboard serves on an ephemeral loopback port.
-
-**Cause.** `1706a712b` ("Fix e3572db9 — … the guard sits at the one shared read") replaced the inline
-object check in `isGithubIssueRow` with the shared `isJsonObject` predicate and added its import at
-`src/github/github-issues-state.ts:12`, but the file already imported it at line 10 — lines 9–13 are
-`ensureParentDir`, `isJsonObject`, `readJsonFile`/`writeJsonAtomic`, `isJsonObject`, `cachedByStat`. A
-top-level duplicate binding is `TS2300`, which the native compiler reports and refuses to stamp a build
-over, while eslint's import-hygiene rules in `eslint.config.js` (`consistent-type-imports`,
-`no-import-type-side-effects`, `consistent-type-exports`) name no duplicate-import rule, so the lint half
-of the gate stayed quiet and only the `tsc` half saw it.
-
-**Expected.** `npm run build` exits 0 at main's tip, and the README's start/watch path works: `start`
-boots a team, `gui` prints its banner and serves the dashboard, `status`, `issues` and `doctor` report.
-**Fix direction (one line, no behavior change):** delete the duplicate `import { isJsonObject } from
-"../files/json-object.js";` at `src/github/github-issues-state.ts:12`, keeping line 10; the predicate's
-uses at lines 188 and 327 need nothing else. Confirm with `node scripts/tsc.mjs` (red before, green
-after) and the issues-ledger/GUI tests.
 
 ### A post-merge reviewer's fix is pre-checked on its PRE-rebase tree, so the bytes the merge's rebase composes onto main never reach any check — main went red for 82 min on a duplicate import no parent commit carried (found by the selfcheck role 2026-11-23)
 
