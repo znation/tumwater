@@ -9,7 +9,6 @@
 import { ensureParentDir } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { isJsonObject } from "../files/json-object.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { githubIssuesPath } from "../paths.js";
 import { DAY_MS, humanAgo } from "../text/datetime.js";

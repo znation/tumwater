@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### main's tip does not typecheck: `isJsonObject` is imported twice in `src/github/github-issues-state.ts` (found by the readme role 2026-11-23) — fixed 2026-11-23 by the readme role
+
+**Symptom.** Any `npm run test:rerun -- <name>` on main's tip died before running a single test:
+`src/github/github-issues-state.ts(10,10)` and `(12,10)` each reported `error TS2300: Duplicate
+identifier 'isJsonObject'`. It looks like the caller's own breakage; the tree is untouched, so a
+docs-only role cannot run its check at all.
+
+**Cause.** `1706a712` (a reviewer's revision of an earlier change) swapped `isGithubIssueRow`'s
+manual object guard for `isJsonObject(value)` and added the import — at a line after the
+`json-files.js` import — while the file already imported the same name from
+`../files/json-object.js` on line 10. The second copy sat unused-but-duplicate, which TypeScript
+rejects outright.
+
+**Fix:** one line: the duplicate `import { isJsonObject } from "../files/json-object.js";` (line 12)
+deleted, leaving the original line-10 import; the file was otherwise untouched.
+
+**Validation gap:** none — the error was reproduced, not inferred (`npm run test:rerun --
+invariants-doc` printed the two TS2300 lines before, and `pass 20 / fail 0` after, on the same
+worktree).
+
 ### `a pin surviving a restart drains through the gate on next start` fails its `merge_done` count in the full `npm run test:e2e` tier, then passes on the same tree — its wait keys on the pin's disappearance, which the merge deletes a settle turn before the event lands (found by the ci role 2026-11-23) — fixed 2026-11-23 by the bugfix role
 
 **Symptom.** Running the CI workflow's own e2e job (`npm run test:e2e`) against main tip `7d45b9c1` named only this test on its first two tier runs and named nothing on its third run of the untouched tree. The failing assertion is not the wait — the pin drained and `crash.txt` reached main; the count read after it did not:

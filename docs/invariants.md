@@ -6184,13 +6184,21 @@ and team pause (`paused`), the role's daily cap (`cap paused`), the maintenance 
 (`held: maintenance quota <used>/<allowance>`), the bootstrap hold (`held: bootstrap`), the budget
 pause (`budget paused`), the quiet window (`held: quiet hours`), and the team-failure hold
 (`held: provider failure`, covering a provider storm, a model-load pair hold, and the director's
-subscription-window hold). The label order mirrors the gate order, so the reason a `--json`
-consumer reads names the hold that declined the run first, and only the pauses `tumwater resume`
-actually lifts keep bare `paused`. An arm with no label leaves its runner unsettled, and the round
-idle-polls until the deferral cap — or never, on a full volume.
+subscription-window hold). Per-role holds take their label in the gate order, so the reason a
+`--json` consumer reads names the hold that declined the run first, and only the pauses
+`tumwater resume` actually lifts keep bare `paused`. Whenever a pause, a quiet window (the
+team's or the role's own) and a budget pause stand at once, their label takes that order —
+user intent outranks spend state, and a scheduled window outranks spend state too — the same
+precedence the idle role rows of both dashboards take (`heldPhase` in
+`src/ui/status-model.ts`, which `roleRowCells` feeds to `tumwater status` and the GUI
+payload). A run held by quiet hours while the team is also budget-paused therefore settles
+`held: quiet hours`, never `budget paused`, whichever arm declined it. An arm with no label
+leaves its runner unsettled, and the round idle-polls until the deferral cap — or never, on a
+full volume.
 
 **Binds.** `src/scheduling/skip.ts` (`onceHoldLabel`, `heldFromStarting`, `settleOncePaused`),
-`src/scheduling/once-round.ts` (`exitReady`, `isSettled`).
+`src/scheduling/once-round.ts` (`exitReady`, `isSettled`), `src/ui/status-model.ts` (`heldPhase`,
+which the team-gate label order mirrors).
 
 **Pinned by.** `test/orchestrator-scheduling.test.ts` — "once-mode settles each starting hold with
 its own label, so a held role never reads as paused".
