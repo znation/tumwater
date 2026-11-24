@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { postReviewMatchesGrep, renderPostReviewDetail, renderPostReviews, scopePostReviews, postReviewStatusLabel, postReviewState, postReviewBackoffNote } from "../src/review/post-merge-review-render.js";
+import { postReviewMatchesGrep, renderPostReviewDetail, renderPostReviews, scopePostReviews, postReviewStatusLabel, postReviewState, postReviewBackoffNote, postReviewFindingNote } from "../src/review/post-merge-review-render.js";
 import type { PostReview } from "../src/review/post-merge-review.js";
 
 // The renderer behind `tumwater reviews`: pure text for the post-merge review queue, pinned
@@ -276,6 +276,56 @@ test("the list names a live provider backoff beside the status label", () => {
   assert.ok(both.includes("· [2 failed review runs — last: boom] · [provider failure — retrying in 10m]"), both);
   // The backoff bracket survives an entry with no status label of its own.
   assert.ok(renderPostReviews([e({ notBeforeMs: now + 600_000 })], undefined, now).includes("[provider failure"));
+});
+
+test("postReviewFindingNote names a kept finding only on a still-failing entry", () => {
+  // The withheld-fix shape (INV-BT8): a failed run plus the reviewer's kept objection.
+  assert.equal(postReviewFindingNote(e({ failures: 1, finding: ["breaks the contract"] })), "reviewer's finding — breaks the contract");
+  // The first finding only, squashed to the same 60 the rejected bracket uses, plus a count of
+  // the rest: 70 x's cut at 59 with the ellipsis, then the tail.
+  const long = postReviewFindingNote(e({ failures: 2, finding: ["x".repeat(70), "second", "third"] }));
+  assert.equal(long, `reviewer's finding — ${"x".repeat(59)}… (+2 more)`);
+  // One finding names no tail.
+  assert.equal(postReviewFindingNote(e({ failures: 2, finding: ["one", "two"] })), "reviewer's finding — one (+1 more)");
+  // Nothing to name: no finding, an empty list, or a blank first entry.
+  assert.equal(postReviewFindingNote(e({ failures: 1 })), "");
+  assert.equal(postReviewFindingNote(e({ failures: 1, finding: [] })), "");
+  assert.equal(postReviewFindingNote(e({ failures: 1, finding: ["   "] })), "");
+  // The state guard is the whole rule: a rejected row already prints those reasons in its own
+  // bracket, and a fixed row can carry a stale finding its landed repair answered.
+  assert.equal(postReviewFindingNote(e({ rejected: ["no tests"], finding: ["no tests"] })), "");
+  assert.equal(postReviewFindingNote(e({ fixed: "f".repeat(40), finding: ["stale"] })), "");
+  // A waiting entry with a finding and no failed run names nothing.
+  assert.equal(postReviewFindingNote(e({ finding: ["kept"] })), "");
+});
+
+test("the list names a withheld fix's kept finding after the status bracket", () => {
+  const line = renderPostReviews([e({ failures: 1, finding: ["breaks the contract"] })]);
+  assert.ok(
+    line.includes("cccccccc · seed · [1 failed review run] · [reviewer's finding — breaks the contract]"),
+    line,
+  );
+  // Two findings: the first squashed, the rest counted, on the line's end.
+  const two = renderPostReviews([e({ failures: 1, finding: ["y".repeat(70), "z"] })]);
+  assert.ok(two.endsWith(` · [reviewer's finding — ${"y".repeat(59)}… (+1 more)]`), two);
+  // No finding, an empty finding list and a non-failing entry with a finding each render a line
+  // byte-identical to a bare entry.
+  assert.equal(renderPostReviews([e({ finding: [] })]), renderPostReviews([e({})]));
+  assert.equal(renderPostReviews([e({ finding: ["kept"] })]), renderPostReviews([e({})]));
+  assert.equal(renderPostReviews([e({ rejected: ["no tests"], finding: ["no tests"] })]), renderPostReviews([e({ rejected: ["no tests"] })]));
+  assert.equal(
+    renderPostReviews([e({ fixed: "f".repeat(40), finding: ["stale"] })]),
+    renderPostReviews([e({ fixed: "f".repeat(40) })]),
+  );
+  // The bracket rides between the status bracket and the provider-failure bracket, so an entry
+  // holding a finding and a live deadline prints all three, and it needs no clock of its own.
+  const now = 1_000_000_000_000;
+  const all = renderPostReviews([e({ failures: 1, lastFailure: "boom", finding: ["breaks the contract"], notBeforeMs: now + 600_000 })], undefined, now);
+  assert.ok(
+    all.includes("· [1 failed review run — last: boom] · [reviewer's finding — breaks the contract] · [provider failure — retrying in 10m]"),
+    all,
+  );
+  assert.ok(renderPostReviews([e({ failures: 1, finding: ["kept"] })]).includes("[reviewer's finding — kept]"));
 });
 
 test("renderPostReviewDetail names the backoff wait and its consecutive-failure streak", () => {

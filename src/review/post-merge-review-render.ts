@@ -10,7 +10,7 @@ import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
 import { squash } from "../text/text.js";
 import { filterKeepPositions } from "../collections.js";
-import { plural } from "../text/phrases.js";
+import { moreSuffix, plural } from "../text/phrases.js";
 import { humanAgo, humanUntil } from "../text/datetime.js";
 import type { PostReview } from "./post-merge-review.js";
 
@@ -115,6 +115,27 @@ export function postReviewBackoffNote(entry: PostReview, now: number): string {
   return `provider failure — retrying in ${humanUntil(entry.notBeforeMs!, now)}`;
 }
 
+/** The kept-finding bracket one post-merge review entry carries on the queue's scannable
+ * surfaces (`tumwater reviews`, the dashboard's Post-merge reviews card): a reviewer's fix that
+ * its own pre-check withheld records one failed review run and keeps the reviewer's objection in
+ * `finding` (INV-BT8), so the failed-run count alone hides what the reviewer objected to. The
+ * first finding squashed to 60 plus a `(+N more)` tail for the rest — the same shape
+ * `postReviewStatusLabel`'s rejected bracket uses — or `""` when there is nothing to name.
+ * The `"failing"` guard is the whole rule and it is load-bearing: a settled `rejected` row
+ * already prints those reasons in its own bracket, and `settleMergedReviewerFix` spreads
+ * `...entry`, so a `fixed` row can carry a stale `finding` from an earlier withheld run —
+ * neither may gain a second, duplicating bracket. Kept out of `postReviewStatusLabel` for the
+ * same reason `postReviewBackoffNote` is: that switch picks ONE label by precedence, and one
+ * entry can hold a finding and a live provider-failure deadline at once. */
+export function postReviewFindingNote(entry: PostReview): string {
+  if (postReviewState(entry) !== "failing") return "";
+  const findings = entry.finding;
+  if (!Array.isArray(findings) || findings.length === 0) return "";
+  const first = squash(findings[0] ?? "", 60);
+  if (first === "") return ""; // A blank first finding names nothing.
+  return `reviewer's finding — ${first}${moreSuffix(findings.length - 1)}`;
+}
+
 /** Narrows a whole post-merge review list to the entries `keep` accepts, and returns
  * the `scope` renderPostReviews takes: the kept roles, each kept entry's 1-based place in the
  * whole list, and the whole list's entry count — plus, when a status filter is active, the
@@ -141,7 +162,10 @@ export function scopePostReviews(
  * status suffix from `postReviewStatusLabel`, appended as `" · " + label` only when it is
  * non-empty, and finally — under the same `now` guard as the age clause — the live provider-
  * failure backoff bracket from `postReviewBackoffNote` as `" · [<note>]"`, so an entry the
- * transient-failure backoff is holding says why it is not moving. Without a `now`, or for an
+ * transient-failure backoff is holding says why it is not moving, and — between those two
+ * brackets, under no clock guard — the kept-finding bracket from `postReviewFindingNote` as
+ * `" · [<note>]"`, so a review its reviewer's withheld fix left failing names the objection the
+ * withheld repair was meant to answer. Without a `now`, or for an
  * entry with no `enqueuedAt`, the line is byte-identical
  * to before, so an older `post-review.json` and every existing renderer test read unchanged.
  * With the optional `scope` (`reviews --role`/`--status`: `entries` already holds only the kept
@@ -174,6 +198,8 @@ export function renderPostReviews(
     const suffix = label === "" ? "" : ` · ${label}`;
     // The backoff bracket rides beside the status label, under the same clock guard the age
     // clause uses, so a list called without `now` renders byte-identically to before.
+    const finding = postReviewFindingNote(entry);
+    const findingBracket = finding === "" ? "" : ` · [${finding}]`;
     const backoff =
       typeof now === "number" && postReviewBackoffLive(entry, now)
         ? ` · [${postReviewBackoffNote(entry, now)}]`
@@ -182,7 +208,7 @@ export function renderPostReviews(
       typeof now === "number" && typeof entry.enqueuedAt === "number"
         ? ` · ${humanAgo(entry.enqueuedAt, now)}`
         : "";
-    lines.push(`  ${scope ? scope.positions[i] : i + 1}. ${roleLabel(entry.role)} ${shortSha(entry.commit)}${age} · ${squash(entry.summary, 80)}${suffix}${backoff}`);
+    lines.push(`  ${scope ? scope.positions[i] : i + 1}. ${roleLabel(entry.role)} ${shortSha(entry.commit)}${age} · ${squash(entry.summary, 80)}${suffix}${findingBracket}${backoff}`);
   });
   return lines.join("\n");
 }

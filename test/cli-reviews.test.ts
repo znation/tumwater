@@ -100,6 +100,44 @@ test("reviews names a live provider-failure backoff on the list and in --json", 
   assert.ok(!Object.keys(doc.pending[1]!).includes("backoffNote"), "no rendered backoff key reaches --json");
 });
 
+test("reviews names a withheld fix's kept finding on the list and carries it unchanged in --json", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews finding test");
+  writeFileDeep(
+    postReviewPath(repo),
+    JSON.stringify({
+      pending: [
+        // The shape settleWithheldReviewerFix leaves: one failed run, the pre-check's reason, and
+        // the reviewer's kept finding.
+        {
+          commit: "a".repeat(40), role: "feature", summary: "add the parser", failures: 1,
+          lastFailure: "fix pre-check withheld the repair: comment over the width gate",
+          finding: ["the new branch skips the width gate"],
+        },
+        // A rejected entry carrying the same finding prints no finding bracket.
+        { commit: "b".repeat(40), role: "clean", summary: "tidy", rejected: ["no tests"], finding: ["no tests"] },
+      ],
+    }),
+  );
+  const r = await cli(repo, "reviews");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /\[1 failed review run — last: fix pre-check withheld the repair: comment over the width gate\]/);
+  assert.match(r.stdout, /\[reviewer's finding — the new branch skips the width gate\]/);
+  // The finding bracket follows the status bracket on the same line, and the rejected row gains
+  // no finding text of its own beyond its reasons.
+  const line1 = r.stdout.split("\n").find((l) => l.includes("add the parser")) ?? "";
+  assert.ok(line1.includes("] · [reviewer's finding —"), line1);
+  const line2 = r.stdout.split("\n").find((l) => l.includes("tidy")) ?? "";
+  assert.ok(!line2.includes("reviewer's finding"), line2);
+
+  // --json gains no new key: the finding rides as the entry's own array, unsquashed.
+  const j = await cli(repo, "reviews", "--json");
+  assert.equal(j.code, 0);
+  const doc = JSON.parse(j.stdout) as { pending: Record<string, unknown>[] };
+  assert.deepEqual(doc.pending[0]!.finding, ["the new branch skips the width gate"]);
+  assert.ok(!Object.keys(doc.pending[0]!).includes("findingNote"), "no rendered finding key reaches --json");
+});
+
 test("reviews --role keeps only the listed roles' entries under their whole-queue positions", async () => {
   const repo = makeRepo();
   await initProject(repo, "reviews role test");

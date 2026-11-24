@@ -5238,7 +5238,12 @@ review's last word — the finding, the only thing worth acting on, was overwrit
 mechanical rewrap would fix was abandoned after one attempt. `finding` survives the JSON round trip
 (a non-empty string array is parsed and copied on read) and is searchable in
 `postReviewMatchesGrep` and printed by `renderPostReviewDetail`, so an operator can read what the
-reviewer found. The failed-run count is the brake: at `POST_REVIEW_FAILURE_LIMIT` the entry is
+reviewer found. The kept finding is also named on every scannable observer of the queue —
+`postReviewFindingNote` appends a `[reviewer's finding — <first> (+N more)]` bracket to
+`renderPostReviews`' list line and `postReviewsHtml`'s dashboard card row prints the same bytes —
+and only on a still-open `failing` row: a `rejected` row already prints those reasons in its own
+bracket, and a `fixed` row can carry a stale `finding` that `settleMergedReviewerFix` spread along
+with `...entry`, so neither may reprint an objection its landed repair answered. The failed-run count is the brake: at `POST_REVIEW_FAILURE_LIMIT` the entry is
 dropped and filed to BUGS.md naming both the finding and the withholding reason, and its fix ref is
 deleted so a withheld commit pins nothing forever. The author's rejection record carries the finding
 alongside the pre-check reason, so a role is never handed a rejection naming only a lint line on a
@@ -5259,6 +5264,7 @@ renders it as a withheld fix whose review stays open, never as `review rejected`
 **Binds.** `src/merge/merge-post-review-drain.ts` (`precheckReviewerFix`'s reject callback and
 `settleWithheldReviewerFix`), `src/review/post-merge-review.ts` (`PostReview.finding`,
 `parsePostReview`, `postMergeRejectionCounts`), `src/review/post-merge-review-render.ts`,
+`src/ui/gui/gui-client-pending.ts` (`postReviewFindingNote`'s browser twin),
 `src/events/event-read.ts` (`eventWithheldFix`), `src/events/event-format-review.ts`,
 `src/failure/failure-data.ts` (`rejectionSection` / `rejectionClusterMessage`),
 `src/report/report-usage-fold.ts` (`foldReviewRejected`).
@@ -5267,7 +5273,12 @@ renders it as a withheld fix whose review stays open, never as `review rejected`
 withheld from main (BUGS.md 2026-11-04)", "a withheld fix at the failure limit files both the
 reviewer's finding and the pre-check's reason"; `test/post-merge-review-render.test.ts` —
 "postReviewMatchesGrep finds the text in every searched field, case-insensitively",
-"renderPostReviewDetail adds each optional block only when its field is present"; the same event
+"renderPostReviewDetail adds each optional block only when its field is present",
+"postReviewFindingNote names a kept finding only on a still-failing entry",
+"the list names a withheld fix's kept finding after the status bracket";
+`test/gui-client-pending.test.ts` — "the Post-merge reviews card names a withheld fix's kept
+finding"; `test/cli-reviews.test.ts` — "reviews names a withheld fix's kept finding on the list and
+carries it unchanged in --json"; the same event
 shape's readers — `test/failure-render.test.ts` — "a withheld reviewer fix is not counted as a
 post-merge rejection of the author"; `test/doctor-checks.test.ts` — "checkPostMergeChurn warns on a
 day's post-merge rejection burst and stays quiet below the bar"; `test/report-usage-fold.test.ts` —

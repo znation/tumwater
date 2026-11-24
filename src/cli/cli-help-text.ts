@@ -270,7 +270,11 @@ Usage:
                                    waiting for its review — position, role, short sha, summary,
                                    and either its rejected reasons
                                    (\`[rejected — <reasons>]\`) or its
-                                   failed-review-run count (\`[N failed review runs]\`); an entry
+                                   failed-review-run count (\`[N failed review runs]\`); a review
+                                   its reviewer's withheld fix pre-check left failing carries that
+                                   objection too (\`[reviewer's finding — <first finding> (+N
+                                   more)]\`), so the row names what to act on, not just how many
+                                   runs failed; an entry
                                    a transient provider failure is holding also carries
                                    \`[provider failure — retrying in <duration>]\` while that wait
                                    holds; an empty

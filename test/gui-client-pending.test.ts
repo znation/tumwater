@@ -544,6 +544,73 @@ test("the Post-merge reviews card names a live provider-failure backoff", () => 
   assert.doesNotMatch(both, /undefined|NaN/);
 });
 
+test("the Post-merge reviews card names a withheld fix's kept finding", () => {
+  const { postReviewsHtml } = clientScope<{ postReviewsHtml(entries: unknown, armed?: string, role?: string, state?: string, now?: number): string }>(
+    ["format", "labels", "pending-table"],
+    ["postReviewsHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const failing = postReviewsHtml(
+    [{ role: "feature", commit: "abcdef1234567890", summary: "x", failures: 1, finding: ["breaks the contract"] }],
+    "",
+    "",
+    "",
+    now,
+  );
+  // esc() turns the apostrophe into &#39;, so the pinned bytes are the escaped ones the browser
+  // receives; the bracket sits after the status span.
+  assert.match(
+    failing,
+    /<span class='mono'>\[1 failed review run\]\<\/span> · <span class='mono'>\[reviewer&#39;s finding — breaks the contract\]\<\/span>/,
+  );
+  // Two findings: the first squashed to 60 with a count of the rest.
+  const two = postReviewsHtml(
+    [{ role: "feature", commit: "abcdef1234567890", summary: "x", failures: 2, finding: ["y".repeat(70), "z"] }],
+    "",
+    "",
+    "",
+    now,
+  );
+  assert.ok(two.includes(`[reviewer&#39;s finding — ${"y".repeat(59)}… (+1 more)]`), two);
+  // A rejected row and a fixed row carrying a finding name no finding bracket — the first already
+  // prints those reasons, the second's objection was answered by the repair that merged.
+  const rejected = postReviewsHtml(
+    [{ role: "feature", commit: "abcdef1234567890", summary: "x", rejected: ["no tests"], finding: ["no tests"] }],
+    "",
+    "",
+    "",
+    now,
+  );
+  assert.ok(!rejected.includes("finding"), rejected);
+  const fixed = postReviewsHtml(
+    [{ role: "feature", commit: "abcdef1234567890", summary: "x", fixed: "f".repeat(40), finding: ["stale"] }],
+    "",
+    "",
+    "",
+    now,
+  );
+  assert.ok(!fixed.includes("finding"), fixed);
+  // A waiting entry with a finding, a failing row whose only finding is blank, and an empty
+  // finding list name none either, and no row renders undefined.
+  const blank = postReviewsHtml(
+    [{ role: "feature", commit: "abcdef1234567890", summary: "x", failures: 1, finding: ["   "] }],
+    "",
+    "",
+    "",
+    now,
+  );
+  assert.ok(!blank.includes("finding"), blank);
+  const waiting = postReviewsHtml(
+    [{ role: "feature", commit: "abcdef1234567890", summary: "x", finding: ["kept"] }],
+    "",
+    "",
+    "",
+    now,
+  );
+  assert.ok(!waiting.includes("finding"), waiting);
+  for (const html of [failing, two, rejected, fixed, blank, waiting]) assert.doesNotMatch(html, /undefined|NaN/);
+});
+
 test("postReviewsHtml arms the clicked commit's Accept as Confirm accept", () => {
   const { postReviewsHtml } = clientScope<{ postReviewsHtml(entries: unknown, armed?: string): string }>(
     ["format", "labels", "pending-table"],

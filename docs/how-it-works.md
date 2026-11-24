@@ -750,6 +750,9 @@ stale settings.
   commits put aside for post-merge review, each row naming the wait since the
   commit was queued for review (`<age> ago`, omitted for an entry an older file wrote without a
   timestamp), each with its rejected (stays on main with the reviewer's reasons) or failed-review status, each row also naming
+  the objection a withheld reviewer's fix kept alive (`[reviewer's finding — <first finding>
+  (+N more)]`, the browser twin of the `tumwater reviews` list's bracket — printed only while the
+  entry is still failing, so a landed repair never reprints an objection it answered), and each row also naming
   a live transient provider failure and its countdown (`[provider failure — retrying in
   <duration>]`, the browser twin of the `tumwater reviews` list's bracket), and each row a two-click Accept posting
   `POST /api/post-review-accept`, the browser twin of `tumwater reviews --accept <n>` (which names

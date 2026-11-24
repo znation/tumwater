@@ -274,6 +274,19 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
         return "";
     }
   }
+  function postReviewFindingNote(e) {
+    // The dashboard twin of the list's kept-finding bracket (postReviewFindingNote): a fix its
+    // own pre-check withheld keeps the reviewer's objection in the entry's finding array
+    // (INV-BT8), so the failed-run count alone hides what to act on. Only a still-open failing
+    // row prints it — a rejected row already prints those reasons, and a fixed row can carry a
+    // stale finding its landed repair answered.
+    if (postReviewState(e) !== "failing") return "";
+    if (!Array.isArray(e.finding) || e.finding.length === 0) return "";
+    const first = squashText(e.finding[0], 60);
+    if (first === "") return ""; // A blank first finding names nothing.
+    return "[reviewer's finding — " + first +
+      (e.finding.length > 1 ? " (+" + (e.finding.length - 1) + " more)" : "") + "]";
+  }
   function postReviewsHtml(entries, armed = "", role = "", state = "", now = 0) {
     if (!Array.isArray(entries) || entries.length === 0) {
       return "<div class='card-head'><h2>Post-merge reviews</h2></div><div class='empty'>No merged commit is waiting for a post-merge review</div>";
@@ -303,10 +316,12 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       const age = typeof e.enqueuedAt === "number" && Number.isFinite(now)
         ? " · " + esc(humanSeconds(secsSince(e.enqueuedAt, now))) + " ago"
         : "";
+      const findingNote = postReviewFindingNote(e);
       let line = "<div class='queue-entry mono clamp1'>" + esc(e.role ? roleLabel(e.role) : "?") + " " + esc(shortSha(e.commit)) +
         age +
         " · " + esc(e.summary || "—") +
-        (label ? " · <span class='mono'>" + esc(label) + "</span>" : "") + backoff + "</div>";
+        (label ? " · <span class='mono'>" + esc(label) + "</span>" : "") +
+        (findingNote === "" ? "" : " · <span class='mono'>" + esc(findingNote) + "</span>") + backoff + "</div>";
       // A two-click Accept on every well-formed entry not already settled fixed (the server
       // refuses a fixed entry, so it renders no button): armed by the first
       // click, fired by the second within 5 s (the confirmSlot guard), so a stray click cannot

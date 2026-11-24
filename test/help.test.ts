@@ -154,9 +154,10 @@ test("retire help shows the full synopsis and the --json payload shapes", () => 
   assert.match(topic, /\{role, removed, skipped\}/);
 });
 
-test("reviews help names the --accept --json payload", () => {
+test("reviews help names the kept-finding bracket and --accept --json payload", () => {
   const topic = helpTopic("reviews")!;
   assert.match(topic, /accepted: \{role, commit,\s*summary\}/);
+  assert.match(topic, /\[reviewer's finding — <first finding> \(\+N\s*more\)\]/);
 });
 
 test("quarantine help names the --release --json payload", () => {
