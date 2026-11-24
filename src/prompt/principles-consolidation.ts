@@ -5,6 +5,7 @@ import { queuedPrompts } from "../inbox/inbox.js";
 import { submitPrompt } from "../inbox/inbox-submit.js";
 import { hasUnmergedPin } from "../runner/runner-leftover.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { errorMessage } from "../text/text.js";
 
 /** The first line of every automatic consolidation prompt the orchestrator queues the
  * director (principlesConsolidationPrompt's leading line). `requestPrinciplesConsolidation`
@@ -89,7 +90,7 @@ export async function requestPrinciplesConsolidation(
   try {
     submit(root, principlesConsolidationPrompt(raw ? raw.trim().length : 0));
   } catch (err) {
-    return { requested: false, error: err instanceof Error ? err.message : String(err) };
+    return { requested: false, error: errorMessage(err) };
   }
   return { requested: true };
 }

@@ -21,6 +21,7 @@
  * pi, the same pattern context-budget uses with `contextNote`.
  */
 
+import { errorMessage } from "../text/text.js";
 import { messageText } from "./message-text.js";
 
 /** A minimal structural type for the message objects the pure function reads. */
@@ -134,7 +135,7 @@ export default function pinPromptExtension(pi: PiExtensionApi): void {
       return { messages: result };
     } catch (err) {
       process.stderr.write(
-        `[tumwater pin-prompt] ${err instanceof Error ? err.message : String(err)}\n`,
+        `[tumwater pin-prompt] ${errorMessage(err)}\n`,
       );
       return undefined;
     }

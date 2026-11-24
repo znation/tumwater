@@ -10,6 +10,7 @@ import { queuedPrompts } from "../inbox/inbox.js";
 import { submitRolePrompt } from "../inbox/inbox-submit.js";
 import { githubTarget } from "../observer/remote-ci.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { errorMessage } from "../text/text.js";
 import { closeFixedIssues } from "./issue-close.js";
 import { ghReadiness, ghRunner, type GhRunner } from "./gh.js";
 import { mirrorsAtTip } from "./issue-mirrors.js";
@@ -395,6 +396,6 @@ export async function pollGithubIssues(
       await closeFixedIssues(root, config, run, warn, now);
     }
   } catch (err) {
-    warn(`could not scan the GitHub issues: ${err instanceof Error ? err.message : String(err)}`);
+    warn(`could not scan the GitHub issues: ${errorMessage(err)}`);
   }
 }

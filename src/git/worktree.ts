@@ -7,6 +7,7 @@ import { isDirectory, pruneOldDirectory, removeTree, subdirectoryNames } from ".
 import { KILL_GRACE_MS } from "../process/process-group.js";
 import { branchName, worktreePath, worktreesDir } from "../paths.js";
 import { shortSha } from "../text/format.js";
+import { errorMessage } from "../text/text.js";
 
 /** Persistent-worktree lifecycle for the harness: role worktrees (one per role, reset to main
  * on every fresh run) and the detached mirror worktree redeploy.ts verifies and compiles.
@@ -266,7 +267,7 @@ async function checkoutDetached(root: string, wt: string, ref: string): Promise<
       await git(wt, "checkout", "--detach", "--force", ref);
       return;
     } catch (err) {
-      const dangling = /fatal: bad object (refs\/tumwater\/\S+)/.exec(String(err instanceof Error ? err.message : err));
+      const dangling = /fatal: bad object (refs\/tumwater\/\S+)/.exec(errorMessage(err));
       if (dangling === null) throw err;
       const bad = dangling[1]!;
       logDroppedRef(root, bad, "so a worktree checkout could proceed");

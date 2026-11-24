@@ -6,6 +6,7 @@ import { defaultConfig, loadConfig, loadConfigSafe, saveConfig } from "../src/co
 import { show } from "../src/config/config-field-checks.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { allRoleIds } from "../src/roles/roles.js";
+import { errorMessage } from "../src/text/text.js";
 import { validationError } from "./fixtures/config-fixtures.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
@@ -748,7 +749,7 @@ test("loadConfig names the JSONC spelling a hand-edited tumwater.json carries", 
   try {
     loadConfig(dir);
   } catch (err) {
-    bare = err instanceof Error ? err.message : String(err);
+    bare = errorMessage(err);
   }
   assert.match(bare, /tumwater\.json is not valid JSON/);
   assert.ok(!bare.includes("strict JSON allows"), bare);
