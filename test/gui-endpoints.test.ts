@@ -8,14 +8,14 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { runNotFoundLastMessage } from "../src/history/run-detail.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleRun, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRetire, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleArchiveBacklog, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRetire, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleArchiveBacklog, handleRestart, handleRoleNotes, handleRoleLessons, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { rootInstallResyncLines, type RootInstallResync } from "../src/build/dep-install.js";
 import { renderRunDetail } from "../src/history/run-detail-render.js";
 import { readRunDetail, type RunDetail } from "../src/history/run-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
 import { scheduledStopAt } from "../src/team/team-state.js";
 import { writeJsonFile } from "../src/files/json-files.js";
-import { configPath, roleInboxDir, roleNotesPath, wakeRequestPath } from "../src/paths.js";
+import { configPath, roleInboxDir, roleLessonsPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
 import { orchestratorStatePath, reclaimRequestPath, restartRequestPath } from "../src/paths.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { queuedFiles, queuedRolePromptRecords } from "../src/inbox/inbox.js";
@@ -26,7 +26,7 @@ import { writeEvents, eventsOfType } from "./fixtures/log-fixtures.js";
 import { BRIEF_TEXT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief/brief.js";
 import { DEFAULT_INSTANCES } from "../src/roles/runner-ids.js";
 import { initializedRepo, sh, assertClean, tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
-import { startLocalGui } from "./fixtures/gui-fixtures.js";
+import { postJson, startLocalGui } from "./fixtures/gui-fixtures.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
 import { collectReportSince } from "../src/report/report-since-data.js";
 import { renderSinceReportMarkdown } from "../src/report/report-since-render.js";
@@ -45,7 +45,7 @@ import { readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel } from "../
 import { bugWakeText, planWakeText } from "../src/backlog/backlog-write.js";
 import { formatDate } from "../src/text/datetime.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
-import { ROLE_NOTES_MAX_BYTES } from "../src/roles/role-notes-write.js";
+import { addRoleLesson, ROLE_NOTES_MAX_BYTES, saveRoleNote } from "../src/roles/role-notes-write.js";
 import { ROLE_INSTRUCTIONS_MAX_CHARS } from "../src/config/config-schema.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
@@ -2811,6 +2811,90 @@ test("handleRoleNotes writes, clears, and rejects bad input without touching the
   const cleared = await post({ role: "feature", text: "" });
   assert.deepEqual(cleared.data, { ok: true, message: "notes cleared" });
   assert.equal(fs.readFileSync(notes, "utf8"), "");
+});
+
+// POST /api/role-lessons — the role drawer's lessons Clear. Its twin handleRoleNotes above is
+// pinned, but this handler had no test at all: a handler that cleared the NOTE instead of the
+// lessons store, or one that wrote the empty store (`<!-- next: L1 -->`) over a corrupted file
+// instead of refusing, would leave the whole suite green while the drawer's button silently
+// destroys the wrong store or every lesson a role keeps verbatim.
+test("handleRoleLessons clears the lessons store, keeps the note and the next-id counter", async () => {
+  const root = tmpdir();
+  const lessons = roleLessonsPath(root, "feature");
+  const notes = roleNotesPath(root, "feature");
+  addRoleLesson(lessons, "first lesson", "2026-11-21"); // L1
+  addRoleLesson(lessons, "second lesson", "2026-11-22"); // L2
+  saveRoleNote(notes, "the role's note");
+  const post = (body: unknown) => captureJson((res) => handleRoleLessons(fakeReq(JSON.stringify(body)), res, root));
+
+  const ok = await post({ role: "feature" });
+  assert.equal(ok.captured.status, 200);
+  assert.deepEqual(ok.data, { ok: true, message: "lessons cleared" });
+  // clearRoleLessons's promise: every lesson dropped, the next-id counter kept so a later add
+  // never reuses a cleared id, and the note is left completely untouched.
+  assert.equal(fs.readFileSync(lessons, "utf8"), "<!-- next: L3 -->\n");
+  assert.equal(fs.readFileSync(notes, "utf8"), "the role's note");
+});
+
+test("handleRoleLessons of a role with no store writes the empty store, and refusals change nothing", async () => {
+  const root = tmpdir();
+  const post = (body: unknown) => captureJson((res) => handleRoleLessons(fakeReq(JSON.stringify(body)), res, root));
+
+  const bad: [unknown, RegExp][] = [
+    [{ role: "nope" }, /^unknown role "nope"/],
+    [{ role: DIRECTOR_ROLE }, /^the director has no lessons$/],
+    [{}, /^role required/],
+    [{ role: 5 }, /^unknown role 5/],
+  ];
+  for (const [body, re] of bad) {
+    const r = await post(body);
+    assert.equal(r.captured.status, 400, JSON.stringify(body));
+    assert.match((r.data as { error: string }).error, re);
+    assert.equal(fs.existsSync(roleLessonsPath(root, "feature")), false, "no store written");
+    assert.equal(fs.existsSync(roleLessonsPath(root, DIRECTOR_ROLE)), false, "the director's store stays absent");
+  }
+
+  // A missing store is the empty store: clearing it is the no-op that leaves a marker-only file.
+  const empty = await post({ role: "feature" });
+  assert.equal(empty.captured.status, 200);
+  assert.equal(fs.readFileSync(roleLessonsPath(root, "feature"), "utf8"), "<!-- next: L1 -->\n");
+});
+
+test("handleRoleLessons refuses a corrupted store with 400 and does not clear it", async () => {
+  const root = tmpdir();
+  const lessons = roleLessonsPath(root, "feature");
+  fs.mkdirSync(path.dirname(lessons), { recursive: true });
+  const corrupted = "- L1 (2026-11-21): no next-id marker\n";
+  fs.writeFileSync(lessons, corrupted);
+
+  const r = await captureJson((res) => handleRoleLessons(fakeReq(JSON.stringify({ role: "feature" })), res, root));
+  assert.equal(r.captured.status, 400);
+  assert.match((r.data as { error: string }).error, /next-id marker/);
+  assert.equal(fs.readFileSync(lessons, "utf8"), corrupted, "a corrupted store is surfaced, never cleared");
+});
+
+// The live server's dispatch arm for POST /api/role-lessons — the method+path match that turns
+// the drawer's Clear button (gui-client-boot.ts's postAction) into this handler. The unit tests
+// above hand the body to the handler directly, so a renamed path or a dropped arm would leave
+// them all green while the button 404s.
+test("the live server routes POST /api/role-lessons to the handler and refuses other methods", async () => {
+  const root = tmpdir();
+  const lessons = roleLessonsPath(root, "feature");
+  addRoleLesson(lessons, "a lesson to clear", "2026-11-23"); // L1
+  const { server, base } = await startLocalGui(root);
+  try {
+    const res = await postJson(base, "/api/role-lessons", { role: "feature" });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, message: "lessons cleared" });
+    assert.equal(fs.readFileSync(lessons, "utf8"), "<!-- next: L2 -->\n", "the handler the router reached cleared the store");
+
+    // The method gate: a GET on the same path falls through the dispatcher's POST-only arm to
+    // the 404 else, so it must never reach the handler and must not write the store again.
+    assert.equal((await fetch(base + "/api/role-lessons")).status, 404);
+    assert.equal(fs.readFileSync(lessons, "utf8"), "<!-- next: L2 -->\n");
+  } finally {
+    server.close();
+  }
 });
 
 test("GET /api/brief serves the brief file and prompt; a repo without a prompt block is a 404", async () => {
