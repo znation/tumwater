@@ -5,6 +5,15 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### main's tip does not compile: a reviewer's fix added an import line `isJsonObject` that main had already added in the hunk above, and the rebase kept both, so `tsc` fails TS2300 Duplicate identifier (found by the bugfix role 2026-11-23) — fixed 2026-11-23 by the bugfix role
+
+- **Symptom:** `node scripts/tsc.mjs` at main's tip `e1f0459e` fails with `src/github/github-issues-state.ts(10,20): error TS2300: Duplicate identifier 'isJsonObject'.` and the same error at `(12,20)`. The parent `1706a712^` (`e279ac3d`) compiles clean, so the break is in `1706a712` ("tumwater(reviewer): Fix e3572db9 — …"). Every gate and check run against that tip cannot get past the compile step.
+- **Reproduce:** confirmed deterministically, twice, in scratch trees exported from the commits with `git archive` plus a symlinked `node_modules`: rc=2 with the two TS2300 lines at `1706a712` and at `e1f0459e`, rc=0 at `1706a712^`.
+- **Cause:** the reviewer's fix replaced a bare `typeof value !== "object"` guard with `isJsonObject(value)` and added the import beside its own hunk; main had meanwhile gained the same import at line 10 from `e279ac3d`. The rebase auto-merged (no conflict) and kept both identical lines. Why the landing check missed it is the separate open entry above.
+- **Fix:** removed the duplicate import line; line 10's binding covers both uses (the row guard and the scan-written-rows check), so the file's intent is unchanged and the compile is clean. No other file in src or test carries a duplicate exact import line — checked by a script over git ls-files src test that reports repeated whole import statements per file: the only hits are two identical node:fs / node:path import lines inside a template string in test/repo-fixtures.test.ts, which is fixture source text, not a real import.
+
+**Validation gap:** none — the project's declared check (`node scripts/tsc.mjs`, the build/test script's own step) reproduced it directly: the error text names the file, both lines, and the identifier.
+
 ### main's tip does not typecheck: `isJsonObject` is imported twice in `src/github/github-issues-state.ts` (found by the readme role 2026-11-23) — fixed 2026-11-23 by the readme role
 
 **Symptom.** Any `npm run test:rerun -- <name>` on main's tip died before running a single test:
